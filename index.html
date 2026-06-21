@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GetWay — Turn TikTok trips into real itineraries</title>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" crossorigin="anonymous"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.css" />
+<style>
+  body {
+    font-family: 'Inter', sans-serif;
+    background:
+      radial-gradient(at 15% 15%, rgba(250,240,222,0.95) 0px, transparent 55%),
+      radial-gradient(at 85% 10%, rgba(222,231,240,0.85) 0px, transparent 55%),
+      radial-gradient(at 50% 85%, rgba(241,232,214,0.75) 0px, transparent 55%),
+      radial-gradient(at 90% 90%, rgba(216,226,236,0.85) 0px, transparent 55%),
+      #fdfbf7;
+    background-attachment: fixed;
+  }
+  .font-serif-display { font-family: 'Playfair Display', serif; }
+  .screen { display: none; }
+  .screen.active { display: block; }
+  ::-webkit-scrollbar { width: 0; height: 0; }
+  img { color: transparent; }
+
+  .glass-card {
+    background: rgba(255,255,255,0.6);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid rgba(255,255,255,0.5);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.10);
+  }
+  .bento-card { box-shadow: 0 2px 14px rgba(20,20,30,0.06); }
+
+  .route-card { transition: transform 0.35s ease, box-shadow 0.35s ease; }
+  .route-card:hover { transform: translateY(-8px); box-shadow: 0 28px 56px rgba(0,0,0,0.16); }
+  .route-card-image { transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+  .route-card:hover .route-card-image { transform: scale(1.12); }
+
+  .filter-chip, .route-filter-chip { transition: all 0.3s ease; cursor: pointer; }
+  .filter-chip:hover, .route-filter-chip:hover { border-color: #8B5CF6; background: #F8F6FF; color: #6D28D9; }
+  .filter-chip:active, .route-filter-chip:active { transform: scale(0.96); }
+
+  .btn-interactive { transition: all 0.25s ease; }
+  .btn-interactive:hover { filter: brightness(1.08); transform: translateY(-1px); }
+  .btn-interactive:active { transform: translateY(0) scale(0.97); filter: brightness(0.96); }
+
+  .btn-outline-interactive { transition: all 0.25s ease; }
+  .btn-outline-interactive:hover { color: #6D28D9; background: #F8F6FF; }
+  .btn-outline-interactive:active { transform: scale(0.97); }
+
+  .hero-bottom-overlay {
+    background: linear-gradient(to top, rgba(10,12,16,0.78), rgba(10,12,16,0.25) 55%, rgba(10,12,16,0) 80%);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+  .hero-top-overlay { background: linear-gradient(to bottom, rgba(0,0,0,0.45), rgba(0,0,0,0) 100%); }
+
+  .hero-slide { position: absolute; inset: 0; opacity: 0; transition: opacity 1.4s ease; }
+  .hero-slide.is-active { opacity: 1; }
+
+  .peek-scroll { scroll-snap-type: x proximity; }
+  .peek-scroll > * { scroll-snap-align: start; }
+
+  .media-placeholder {
+    display: flex; align-items: center; justify-content: center;
+    background-image: repeating-linear-gradient(135deg, rgba(255,255,255,0.10) 0px, rgba(255,255,255,0.10) 2px, transparent 2px, transparent 14px);
+  }
+
+  /* Used by the in-route filter instead of Tailwind's `hidden` utility.
+     `hidden` can be silently overridden by a responsive `md:flex`/`md:grid`
+     declared on the SAME element, because Tailwind emits responsive
+     variants in a later stylesheet block — same specificity, later source
+     order wins, so the element stays visible on desktop only. `!important`
+     here sidesteps that entirely regardless of what other display utility
+     is on the element. */
+  .filter-hidden { display: none !important; }
+</style>
+</head>
+<body class="text-[#111827] antialiased">
+
+<!-- ====================================================================== -->
+<!-- SCREEN 1: HOMEPAGE                                                     -->
+<!-- ====================================================================== -->
+<div id="screen-home" class="screen active">
+
+  <div class="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-6 md:px-14 py-6">
+    <span class="font-serif-display text-xl md:text-2xl text-white" style="text-shadow: 0 1px 8px rgba(0,0,0,0.35);">GetWay<span class="text-[#C4B5FD]">.</span></span>
+    <button onclick="scrollToRoutes()" class="btn-interactive text-[11px] md:text-xs font-medium text-white/90 border border-white/40 rounded-full px-3.5 py-1.5 md:px-5 md:py-2.5">Browse Routes</button>
+  </div>
+
+  <div class="relative h-[80vh] min-h-[520px] w-full overflow-hidden" style="background: linear-gradient(135deg, #1c2128 0%, #334155 55%, #15171A 100%);">
+    <div id="hero-media-layer" class="absolute inset-0"></div>
+    <div class="absolute inset-0 hero-top-overlay h-40"></div>
+    <div class="absolute inset-0 bg-gradient-to-b from-black/35 via-black/10 to-[#fdfbf7]"></div>
+    <div class="relative z-10 h-full flex flex-col items-center justify-center text-center px-6">
+      <div class="font-serif-display text-white text-[40px] sm:text-[68px] md:text-[92px] leading-[0.95] tracking-tight mb-5" style="text-shadow: 0 2px 20px rgba(0,0,0,0.25);">GetWay.</div>
+      <div class="text-white/90 text-sm sm:text-base max-w-md" style="text-shadow: 0 1px 10px rgba(0,0,0,0.3);">Curated itineraries from your favorite creators.<br>Turn TikTok clips into real-world trips.</div>
+    </div>
+  </div>
+
+  <div class="relative z-20 px-6 -mt-24 md:-mt-28">
+    <div class="glass-card max-w-xl mx-auto rounded-[28px] px-6 sm:px-10 py-9 md:py-10">
+      <div class="text-center mb-6">
+        <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">AI-Powered</div>
+        <div class="font-serif-display text-2xl md:text-3xl mb-2">AI Magic Box</div>
+        <div class="text-xs md:text-sm text-gray-600">Turn any TikTok video into a ready-to-book route in 60 seconds.</div>
+      </div>
+      <div class="flex items-center gap-2.5 h-[52px] px-4 bg-white/70 border border-gray-200 rounded-2xl mb-3.5">
+        <i data-lucide="music-2" class="w-[18px] h-[18px] text-gray-500 flex-shrink-0"></i>
+        <input type="text" placeholder="Paste the TikTok video link here..." class="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400">
+      </div>
+      <button onclick="showScreen('magicbox')" class="btn-interactive w-full h-[50px] flex items-center justify-center gap-2 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">
+        Build my route <i data-lucide="rocket" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </div>
+
+  <div class="h-20 md:h-28"></div>
+
+  <div id="routes-section" class="max-w-6xl mx-auto px-6 md:px-14 pt-4">
+    <div data-aos="fade-up" class="font-serif-display text-3xl md:text-4xl mb-2">Routes</div>
+    <div class="text-xs md:text-sm text-gray-500 mb-6">3 curated routes, more added weekly</div>
+
+    <!-- Destination search + Duration filter -->
+    <div class="flex flex-col md:flex-row md:items-center gap-3 mb-5">
+      <div class="relative max-w-md w-full">
+        <i data-lucide="search" class="w-4 h-4 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2"></i>
+        <input id="route-search" type="text" oninput="filterRoutesBySearch()" placeholder="Search destinations, e.g. Rome" class="w-full h-[44px] pl-11 pr-4 bg-white border border-gray-200 rounded-full text-sm outline-none placeholder:text-gray-400 focus:border-[#8B5CF6] shadow-sm">
+      </div>
+
+      <div class="flex items-center gap-1.5 flex-shrink-0">
+        <span class="text-xs text-gray-400 mr-0.5 hidden md:inline">Duration</span>
+        <button onclick="filterByDuration('any', this)" class="duration-chip is-active flex-shrink-0 h-[36px] px-3.5 text-xs font-medium rounded-full bg-[#8B5CF6] text-white whitespace-nowrap transition-colors">Any Days</button>
+        <button onclick="filterByDuration('short', this)" class="duration-chip flex-shrink-0 h-[36px] px-3.5 text-xs font-medium rounded-full bg-white border border-gray-200 text-gray-600 whitespace-nowrap transition-colors">1-3 Days</button>
+        <button onclick="filterByDuration('long', this)" class="duration-chip flex-shrink-0 h-[36px] px-3.5 text-xs font-medium rounded-full bg-white border border-gray-200 text-gray-600 whitespace-nowrap transition-colors">4+ Days</button>
+      </div>
+    </div>
+
+    <div class="peek-scroll flex gap-2 pb-8 md:pb-10 overflow-x-auto pr-0 -mr-6 md:-mr-14">
+      <button onclick="filterByCategory('all', this)" class="filter-chip category-chip is-active flex-shrink-0 h-[32px] px-3.5 flex items-center gap-1 text-xs font-medium border border-[#8B5CF6] bg-[#F1EEFF] text-[#6D28D9] whitespace-nowrap rounded-full" data-tag="all">All</button>
+      <button onclick="filterByCategory('most_popular', this)" class="filter-chip category-chip flex-shrink-0 h-[32px] px-3.5 flex items-center gap-1 text-xs font-medium border border-gray-200 text-gray-700 whitespace-nowrap rounded-full bg-white/60" data-tag="most_popular"><i data-lucide="flame" class="w-3 h-3"></i>Most Popular</button>
+      <button onclick="filterByCategory('budget_friendly', this)" class="filter-chip category-chip flex-shrink-0 h-[32px] px-3.5 flex items-center gap-1 text-xs font-medium border border-gray-200 text-gray-700 whitespace-nowrap rounded-full bg-white/60" data-tag="budget_friendly"><i data-lucide="wallet" class="w-3 h-3"></i>Budget Friendly</button>
+      <button onclick="filterByCategory('luxury', this)" class="filter-chip category-chip flex-shrink-0 h-[32px] px-3.5 flex items-center gap-1 text-xs font-medium border border-gray-200 text-gray-700 whitespace-nowrap rounded-full bg-white/60" data-tag="luxury"><i data-lucide="gem" class="w-3 h-3"></i>Luxury</button>
+      <button onclick="filterByCategory('exotic', this)" class="filter-chip category-chip flex-shrink-0 h-[32px] px-3.5 flex items-center gap-1 text-xs font-medium border border-gray-200 text-gray-700 whitespace-nowrap rounded-full bg-white/60" data-tag="exotic"><i data-lucide="palmtree" class="w-3 h-3"></i>Exotic</button>
+      <button onclick="filterByCategory('mountain', this)" class="filter-chip category-chip flex-shrink-0 h-[32px] px-3.5 flex items-center gap-1 text-xs font-medium border border-gray-200 text-gray-700 whitespace-nowrap rounded-full bg-white/60" data-tag="mountain"><i data-lucide="mountain-snow" class="w-3 h-3"></i>Mountain</button>
+      <div class="flex-shrink-0 w-2"></div>
+    </div>
+
+    <div id="route-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-10 pb-16"></div>
+    <div id="route-search-empty" class="hidden text-center text-sm text-gray-400 py-10">No destinations match your search.</div>
+  </div>
+
+  <footer class="bg-[#15171A] text-white mt-8">
+    <div class="max-w-6xl mx-auto px-6 md:px-14 py-14 md:py-16 grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-8">
+      <div>
+        <div class="font-serif-display text-xl mb-4">GetWay<span class="text-[#C4B5FD]">.</span></div>
+        <div class="text-xs text-white/60 leading-relaxed mb-1">Support: <a href="mailto:getway.smart@gmail.com" class="text-white/85 hover:text-white">getway.smart@gmail.com</a></div>
+        <div class="text-xs text-white/60 leading-relaxed">Creators & partnerships: <a href="mailto:getway.smart@gmail.com" class="text-white/85 hover:text-white">getway.smart@gmail.com</a></div>
+      </div>
+      <div>
+        <div class="text-xs font-semibold uppercase tracking-wide text-white/50 mb-4">Legal</div>
+        <a href="#" onclick="showScreen('terms'); return false;" class="block text-xs text-white/70 hover:text-white mb-2.5">Terms of Service</a>
+        <a href="#" onclick="showScreen('privacy'); return false;" class="block text-xs text-white/70 hover:text-white">Privacy Policy</a>
+      </div>
+      <div>
+        <div class="text-xs font-semibold uppercase tracking-wide text-white/50 mb-4">Follow</div>
+        <div class="flex gap-3">
+          <a href="#" class="btn-interactive w-9 h-9 rounded-full bg-white/10 flex items-center justify-center"><i data-lucide="music-2" class="w-4 h-4 text-white"></i></a>
+          <a href="#" class="btn-interactive w-9 h-9 rounded-full bg-white/10 flex items-center justify-center"><svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="white" stroke-width="1.8"><rect x="2.5" y="2.5" width="19" height="19" rx="5"/><circle cx="12" cy="12" r="4.3"/><circle cx="17.2" cy="6.8" r="1.1" fill="white" stroke="none"/></svg></a>
+        </div>
+      </div>
+    </div>
+    <div class="border-t border-white/10 py-5 text-center text-[11px] text-white/40">© 2026 GetWay. All rights reserved.</div>
+  </footer>
+
+</div>
+
+<!-- ====================================================================== -->
+<!-- SCREEN 2: STANDALONE ROUTE PAGE (Mallorca)                             -->
+<!-- ====================================================================== -->
+<div id="screen-route" class="screen">
+<div class="min-h-screen">
+<div class="w-full max-w-[390px] md:max-w-none mx-auto">
+
+  <div class="relative h-[320px] md:h-[64vh] md:min-h-[480px] w-full overflow-hidden" style="background: linear-gradient(135deg, #1c2128 0%, #15171A 55%, #0c0d10 100%);">
+    <div id="mallorca-hero-media" class="absolute inset-0"></div>
+    <div class="absolute inset-0 hero-top-overlay h-32 md:h-40"></div>
+    <div class="absolute top-[22px] left-[18px] right-[18px] md:top-8 md:left-14 md:right-14 flex items-center justify-between z-10">
+      <button onclick="showScreen('home')" class="text-base md:text-3xl lg:text-4xl font-medium font-serif-display text-white" style="text-shadow: 0 1px 8px rgba(0,0,0,0.4);">GetWay<span class="text-[#C4B5FD]">.</span></button>
+    </div>
+    <div class="absolute left-0 right-0 bottom-0 h-[180px] md:h-[230px] hero-bottom-overlay">
+      <div class="absolute bottom-16 md:bottom-24 left-6 right-6 md:left-14 md:right-14 flex items-end gap-3 flex-wrap">
+        <div class="font-serif-display text-[36px] sm:text-[44px] md:text-[100px] text-white leading-[0.95] tracking-tight">MALLORCA</div>
+        <div class="mb-1.5 md:mb-5 inline-flex items-center text-xs md:text-sm font-medium text-white bg-white/15 border border-white/25 rounded-full px-3.5 py-1.5">€€</div>
+      </div>
+      <a id="mallorca-tiktok-link" href="#" target="_blank" rel="noopener" class="absolute left-6 md:left-14 right-16 md:right-auto bottom-[28px] md:bottom-7 flex items-center gap-1.5 text-xs md:text-sm text-white/85 truncate">
+        <i data-lucide="music-2" class="w-3 h-3 flex-shrink-0"></i><span id="mallorca-tiktok-handle" class="truncate"></span>
+      </a>
+      <div id="mallorca-gallery-counter" class="absolute right-5 md:right-14 bottom-[28px] md:bottom-7 text-[11px] md:text-xs text-white">1 / 5</div>
+    </div>
+  </div>
+
+  <div class="flex items-center justify-center py-6 md:py-8 border-b border-gray-100">
+    <div class="flex items-center gap-1.5 px-5 md:px-10"><i data-lucide="map-pin" class="w-3.5 h-3.5 md:w-4 md:h-4 text-gray-400"></i><div><span class="text-base md:text-xl font-bold">14</span> <span class="text-[10px] md:text-xs text-gray-500">stops</span></div></div>
+    <div class="w-px h-7 md:h-9 bg-gray-200"></div>
+    <div class="flex items-center gap-1.5 px-5 md:px-10"><i data-lucide="bed" class="w-3.5 h-3.5 md:w-4 md:h-4 text-gray-400"></i><div><span class="text-base md:text-xl font-bold">2</span> <span class="text-[10px] md:text-xs text-gray-500">hotels</span></div></div>
+    <div class="w-px h-7 md:h-9 bg-gray-200"></div>
+    <div class="flex items-center gap-1.5 px-5 md:px-10"><i data-lucide="calendar-days" class="w-3.5 h-3.5 md:w-4 md:h-4 text-gray-400"></i><div><span class="text-base md:text-xl font-bold">5</span> <span class="text-[10px] md:text-xs text-gray-500">days</span></div></div>
+  </div>
+
+  <div id="mallorca-thumbnails" class="flex justify-center gap-1.5 md:gap-3 px-4 pt-6 pb-2 md:pt-8"></div>
+  <div class="text-center px-4 pb-8 md:pb-10 text-[10px] md:text-xs text-gray-400">Tap a thumbnail to preview · tap the video tile to resume the loop</div>
+
+  <!-- In-route filters: premium centered pill toolbar -->
+  <div class="px-5 md:px-14 lg:px-24 pb-10 md:pb-14">
+    <div class="max-w-fit md:mx-auto bg-white/70 backdrop-blur-md border border-gray-200/80 rounded-full p-1.5 shadow-sm overflow-x-auto">
+      <div class="peek-scroll flex gap-1.5 md:justify-center">
+        <button onclick="filterStops('all', this)" class="route-filter-chip is-active flex-shrink-0 h-[36px] px-4 flex items-center gap-1.5 text-xs font-medium rounded-full bg-[#8B5CF6] text-white whitespace-nowrap">All Stops</button>
+        <button onclick="filterStops('hotel', this)" class="route-filter-chip flex-shrink-0 h-[36px] px-4 flex items-center gap-1.5 text-xs font-medium rounded-full text-gray-600 whitespace-nowrap"><i data-lucide="bed" class="w-3.5 h-3.5"></i>Hotels</button>
+        <button onclick="filterStops('food', this)" class="route-filter-chip flex-shrink-0 h-[36px] px-4 flex items-center gap-1.5 text-xs font-medium rounded-full text-gray-600 whitespace-nowrap"><i data-lucide="utensils" class="w-3.5 h-3.5"></i>Food & Drinks</button>
+        <button onclick="filterStops('sight', this)" class="route-filter-chip flex-shrink-0 h-[36px] px-4 flex items-center gap-1.5 text-xs font-medium rounded-full text-gray-600 whitespace-nowrap"><i data-lucide="landmark" class="w-3.5 h-3.5"></i>Sights</button>
+        <button onclick="filterStops('activity', this)" class="route-filter-chip flex-shrink-0 h-[36px] px-4 flex items-center gap-1.5 text-xs font-medium rounded-full text-gray-600 whitespace-nowrap"><i data-lucide="waves" class="w-3.5 h-3.5"></i>Activities</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chronological, day-by-day itinerary. mt-6 guarantees breathing room
+       below the filter bar on mobile, independent of the filter bar's own
+       bottom padding. -->
+  <div class="px-5 md:px-14 lg:px-24 pb-12 md:pb-20 max-w-4xl mx-auto mt-6 md:mt-0">
+
+    <div class="day-group" data-day="1">
+    <div data-aos="fade-up" class="font-serif-display text-[26px] md:text-4xl leading-tight mb-1.5">Day 1</div>
+    <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 mb-7 md:mb-9">Arrival & Palma old town · 3 stops</div>
+
+    <div data-category="hotel" data-aos="fade-up" class="mb-7 md:mb-10 md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
+      <div class="md:w-2/5 md:flex-shrink-0">
+        <div class="relative h-[140px] md:h-56 mb-3 md:mb-0 rounded-2xl overflow-hidden media-placeholder" style="background: linear-gradient(135deg, #8B5CF6, #6D28D9);">
+          <i data-lucide="bed" class="w-8 h-8 text-white/80"></i>
+        </div>
+      </div>
+      <div class="md:w-3/5 md:pt-2">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-[11px] font-medium text-[#7C3AED] uppercase tracking-wide">Hotel</span><span class="text-[11px] text-gray-400">·</span>
+          <span class="inline-flex items-center gap-1 text-[11px] text-[#085041]"><i data-lucide="star" class="w-3 h-3"></i>Kelsey's pick</span>
+        </div>
+        <div class="text-sm font-medium mb-1">Ars Magna Bleisure Hotel</div>
+        <div class="text-xs text-gray-500 mb-1">Boutique Hotel · Old Town</div>
+        <div class="flex items-center gap-3 mb-4">
+          <span class="text-xs font-medium text-gray-700">€€</span>
+          <span class="inline-flex items-center gap-1 text-xs font-medium text-gray-700"><i data-lucide="star" class="w-3 h-3 text-amber-500 fill-amber-500"></i>8.9 Excellent</span>
+        </div>
+        <div class="relative mb-2.5">
+          <button onclick="toggleHotelDropdown('hotel1')" class="hotel-btn btn-interactive w-full h-[44px] flex items-center justify-center gap-1.5 bg-[#8B5CF6] text-white text-xs font-medium rounded-xl">
+            Book this hotel <i data-lucide="chevron-down" class="hotel-chevron w-3.5 h-3.5 transition-transform"></i>
+          </button>
+          <div id="hotel1-menu" class="hidden bg-white rounded-xl mt-1.5 overflow-hidden bento-card">
+            <a href="#" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 border-b border-gray-100 text-xs"><span>via Booking.com</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
+            <a href="#" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 text-xs"><span>via Expedia</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2.5">
+          <a href="#" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="shuffle" class="w-3.5 h-3.5"></i>Similar</a>
+          <a href="#" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="home" class="w-3.5 h-3.5"></i>Airbnb</a>
+        </div>
+      </div>
+    </div>
+
+    <div id="day1-stops" class="grid md:grid-cols-2 gap-4 md:gap-6 mb-2"></div>
+    </div>
+
+    <div class="mt-12 md:mt-16"></div>
+    <div class="day-group" data-day="2">
+    <div data-aos="fade-up" class="font-serif-display text-[26px] md:text-4xl leading-tight mb-1.5">Day 2</div>
+    <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 mb-2">Valldemossa village · 1 stop</div>
+    <div data-aos="fade-up" class="flex items-center gap-1.5 text-[11px] md:text-xs text-gray-500 mb-5 md:mb-7"><i data-lucide="bed" class="w-3 h-3"></i>Staying at Ars Magna Bleisure (see Day 1)</div>
+    <div id="day2-stops" class="grid md:grid-cols-2 gap-4 md:gap-6"></div>
+    </div>
+
+    <div class="mt-12 md:mt-16"></div>
+    <div class="day-group" data-day="3-4">
+    <div data-aos="fade-up" class="font-serif-display text-[26px] md:text-4xl leading-tight mb-1.5">Days 3-4</div>
+    <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 mb-7 md:mb-9">Southeast beach hopping · 5 stops</div>
+
+    <div data-category="hotel" data-aos="fade-up" class="mb-6 md:mb-8 md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
+      <div class="md:w-2/5 md:flex-shrink-0">
+        <div class="relative h-[140px] md:h-56 mb-3 md:mb-0 rounded-2xl overflow-hidden media-placeholder" style="background: linear-gradient(135deg, #0E7490, #155E75);">
+          <i data-lucide="bed" class="w-8 h-8 text-white/80"></i>
+        </div>
+      </div>
+      <div class="md:w-3/5 md:pt-2">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-[11px] font-medium text-[#7C3AED] uppercase tracking-wide">Hotel</span><span class="text-[11px] text-gray-400">·</span>
+          <span class="inline-flex items-center gap-1 text-[11px] text-[#085041]"><i data-lucide="star" class="w-3 h-3"></i>Kelsey's pick</span>
+        </div>
+        <div class="text-sm font-medium mb-1">Hotel Santanyi Port</div>
+        <div class="text-xs text-gray-500 mb-1">Beachfront Resort · Santanyí</div>
+        <div class="flex items-center gap-3 mb-4">
+          <span class="text-xs font-medium text-gray-700">€€</span>
+          <span class="inline-flex items-center gap-1 text-xs font-medium text-gray-700"><i data-lucide="star" class="w-3 h-3 text-amber-500 fill-amber-500"></i>9.1 Superb</span>
+        </div>
+        <div class="relative mb-2.5">
+          <button onclick="toggleHotelDropdown('hotel2')" class="hotel-btn btn-interactive w-full h-[44px] flex items-center justify-center gap-1.5 bg-[#8B5CF6] text-white text-xs font-medium rounded-xl">
+            Book this hotel <i data-lucide="chevron-down" class="hotel-chevron w-3.5 h-3.5 transition-transform"></i>
+          </button>
+          <div id="hotel2-menu" class="hidden bg-white rounded-xl mt-1.5 overflow-hidden bento-card">
+            <a href="#" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 border-b border-gray-100 text-xs"><span>via Booking.com</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
+            <a href="#" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 text-xs"><span>via Expedia</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2.5">
+          <a href="#" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="shuffle" class="w-3.5 h-3.5"></i>Similar</a>
+          <a href="#" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="home" class="w-3.5 h-3.5"></i>Airbnb</a>
+        </div>
+      </div>
+    </div>
+
+    <div id="beach-list" class="grid md:grid-cols-2 gap-4 md:gap-6"></div>
+    </div>
+
+    <div class="mt-12 md:mt-16"></div>
+    <div class="day-group" data-day="5">
+    <div data-aos="fade-up" class="font-serif-display text-[26px] md:text-4xl leading-tight mb-1.5">Day 5</div>
+    <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 mb-5 md:mb-7">West coast · 2 stops</div>
+    <div id="day5-stops" class="grid md:grid-cols-2 gap-4 md:gap-6"></div>
+    </div>
+
+  </div>
+
+  <!-- ================== TikTok Comments (mock data) ================== -->
+  <div class="px-5 md:px-14 lg:px-24 pb-16 md:pb-24 max-w-4xl mx-auto">
+    <div data-aos="fade-up" class="font-serif-display text-2xl md:text-3xl mb-2">What people say on TikTok</div>
+    <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 mb-8">Real reactions from viewers of the original itinerary video</div>
+
+    <div class="space-y-3" id="tiktok-comments"></div>
+  </div>
+
+  <!-- ================== Community Reviews (mock data) ================== -->
+  <div class="px-5 md:px-14 lg:px-24 pb-16 md:pb-24 max-w-6xl mx-auto">
+    <div data-aos="fade-up" class="font-serif-display text-2xl md:text-3xl mb-2">Community Reviews</div>
+    <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 mb-8">What travelers say about booking this route through GetWay</div>
+
+    <!-- Rating summary -->
+    <div data-aos="fade-up" class="bento-card bg-white rounded-[26px] p-7 flex flex-col items-center justify-center text-center max-w-xs mx-auto mb-8 md:mb-10">
+      <div class="text-5xl font-bold font-serif-display mb-2">4.9</div>
+      <div class="text-xs text-gray-400 mb-3">out of 5</div>
+      <div class="flex gap-1 mb-3">
+        <i data-lucide="star" class="w-4 h-4 text-amber-500 fill-amber-500"></i><i data-lucide="star" class="w-4 h-4 text-amber-500 fill-amber-500"></i><i data-lucide="star" class="w-4 h-4 text-amber-500 fill-amber-500"></i><i data-lucide="star" class="w-4 h-4 text-amber-500 fill-amber-500"></i><i data-lucide="star" class="w-4 h-4 text-amber-500 fill-amber-500"></i>
+      </div>
+      <div class="text-xs text-gray-500">Based on 312 reviews</div>
+    </div>
+
+    <!-- Leave a Review form -->
+    <div data-aos="fade-up" class="bento-card bg-white rounded-[28px] p-6 md:p-10 max-w-2xl mx-auto mb-10 md:mb-14">
+      <div class="text-center mb-7">
+        <div class="font-serif-display text-xl md:text-2xl mb-1.5">Leave a Review</div>
+        <div class="text-xs md:text-sm text-gray-500">Tell other travelers how your GetWay booking went</div>
+      </div>
+
+      <form id="review-form" onsubmit="submitReview(event)">
+        <div id="review-form-fields">
+          <div class="grid sm:grid-cols-2 gap-3.5 mb-3.5">
+            <input id="review-name" type="text" required placeholder="Your name" class="h-[46px] px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none placeholder:text-gray-400 focus:border-[#8B5CF6]">
+            <input id="review-title" type="text" required placeholder="Review title" class="h-[46px] px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none placeholder:text-gray-400 focus:border-[#8B5CF6]">
+          </div>
+
+          <div class="mb-3.5">
+            <div class="text-xs text-gray-500 mb-2">Your rating</div>
+            <div id="star-rating" class="flex gap-1.5"></div>
+            <input type="hidden" id="review-rating" value="0">
+          </div>
+
+          <textarea id="review-text" required rows="4" placeholder="Share your experience with this route..." class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none placeholder:text-gray-400 focus:border-[#8B5CF6] resize-none mb-5"></textarea>
+
+          <button type="submit" class="btn-interactive w-full sm:w-auto sm:mx-auto flex items-center justify-center gap-2 h-[48px] px-10 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl transition-transform hover:scale-[1.03] active:scale-[0.97]">
+            <span>Submit Review</span> <i data-lucide="send" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <div id="review-form-success" class="hidden text-center py-6">
+          <div class="w-14 h-14 bg-[#E1F5EE] rounded-full flex items-center justify-center mx-auto mb-4"><i data-lucide="check" class="w-6 h-6 text-[#085041]"></i></div>
+          <div class="text-sm font-medium mb-1">Thanks for your review!</div>
+          <div class="text-xs text-gray-500">This is a UI preview — submissions aren't saved yet.</div>
+        </div>
+      </form>
+    </div>
+
+    <!-- Existing reviews -->
+    <div class="grid md:grid-cols-3 gap-6 md:gap-8">
+      <div id="reviews-grid" class="contents"></div>
+    </div>
+  </div>
+
+  <footer class="bg-[#15171A] text-white mt-4">
+    <div class="max-w-6xl mx-auto px-6 md:px-14 py-14 md:py-16 grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-8">
+      <div>
+        <div class="font-serif-display text-xl mb-4">GetWay<span class="text-[#C4B5FD]">.</span></div>
+        <div class="text-xs text-white/60 leading-relaxed mb-1">Support: <a href="mailto:getway.smart@gmail.com" class="text-white/85 hover:text-white">getway.smart@gmail.com</a></div>
+        <div class="text-xs text-white/60 leading-relaxed">Creators & partnerships: <a href="mailto:getway.smart@gmail.com" class="text-white/85 hover:text-white">getway.smart@gmail.com</a></div>
+      </div>
+      <div>
+        <div class="text-xs font-semibold uppercase tracking-wide text-white/50 mb-4">Legal</div>
+        <a href="#" onclick="showScreen('terms'); return false;" class="block text-xs text-white/70 hover:text-white mb-2.5">Terms of Service</a>
+        <a href="#" onclick="showScreen('privacy'); return false;" class="block text-xs text-white/70 hover:text-white">Privacy Policy</a>
+      </div>
+      <div>
+        <div class="text-xs font-semibold uppercase tracking-wide text-white/50 mb-4">Follow</div>
+        <div class="flex gap-3">
+          <a href="#" class="btn-interactive w-9 h-9 rounded-full bg-white/10 flex items-center justify-center"><i data-lucide="music-2" class="w-4 h-4 text-white"></i></a>
+          <a href="#" class="btn-interactive w-9 h-9 rounded-full bg-white/10 flex items-center justify-center"><svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="white" stroke-width="1.8"><rect x="2.5" y="2.5" width="19" height="19" rx="5"/><circle cx="12" cy="12" r="4.3"/><circle cx="17.2" cy="6.8" r="1.1" fill="white" stroke="none"/></svg></a>
+        </div>
+      </div>
+    </div>
+    <div class="border-t border-white/10 py-5 text-center text-[11px] text-white/40">© 2026 GetWay. All rights reserved.</div>
+  </footer>
+
+</div>
+</div>
+</div>
+
+<div id="lightbox" class="hidden fixed inset-0 z-[200] bg-black/90 items-center justify-center p-6" onclick="closeLightbox()">
+  <img id="lightbox-img" src="" alt="" class="max-w-full max-h-full rounded-2xl object-contain">
+  <button onclick="closeLightbox()" class="absolute top-6 right-6 w-10 h-10 rounded-full bg-white/15 flex items-center justify-center">
+    <i data-lucide="x" class="w-5 h-5 text-white"></i>
+  </button>
+</div>
+
+<!-- ====================================================================== -->
+<!-- SCREEN 3: AI MAGIC BOX                                                 -->
+<!-- ====================================================================== -->
+<div id="screen-magicbox" class="screen">
+<div class="flex justify-center min-h-screen">
+<div class="w-full max-w-[390px] md:max-w-xl">
+
+  <div class="px-5 md:px-0 py-4 md:py-8 flex items-center justify-between">
+    <button onclick="showScreen('home')" class="font-serif-display text-base md:text-xl">GetWay<span class="text-[#8B5CF6]">.</span></button>
+  </div>
+
+  <div id="magicbox-form" class="mx-5 md:mx-0 px-6 md:px-10 py-9 md:py-12 glass-card rounded-[28px]">
+    <div class="text-center mb-7">
+      <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">AI-Powered</div>
+      <div class="font-serif-display text-[28px] md:text-4xl mb-2">AI Magic Box</div>
+      <div class="text-xs md:text-sm text-gray-600 leading-relaxed px-2.5">Turn any TikTok video into a ready-to-book route in 60 seconds.</div>
+    </div>
+
+    <div class="flex items-center gap-2.5 h-[52px] px-4 bg-white/70 border border-gray-200 rounded-2xl mb-3">
+      <i data-lucide="music-2" class="w-[18px] h-[18px] text-gray-500 flex-shrink-0"></i>
+      <input id="tiktok-url" type="text" placeholder="Paste the TikTok video link here..." class="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400">
+    </div>
+
+    <button onclick="startMagicBox()" class="btn-interactive w-full h-[50px] flex items-center justify-center gap-2 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl mb-8">
+      Build my route <i data-lucide="rocket" class="w-4 h-4"></i>
+    </button>
+
+    <div class="flex items-center justify-center gap-1.5">
+      <div class="text-center flex-1">
+        <div class="w-9 h-9 bg-[#F1EEFF] rounded-[12px] flex items-center justify-center mx-auto mb-1.5"><i data-lucide="link" class="w-4 h-4 text-[#7C3AED]"></i></div>
+        <div class="text-[9px] md:text-[11px] text-gray-500">1. Copy link</div>
+      </div>
+      <i data-lucide="arrow-right" class="w-3 h-3 text-gray-300 -mt-4"></i>
+      <div class="text-center flex-1">
+        <div class="w-9 h-9 bg-[#F1EEFF] rounded-[12px] flex items-center justify-center mx-auto mb-1.5"><i data-lucide="clipboard" class="w-4 h-4 text-[#7C3AED]"></i></div>
+        <div class="text-[9px] md:text-[11px] text-gray-500">2. Paste here</div>
+      </div>
+      <i data-lucide="arrow-right" class="w-3 h-3 text-gray-300 -mt-4"></i>
+      <div class="text-center flex-1">
+        <div class="w-9 h-9 bg-[#F1EEFF] rounded-[12px] flex items-center justify-center mx-auto mb-1.5"><i data-lucide="route" class="w-4 h-4 text-[#7C3AED]"></i></div>
+        <div class="text-[9px] md:text-[11px] text-gray-500">3. Get route</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="magicbox-loading" class="hidden mx-5 md:mx-0 px-6 md:px-10 py-16 md:py-20 text-center glass-card rounded-[28px]">
+    <div class="w-16 h-16 bg-[#F1EEFF] rounded-full flex items-center justify-center mx-auto mb-6">
+      <i data-lucide="wand-2" class="w-6 h-6 text-[#8B5CF6] animate-pulse"></i>
+    </div>
+    <div id="loading-text" class="text-sm font-medium mb-2">Scanning the video for locations...</div>
+    <div class="text-[11px] text-gray-500 mb-7">This usually takes about 30 seconds</div>
+    <div class="flex justify-center gap-1.5">
+      <div class="w-1.5 h-1.5 rounded-full bg-[#8B5CF6] animate-bounce" style="animation-delay:0ms"></div>
+      <div class="w-1.5 h-1.5 rounded-full bg-[#D8CCFB] animate-bounce" style="animation-delay:150ms"></div>
+      <div class="w-1.5 h-1.5 rounded-full bg-[#D8CCFB] animate-bounce" style="animation-delay:300ms"></div>
+    </div>
+  </div>
+
+  <div id="magicbox-result" class="hidden mx-5 md:mx-0 px-6 md:px-10 py-16 md:py-20 text-center glass-card rounded-[28px]">
+    <div class="w-16 h-16 bg-[#E1F5EE] rounded-full flex items-center justify-center mx-auto mb-6">
+      <i data-lucide="check" class="w-7 h-7 text-[#085041]"></i>
+    </div>
+    <div class="text-sm font-medium mb-2">Route ready!</div>
+    <div class="text-[11px] text-gray-500 mb-7">We found 14 stops across 5 days.</div>
+    <button onclick="showScreen('route')" class="btn-interactive w-full h-[46px] bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">View your route</button>
+  </div>
+
+</div>
+</div>
+</div>
+
+<!-- ====================================================================== -->
+<!-- SCREEN 4 & 5: LEGAL PAGES                                              -->
+<!-- ====================================================================== -->
+<div id="screen-privacy" class="screen">
+<div class="max-w-3xl mx-auto px-6 md:px-0 py-10 md:py-16">
+  <button onclick="showScreen('home')" class="font-serif-display text-base md:text-xl mb-10 inline-block">GetWay<span class="text-[#8B5CF6]">.</span></button>
+  <div class="font-serif-display text-3xl md:text-4xl mb-2">Privacy Policy</div>
+  <div class="text-xs text-gray-400 mb-10">Last updated: June 20, 2026 · Effective for getway.ai and the GetWay mobile experience</div>
+  <div class="space-y-7 text-sm text-gray-700 leading-relaxed">
+    <section><h2 class="text-base font-semibold mb-2">1. Who we are</h2><p>GetWay ("we", "us", "our") operates a platform that turns curated and AI-extracted travel content — including TikTok itineraries — into bookable routes. For any privacy question, contact us at <a href="mailto:getway.smart@gmail.com" class="text-[#6D28D9]">getway.smart@gmail.com</a>.</p></section>
+    <section><h2 class="text-base font-semibold mb-2">2. What we collect</h2><p class="mb-2"><strong>Account data:</strong> email address, and any name or profile details you choose to provide.</p><p class="mb-2"><strong>Usage data:</strong> pages viewed, routes saved or booked, links clicked, device type, and approximate location.</p><p><strong>Content you submit:</strong> TikTok URLs pasted into the AI Magic Box, and concierge form requests.</p></section>
+    <section><h2 class="text-base font-semibold mb-2">3. Why we collect it</h2><p>To operate the route-generation service, process affiliate referrals, respond to support, and comply with legal obligations. We do not sell your personal data.</p></section>
+    <section><h2 class="text-base font-semibold mb-2">4. Third parties and affiliate links</h2><p>Hotel/restaurant links take you to third-party sites (Booking.com, Expedia, Airbnb); we may earn a commission. TikTok content remains the property of its creators.</p></section>
+    <section><h2 class="text-base font-semibold mb-2">5. Cookies</h2><p>Essential cookies keep the site functional; analytics cookies, where enabled, help us understand usage.</p></section>
+    <section><h2 class="text-base font-semibold mb-2">6. Your rights (GDPR)</h2><p class="mb-2">EEA/UK users may access, correct, delete, restrict, or port their data, and withdraw consent at any time.</p><p>Email <a href="mailto:getway.smart@gmail.com" class="text-[#6D28D9]">getway.smart@gmail.com</a> to exercise these rights.</p></section>
+    <section><h2 class="text-base font-semibold mb-2">7. Data retention</h2><p>We retain data for as long as your account is active or as legally required.</p></section>
+    <section><h2 class="text-base font-semibold mb-2">8. International transfers</h2><p>Where EEA/UK data is transferred internationally, we rely on appropriate safeguards.</p></section>
+    <section><h2 class="text-base font-semibold mb-2">9. Children</h2><p>GetWay is not directed at children under 16.</p></section>
+    <section><h2 class="text-base font-semibold mb-2">10. Changes</h2><p>We may update this policy; material changes update the date above.</p></section>
+  </div>
+</div>
+</div>
+
+<div id="screen-terms" class="screen">
+<div class="max-w-3xl mx-auto px-6 md:px-0 py-10 md:py-16">
+  <button onclick="showScreen('home')" class="font-serif-display text-base md:text-xl mb-10 inline-block">GetWay<span class="text-[#8B5CF6]">.</span></button>
+  <div class="font-serif-display text-3xl md:text-4xl mb-2">Terms of Service</div>
+  <div class="text-xs text-gray-400 mb-10">Last updated: June 20, 2026 · Effective for getway.ai and the GetWay mobile experience</div>
+  <div class="space-y-7 text-sm text-gray-700 leading-relaxed">
+    <section><h2 class="text-base font-semibold mb-2">1. Acceptance of terms</h2><p>By using GetWay, you agree to these terms.</p></section>
+    <section><h2 class="text-base font-semibold mb-2">2. What GetWay is</h2><p>GetWay curates itineraries inspired by short-form video, including AI-extracted TikTok routes. Always verify details directly with the venue before traveling.</p></section>
+    <section><h2 class="text-base font-semibold mb-2">3. Affiliate disclosure</h2><p>We participate in affiliate programs (Booking.com, Expedia, Airbnb) and may earn a commission, at no extra cost to you.</p></section>
+    <section><h2 class="text-base font-semibold mb-2">4. Content ownership</h2><p>TikTok content remains the property of its creators; GetWay provides attribution.</p></section>
+    <section><h2 class="text-base font-semibold mb-2">5. Your responsibilities</h2><p>Use GetWay lawfully and do not attempt to disrupt the platform's tooling.</p></section>
+    <section><h2 class="text-base font-semibold mb-2">6. No warranty</h2><p>GetWay is provided "as is"; we do not guarantee route accuracy or availability.</p></section>
+    <section><h2 class="text-base font-semibold mb-2">7. Limitation of liability</h2><p>GetWay is not liable for damages arising from use of the platform or third-party bookings.</p></section>
+    <section><h2 class="text-base font-semibold mb-2">8. Premium concierge itineraries</h2><p>Paid requests are processed by a third-party payment provider; refund terms are specified at purchase.</p></section>
+    <section><h2 class="text-base font-semibold mb-2">9. Changes</h2><p>Continued use after changes constitutes acceptance.</p></section>
+    <section><h2 class="text-base font-semibold mb-2">10. Contact</h2><p>Questions: <a href="mailto:getway.smart@gmail.com" class="text-[#6D28D9]">getway.smart@gmail.com</a>.</p></section>
+  </div>
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.js"></script>
+
+<button onclick="toggleSupportChat()" class="btn-interactive fixed bottom-6 right-6 z-[150] w-14 h-14 rounded-full bg-[#8B5CF6] shadow-xl flex items-center justify-center">
+  <i data-lucide="message-circle" class="w-6 h-6 text-white"></i>
+</button>
+<div id="support-chat-panel" class="hidden fixed bottom-24 right-6 z-[150] w-[320px] max-w-[calc(100vw-48px)] bg-white rounded-[22px] bento-card overflow-hidden">
+  <div class="bg-[#8B5CF6] px-5 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-2.5">
+      <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center"><i data-lucide="sparkles" class="w-4 h-4 text-white"></i></div>
+      <div class="text-sm font-medium text-white">GetWay AI Assistant</div>
+    </div>
+    <button onclick="toggleSupportChat()"><i data-lucide="x" class="w-4 h-4 text-white"></i></button>
+  </div>
+  <div class="p-5">
+    <div class="bg-gray-50 rounded-2xl rounded-tl-sm px-4 py-3 text-xs text-gray-700 mb-4">Hi! I can help with route questions, bookings, or anything else about GetWay. What do you need?</div>
+    <div class="flex items-center gap-2">
+      <input type="text" placeholder="Type your question..." class="flex-1 h-10 px-3.5 bg-gray-50 border border-gray-200 rounded-xl text-xs outline-none placeholder:text-gray-400">
+      <button class="btn-interactive w-10 h-10 rounded-xl bg-[#8B5CF6] flex items-center justify-center flex-shrink-0"><i data-lucide="send" class="w-4 h-4 text-white"></i></button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ======================================================================
+  // MEDIA CONFIG
+  // ======================================================================
+  const MEDIA = {
+    hero: {
+      slides: [
+        "https://picsum.photos/seed/getway-coast/2000/1300",
+        "https://picsum.photos/seed/getway-mountain/2000/1300",
+        "https://picsum.photos/seed/getway-village/2000/1300"
+      ],
+      intervalMs: 5000
+    },
+    routes: {
+      "mallorca-5-days": { cardPhoto: "https://picsum.photos/seed/mallorca-card/900/700" },
+      "santorini-4-days": { cardPhoto: "https://picsum.photos/seed/santorini-card/900/700" },
+      "bali-6-days": { cardPhoto: "https://picsum.photos/seed/bali-card/900/700" }
+    },
+    mallorca: {
+      tiktokVideoUrl: "https://www.tiktok.com/@kelseyinlondon",
+      tiktokHandle: "@kelseyinlondon ↗",
+      gallery: [
+        { type: "video", label: "Live" },
+        { type: "photo", url: "https://picsum.photos/seed/mallorca-g1/1600/1000" },
+        { type: "photo", url: "https://picsum.photos/seed/mallorca-g2/1600/1000" },
+        { type: "photo", url: "https://picsum.photos/seed/mallorca-g3/1600/1000" },
+        { type: "photo", url: "https://picsum.photos/seed/mallorca-g4/1600/1000" }
+      ]
+    }
+  };
+
+  const ROUTES = [
+    { slug: "mallorca-5-days", destination: "Mallorca", duration: "5 days", dayCount: 5, priceCategory: "€€", creatorHandle: "@kelseyinlondon", stopCount: 14, fallbackColor: "#334155", tags: ["most_popular"] },
+    { slug: "santorini-4-days", destination: "Santorini", duration: "4 days", dayCount: 4, priceCategory: "€€€", creatorHandle: "@greekgetaway", stopCount: 9, fallbackColor: "#78350F", tags: ["luxury"] },
+    { slug: "bali-6-days", destination: "Bali", duration: "6 days", dayCount: 6, priceCategory: "€", creatorHandle: "@wanderwithella", stopCount: 18, fallbackColor: "#4D6B2E", tags: ["budget_friendly", "exotic"] }
+  ];
+
+  const DAY1_STOPS = [
+    { category: "sight", icon: "landmark", iconColor: "#57534E", name: "Palma cathedral & old town", typeLabel: "Sight", photo: "https://picsum.photos/seed/palma-cathedral/900/700", mapsUrl: "https://maps.google.com/?q=Palma+Cathedral", distance: "8 min walk from hotel", distanceType: "walk" },
+    { category: "food", icon: "utensils", iconColor: "#16A34A", name: "Restaurant Illeta", badge: { icon: "anchor", text: "Boat transfer needed", color: "#1E40AF" }, photo: "https://picsum.photos/seed/restaurant-illeta/900/700", mapsUrl: "https://maps.google.com", distance: "20 min, incl. boat transfer", distanceType: "boat", reserveUrl: "#" }
+  ];
+  const DAY2_STOPS = [
+    { category: "sight", icon: "trees", iconColor: "#4D6B2E", name: "Valldemossa", typeLabel: "Village", photo: "https://picsum.photos/seed/valldemossa/900/700", mapsUrl: "https://maps.google.com", distance: "25 min drive from hotel", distanceType: "drive" }
+  ];
+  const BEACH_STOPS = [
+    { name: "Calo del Moro", seed: "beach-0", distance: "10 min drive from hotel" },
+    { name: "S'Almunia", seed: "beach-1", distance: "12 min drive from hotel" },
+    { name: "Cala Llombards", seed: "beach-2", distance: "15 min drive from hotel" },
+    { name: "Platja de Santanyi", seed: "beach-3", distance: "5 min drive from hotel" }
+  ].map(b => ({ category: "activity", icon: "sun", iconColor: "#0E7490", name: b.name, typeLabel: "Beach", photo: `https://picsum.photos/seed/${b.seed}/900/700`, mapsUrl: "https://maps.google.com", distance: b.distance, distanceType: "drive" }));
+  const DAY5_STOPS = [
+    { category: "food", icon: "utensils", iconColor: "#16A34A", name: "Ca's Patro March", badge: { icon: "clock", text: "Book by 12:00 — fills fast", color: "#791F1F" }, forcePlaceholder: true, placeholderGradient: "linear-gradient(135deg, #C2603C, #92400E)", mapsUrl: "https://maps.google.com", distance: "30 min drive from hotel", distanceType: "drive", reserveUrl: "#" },
+    { category: "sight", icon: "trees", iconColor: "#4D6B2E", name: "Deia village", typeLabel: "Village", photo: "https://picsum.photos/seed/deia/900/700", mapsUrl: "https://maps.google.com", distance: "35 min drive from hotel", distanceType: "drive" }
+  ];
+
+  const DISTANCE_ICONS = { walk: "footprints", boat: "sailboat", drive: "car" };
+  const PLACEHOLDER_GRADIENTS = [
+    "linear-gradient(135deg, #8B5CF6, #6D28D9)", "linear-gradient(135deg, #0E7490, #155E75)",
+    "linear-gradient(135deg, #C2603C, #92400E)", "linear-gradient(135deg, #4D6B2E, #3F5A24)",
+    "linear-gradient(135deg, #57534E, #3F3C38)", "linear-gradient(135deg, #1E40AF, #1E3A8A)"
+  ];
+  function gradientFor(seed) {
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+    return PLACEHOLDER_GRADIENTS[hash % PLACEHOLDER_GRADIENTS.length];
+  }
+  function imgFallback(imgEl, iconName, seed) {
+    if (!imgEl || imgEl.dataset.fallbackApplied) return;
+    imgEl.dataset.fallbackApplied = '1';
+    const wrapper = document.createElement('div');
+    wrapper.className = imgEl.className + ' media-placeholder';
+    wrapper.style.cssText = imgEl.style.cssText;
+    wrapper.style.background = gradientFor(seed || iconName || 'x');
+    wrapper.innerHTML = `<i data-lucide="${iconName}" class="w-7 h-7 text-white/70"></i>`;
+    if (imgEl.parentNode) imgEl.replaceWith(wrapper);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+
+  // Mock TikTok comments — static placeholder data for this UI preview.
+  // In production this gets replaced by a real API call.
+  const TIKTOK_COMMENTS = [
+    { handle: "@travel_with_me", verified: true, text: "Omg stayed at Ars Magna because of this video, absolute 10/10 recommendation! 🔥", time: "2d ago", likes: 234, color: "#8B5CF6" },
+    { handle: "@beachlover_99", verified: false, text: "The boat transfer to Restaurant Illeta is non-negotiable, thanks for the tip!", time: "5d ago", likes: 89, color: "#0E7490" },
+    { handle: "@wanderlust_kate", verified: true, text: "Booked everything through GetWay in literally 2 minutes, this is insane 😭", time: "1d ago", likes: 412, color: "#C2603C" },
+    { handle: "@palma_local", verified: false, text: "As someone from Mallorca, this route is actually so accurate, well done!", time: "1w ago", likes: 67, color: "#4D6B2E" }
+  ];
+
+  // Mock community reviews — static placeholder data for this UI preview.
+  const REVIEWS = [
+    { title: "Booked in minutes!", text: "I pasted the TikTok link and had a full itinerary with hotels ready before my coffee got cold.", name: "Sarah M." },
+    { title: "Felt like a local", text: "The driving times and tips made the whole trip so much smoother than planning it myself.", name: "James T." },
+    { title: "Worth every star", text: "Booking the hotel directly from the route page saved me so much time before the trip.", name: "Elena R." }
+  ];
+
+  function showScreen(name) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    const target = document.getElementById('screen-' + name);
+    target.classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+    if (typeof AOS !== 'undefined') {
+      // While this screen was hidden (display:none), AOS measured its
+      // data-aos elements at position 0 and — combined with once:true —
+      // may have already marked them as animated, so they'd never play
+      // once actually visible. Clear that stale state, then do a full
+      // re-scan now that real layout/positions are available.
+      target.querySelectorAll('[data-aos]').forEach(el => el.classList.remove('aos-animate'));
+      AOS.refreshHard();
+    }
+  }
+
+  function scrollToRoutes() {
+    document.getElementById('routes-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function renderHeroMedia() {
+    const layer = document.getElementById('hero-media-layer');
+    layer.innerHTML = MEDIA.hero.slides.map((url, i) =>
+      `<img src="${url}" alt="" class="hero-slide ${i === 0 ? 'is-active' : ''} w-full h-full object-cover" onerror="this.style.display='none';">`
+    ).join('');
+    let current = 0;
+    const slideEls = layer.querySelectorAll('.hero-slide');
+    if (slideEls.length > 1) {
+      setInterval(() => {
+        slideEls[current].classList.remove('is-active');
+        current = (current + 1) % slideEls.length;
+        slideEls[current].classList.add('is-active');
+      }, MEDIA.hero.intervalMs);
+    }
+  }
+
+  let currentDurationFilter = 'any';
+  let currentCategoryFilter = 'all';
+
+  function filterByDuration(bucket, clickedBtn) {
+    try {
+      currentDurationFilter = bucket;
+      document.querySelectorAll('.duration-chip').forEach(chip => {
+        chip.classList.remove('is-active', 'bg-[#8B5CF6]', 'text-white');
+        chip.classList.add('bg-white', 'border', 'border-gray-200', 'text-gray-600');
+      });
+      clickedBtn.classList.add('is-active', 'bg-[#8B5CF6]', 'text-white');
+      clickedBtn.classList.remove('bg-white', 'border', 'border-gray-200', 'text-gray-600');
+      applyRouteFilters();
+    } catch (err) { console.error('filterByDuration failed:', err); }
+  }
+
+  function filterByCategory(tag, clickedBtn) {
+    try {
+      currentCategoryFilter = tag;
+      document.querySelectorAll('.category-chip').forEach(chip => {
+        chip.classList.remove('is-active', 'border-[#8B5CF6]', 'bg-[#F1EEFF]', 'text-[#6D28D9]');
+        chip.classList.add('border-gray-200', 'bg-white/60', 'text-gray-700');
+      });
+      clickedBtn.classList.add('is-active', 'border-[#8B5CF6]', 'bg-[#F1EEFF]', 'text-[#6D28D9]');
+      clickedBtn.classList.remove('border-gray-200', 'bg-white/60', 'text-gray-700');
+      applyRouteFilters();
+    } catch (err) { console.error('filterByCategory failed:', err); }
+  }
+
+  function filterRoutesBySearch() {
+    try { applyRouteFilters(); } catch (err) { console.error('filterRoutesBySearch failed:', err); }
+  }
+
+  function applyRouteFilters() {
+    const searchEl = document.getElementById('route-search');
+    const query = searchEl ? searchEl.value.trim().toLowerCase() : '';
+    const cards = document.querySelectorAll('#route-grid [data-search]');
+    let visibleCount = 0;
+
+    cards.forEach(card => {
+      const matchesSearch = query === '' || card.dataset.search.includes(query);
+
+      const days = parseInt(card.dataset.days, 10);
+      const matchesDuration =
+        currentDurationFilter === 'any' ||
+        (currentDurationFilter === 'short' && days <= 3) ||
+        (currentDurationFilter === 'long' && days >= 4);
+
+      const cardTags = (card.dataset.tags || '').split(',');
+      const matchesCategory = currentCategoryFilter === 'all' || cardTags.includes(currentCategoryFilter);
+
+      const matches = matchesSearch && matchesDuration && matchesCategory;
+      const wasHidden = card.classList.contains('filter-hidden');
+      card.classList.toggle('filter-hidden', !matches);
+      if (matches && wasHidden) {
+        card.classList.remove('aos-animate');
+      }
+      if (matches) visibleCount++;
+    });
+
+    const emptyEl = document.getElementById('route-search-empty');
+    if (emptyEl) emptyEl.classList.toggle('hidden', visibleCount > 0);
+
+    if (typeof AOS !== 'undefined') { AOS.refreshHard(); }
+  }
+
+  function renderRoutes() {
+    const grid = document.getElementById('route-grid');
+    grid.innerHTML = ROUTES.map((r, i) => {
+      const photo = MEDIA.routes[r.slug] ? MEDIA.routes[r.slug].cardPhoto : "";
+      return `
+      <a href="#" onclick="showScreen('route'); return false;" data-search="${(r.destination + ' ' + r.creatorHandle).toLowerCase()}" data-days="${r.dayCount}" data-tags="${r.tags.join(',')}" data-aos="fade-up" data-aos-delay="${i * 80}" class="route-card group block bg-white rounded-[28px] overflow-hidden bento-card">
+        <div class="h-52 md:h-60 relative overflow-hidden rounded-t-[28px]" style="background:${r.fallbackColor}">
+          <img src="${photo}" alt="" class="route-card-image absolute inset-0 w-full h-full object-cover" onerror="imgFallback(this,'map-pin','${r.slug}')">
+          <div class="absolute top-3 right-3 bg-white/90 text-[10px] font-medium px-2.5 py-1 rounded-full">${r.priceCategory}</div>
+        </div>
+        <div class="p-6">
+          <div class="flex items-center gap-2.5 mb-2 flex-wrap">
+            <div class="text-lg md:text-xl font-bold tracking-tight uppercase">${r.destination}</div>
+            <span class="text-[10px] font-medium text-[#6D28D9] bg-[#F1EEFF] px-2.5 py-1 rounded-full">${r.duration}</span>
+          </div>
+          <div class="text-[11px] md:text-xs text-gray-500">via ${r.creatorHandle} · ${r.stopCount} stops</div>
+        </div>
+      </a>`;
+    }).join('');
+  }
+
+  function renderMallorcaHero() {
+    const mediaLayer = document.getElementById('mallorca-hero-media');
+    mediaLayer.innerHTML = `<img id="mallorca-hero-photo" src="" class="absolute inset-0 w-full h-full object-cover" alt="" onerror="imgFallback(this,'image','mallorca-hero')">`;
+    document.getElementById('mallorca-hero-photo').src = MEDIA.mallorca.gallery.find(g => g.type === 'photo').url;
+
+    const thumbs = document.getElementById('mallorca-thumbnails');
+    thumbs.innerHTML = MEDIA.mallorca.gallery.map((item, i) => {
+      if (item.type === 'video') {
+        return `<button onclick="selectGalleryItem(${i})" class="gallery-thumb flex-shrink-0 w-[54px] h-[54px] md:w-20 md:h-20 rounded-2xl bg-[#15171A] border-2 border-[#8B5CF6] flex items-center justify-center"><i data-lucide="play" class="w-4 h-4 md:w-6 md:h-6 text-white"></i></button>`;
+      }
+      return `<button onclick="selectGalleryItem(${i})" class="gallery-thumb flex-shrink-0 w-[54px] h-[54px] md:w-20 md:h-20 rounded-2xl overflow-hidden border-2 border-transparent"><img src="${item.url}" alt="" class="w-full h-full object-cover" onerror="imgFallback(this,'image','gthumb-${i}')"></button>`;
+    }).join('');
+  }
+
+  function selectGalleryItem(index) {
+    const item = MEDIA.mallorca.gallery[index];
+    const photo = document.getElementById('mallorca-hero-photo');
+    if (item.type === 'photo' && photo) {
+      photo.dataset.fallbackApplied = '';
+      photo.src = item.url;
+      photo.style.display = '';
+    }
+    document.querySelectorAll('.gallery-thumb').forEach((el, i) => {
+      el.classList.toggle('border-[#8B5CF6]', i === index);
+      el.classList.toggle('border-transparent', i !== index);
+    });
+    const counter = document.getElementById('mallorca-gallery-counter');
+    if (counter) counter.textContent = (index + 1) + ' / ' + MEDIA.mallorca.gallery.length;
+  }
+
+  function renderRouteMedia() {
+    document.getElementById('mallorca-tiktok-link').href = MEDIA.mallorca.tiktokVideoUrl;
+    document.getElementById('mallorca-tiktok-handle').textContent = MEDIA.mallorca.tiktokHandle;
+  }
+
+  function renderStopCard(stop) {
+    const badgeOrType = stop.badge
+      ? `<span class="inline-flex items-center gap-1 text-[10px]" style="color:${stop.badge.color}"><i data-lucide="${stop.badge.icon}" class="w-2.5 h-2.5"></i> ${stop.badge.text}</span>`
+      : `<span class="text-[10px] uppercase tracking-wide" style="color:${stop.iconColor}">${stop.typeLabel || ''}</span>`;
+
+    const actionBtn = stop.reserveUrl
+      ? `<a href="${stop.reserveUrl}" class="btn-interactive inline-flex items-center gap-1 h-[30px] px-3 bg-[#8B5CF6] text-white text-[11px] font-medium rounded-lg mt-2"><i data-lucide="calendar" class="w-3 h-3"></i>Reserve</a>`
+      : '';
+
+    const photoBlock = stop.forcePlaceholder
+      ? `<div onclick="event.stopPropagation();" class="w-14 h-14 md:w-full md:h-44 rounded-xl md:rounded-none flex-shrink-0 media-placeholder" style="background:${stop.placeholderGradient || gradientFor(stop.name)}"><i data-lucide="${stop.icon}" class="w-6 h-6 md:w-8 md:h-8 text-white/80"></i></div>`
+      : `<img src="${stop.photo}" alt="" data-photo-url="${stop.photo}" onclick="openLightbox(this.dataset.photoUrl)"
+             class="w-14 h-14 md:w-full md:h-44 rounded-xl md:rounded-none object-cover flex-shrink-0 cursor-pointer md:cursor-default"
+             data-icon="${stop.icon}" data-seed="${stop.name}" onerror="imgFallback(this, this.dataset.icon, this.dataset.seed)">`;
+
+    return `
+      <div data-category="${stop.category}" data-aos="fade-up" class="bento-card bg-white rounded-[22px] overflow-hidden relative flex items-center gap-3 p-4 md:flex-col md:items-stretch md:p-0">
+        <button data-maps-url="${stop.mapsUrl}" onclick="event.stopPropagation(); window.open(this.dataset.mapsUrl,'_blank')" class="btn-interactive absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-white shadow flex items-center justify-center">
+          <i data-lucide="map-pin" class="w-4 h-4 text-[#6D28D9]"></i>
+        </button>
+        ${photoBlock}
+        <div class="flex-1 min-w-0 md:p-5">
+          <div class="flex items-start gap-2 mb-1">
+            <i data-lucide="${stop.icon}" class="w-4 h-4 flex-shrink-0 mt-0.5" style="color:${stop.iconColor}"></i>
+            <div class="text-sm font-medium leading-snug">${stop.name}</div>
+          </div>
+          <div class="text-[10px] text-gray-400 mb-1.5 pl-6 md:pl-0">Tap to open in Maps</div>
+          <div class="pl-6 md:pl-0">${badgeOrType}</div>
+          <div class="flex items-center gap-1.5 text-[11px] text-gray-500 mt-2 pl-6 md:pl-0"><i data-lucide="${DISTANCE_ICONS[stop.distanceType] || 'car'}" class="w-3 h-3"></i>${stop.distance}</div>
+          <div class="pl-6 md:pl-0">${actionBtn}</div>
+        </div>
+      </div>`;
+  }
+
+  function renderAllStops() {
+    document.getElementById('day1-stops').innerHTML = DAY1_STOPS.map(renderStopCard).join('');
+    document.getElementById('day2-stops').innerHTML = DAY2_STOPS.map(renderStopCard).join('');
+    document.getElementById('beach-list').innerHTML = BEACH_STOPS.map(renderStopCard).join('');
+    document.getElementById('day5-stops').innerHTML = DAY5_STOPS.map(renderStopCard).join('');
+  }
+
+  function renderTikTokComments() {
+    document.getElementById('tiktok-comments').innerHTML = TIKTOK_COMMENTS.map((c, i) => `
+      <div data-aos="fade-up" data-aos-delay="${i * 60}" class="bento-card bg-white rounded-[20px] p-4 md:p-5 flex items-start gap-3">
+        <div class="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-white text-sm font-semibold" style="background:${c.color}">${c.handle.charAt(1).toUpperCase()}</div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-1.5 mb-1">
+            <span class="text-sm font-medium">${c.handle}</span>
+            ${c.verified ? '<i data-lucide="badge-check" class="w-3.5 h-3.5 text-[#3B82F6]"></i>' : ''}
+            <span class="text-[11px] text-gray-400">· ${c.time}</span>
+          </div>
+          <div class="text-sm text-gray-700 leading-relaxed">${c.text}</div>
+        </div>
+        <div class="flex flex-col items-center gap-1 flex-shrink-0 pt-1">
+          <i data-lucide="heart" class="w-4 h-4 text-gray-400"></i>
+          <span class="text-[10px] text-gray-400">${c.likes}</span>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function renderReviews() {
+    document.getElementById('reviews-grid').innerHTML = REVIEWS.map((r, i) => `
+      <div data-aos="fade-up" data-aos-delay="${i * 80}" class="bento-card bg-white rounded-[26px] p-7">
+        <div class="flex gap-1 mb-4">
+          <i data-lucide="star" class="w-4 h-4 text-amber-500 fill-amber-500"></i><i data-lucide="star" class="w-4 h-4 text-amber-500 fill-amber-500"></i><i data-lucide="star" class="w-4 h-4 text-amber-500 fill-amber-500"></i><i data-lucide="star" class="w-4 h-4 text-amber-500 fill-amber-500"></i><i data-lucide="star" class="w-4 h-4 text-amber-500 fill-amber-500"></i>
+        </div>
+        <div class="text-sm font-semibold mb-2">${r.title}</div>
+        <div class="text-xs text-gray-600 leading-relaxed mb-5">${r.text}</div>
+        <div class="text-xs font-medium text-gray-400">${r.name}</div>
+      </div>
+    `).join('');
+  }
+
+  // In-route filtering. "All Stops" keeps the chronological day layout.
+  // Any other filter hides non-matching cards via `.filter-hidden`
+  // (NOT Tailwind's `hidden`, which a same-element `md:flex` can silently
+  // override at desktop widths) and hides any day-group whose every card
+  // got filtered out, heading included.
+  function filterStops(category, clickedBtn) {
+    document.querySelectorAll('.route-filter-chip').forEach(chip => {
+      chip.classList.remove('is-active', 'bg-[#8B5CF6]', 'text-white');
+      chip.classList.add('text-gray-600');
+    });
+    clickedBtn.classList.add('is-active', 'bg-[#8B5CF6]', 'text-white');
+    clickedBtn.classList.remove('text-gray-600');
+
+    document.querySelectorAll('[data-category]').forEach(card => {
+      const matches = category === 'all' || card.dataset.category === category;
+      const wasHidden = card.classList.contains('filter-hidden');
+      card.classList.toggle('filter-hidden', !matches);
+      // If a card is becoming visible again, clear its AOS "already played"
+      // state so the fade-up actually replays instead of just popping in
+      // at full opacity (AOS with once:true won't re-animate on its own).
+      if (matches && wasHidden) {
+        card.classList.remove('aos-animate');
+      }
+    });
+
+    document.querySelectorAll('.day-group').forEach(group => {
+      const hasVisibleCard = Array.from(group.querySelectorAll('[data-category]')).some(card => !card.classList.contains('filter-hidden'));
+      group.classList.toggle('filter-hidden', !hasVisibleCard);
+    });
+
+    if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+    if (typeof AOS !== 'undefined') {
+      // refreshHard() re-scans positions now that layout has changed AND
+      // picks up the aos-animate resets above, so newly-revealed cards
+      // genuinely fade-up again instead of staying invisible or popping
+      // in instantly.
+      AOS.refreshHard();
+    }
+  }
+
+  // Interactive 5-star rating: hover previews the rating, click locks it in.
+  let selectedRating = 0;
+  function renderStarRating() {
+    const container = document.getElementById('star-rating');
+    container.innerHTML = [1, 2, 3, 4, 5].map(n => `
+      <button type="button" class="star-btn" data-star="${n}" onmouseenter="previewStars(${n})" onmouseleave="previewStars(selectedRating)" onclick="selectStars(${n})">
+        <i data-lucide="star" class="w-7 h-7 text-gray-300 transition-colors"></i>
+      </button>
+    `).join('');
+    if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+  }
+  function previewStars(rating) {
+    document.querySelectorAll('.star-btn').forEach(btn => {
+      const n = parseInt(btn.dataset.star, 10);
+      const icon = btn.querySelector('svg');
+      if (!icon) return;
+      if (n <= rating) {
+        icon.classList.add('text-amber-500', 'fill-amber-500');
+        icon.classList.remove('text-gray-300');
+      } else {
+        icon.classList.remove('text-amber-500', 'fill-amber-500');
+        icon.classList.add('text-gray-300');
+      }
+    });
+  }
+  function selectStars(rating) {
+    selectedRating = rating;
+    document.getElementById('review-rating').value = rating;
+    previewStars(rating);
+  }
+
+  function submitReview(event) {
+    event.preventDefault();
+    if (selectedRating === 0) {
+      alert('Please select a star rating before submitting.');
+      return;
+    }
+    document.getElementById('review-form-fields').classList.add('hidden');
+    document.getElementById('review-form-success').classList.remove('hidden');
+    if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+  }
+
+  function toggleHotelDropdown(id) {
+    document.getElementById(id + '-menu').classList.toggle('hidden');
+  }
+
+  function openLightbox(url) {
+    document.getElementById('lightbox-img').src = url;
+    const lb = document.getElementById('lightbox');
+    lb.classList.remove('hidden');
+    lb.classList.add('flex');
+  }
+  function closeLightbox() {
+    const lb = document.getElementById('lightbox');
+    lb.classList.add('hidden');
+    lb.classList.remove('flex');
+  }
+
+  function toggleSupportChat() {
+    document.getElementById('support-chat-panel').classList.toggle('hidden');
+  }
+
+  function startMagicBox() {
+    document.getElementById('magicbox-form').classList.add('hidden');
+    document.getElementById('magicbox-loading').classList.remove('hidden');
+    if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+    const messages = ["Scanning the video for locations...", "Mapping the route...", "Finding the best hotels nearby...", "Almost done..."];
+    let i = 0;
+    const interval = setInterval(() => {
+      i = (i + 1) % messages.length;
+      document.getElementById('loading-text').textContent = messages[i];
+    }, 1400);
+    setTimeout(() => {
+      clearInterval(interval);
+      document.getElementById('magicbox-loading').classList.add('hidden');
+      document.getElementById('magicbox-result').classList.remove('hidden');
+      if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+    }, 5000);
+  }
+
+
+  // Runs a single init step in isolation: if it throws, log it and move on
+  // instead of letting one bad step take down everything after it.
+  function safeRun(label, fn) {
+    try {
+      fn();
+    } catch (err) {
+      console.error('GetWay init step failed: ' + label, err);
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    safeRun('renderHeroMedia', renderHeroMedia);
+    safeRun('renderRoutes', renderRoutes);
+    safeRun('renderMallorcaHero', renderMallorcaHero);
+    safeRun('renderRouteMedia', renderRouteMedia);
+    safeRun('renderAllStops', renderAllStops);
+    safeRun('renderTikTokComments', renderTikTokComments);
+    safeRun('renderReviews', renderReviews);
+    safeRun('renderStarRating', renderStarRating);
+    safeRun('lucide.createIcons', function () {
+      if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+    });
+    safeRun('AOS.init', function () {
+      if (typeof AOS !== 'undefined') { AOS.init({ duration: 800, once: true }); }
+    });
+  });
+
+  // Last-resort diagnostic: log the real error instead of letting it
+  // surface only as an opaque "Script error" with no details.
+  window.addEventListener('error', function (e) {
+    console.error('Unhandled error:', e.message, 'at', e.filename + ':' + e.lineno);
+  });
+</script>
+
+</body>
+</html>

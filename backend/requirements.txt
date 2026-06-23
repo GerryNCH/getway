@@ -1,0 +1,18 @@
+# Web framework
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+
+# AI
+anthropic==0.25.0
+
+# Video download — pure Python, no system tools needed
+yt-dlp==2024.5.27
+
+# Frame extraction — replaces ffmpeg/ffprobe entirely
+opencv-python==4.9.0.80
+
+# Utilities
+python-multipart==0.0.9
+aiofiles==23.2.1
+pydantic==2.7.1
+python-dotenv==1.0.1

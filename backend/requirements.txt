@@ -1,17 +1,9 @@
-# Web framework
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
-
-# AI
 anthropic==0.25.0
-
-# Video download — pure Python, no system tools needed
 yt-dlp==2024.5.27
-
-# Frame extraction — replaces ffmpeg/ffprobe entirely
-opencv-python-headless==4.9.0.80
-
-# Utilities
+opencv-python-headless==4.8.1.78
+numpy==1.26.4
 python-multipart==0.0.9
 aiofiles==23.2.1
 pydantic==2.7.1

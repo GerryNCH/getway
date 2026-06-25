@@ -9,7 +9,7 @@ anthropic==0.25.0
 yt-dlp==2024.5.27
 
 # Frame extraction — replaces ffmpeg/ffprobe entirely
-opencv-python==4.9.0.80
+opencv-python-headless==4.9.0.80
 
 # Utilities
 python-multipart==0.0.9

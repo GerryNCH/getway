@@ -490,8 +490,8 @@
     <div class="w-16 h-16 bg-[#E1F5EE] rounded-full flex items-center justify-center mx-auto mb-6">
       <i data-lucide="check" class="w-7 h-7 text-[#085041]"></i>
     </div>
-    <div class="text-sm font-medium mb-2">Route ready!</div>
-    <div class="text-[11px] text-gray-500 mb-7">We found 14 stops across 5 days.</div>
+    <div id="magicbox-result-title" class="text-sm font-medium mb-2">Route ready!</div>
+    <div id="magicbox-result-sub" class="text-[11px] text-gray-500 mb-7">AI has extracted your itinerary.</div>
     <button onclick="showScreen('route')" class="btn-interactive w-full h-[46px] bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">View your route</button>
   </div>
 
@@ -994,22 +994,61 @@
     document.getElementById('support-chat-panel').classList.toggle('hidden');
   }
 
-  function startMagicBox() {
+  const BACKEND_URL = "https://getway-production.up.railway.app";
+
+  async function startMagicBox() {
+    const url = document.getElementById('tiktok-url').value.trim();
+    if (!url) {
+      alert('Please paste a TikTok or YouTube link first.');
+      return;
+    }
+
     document.getElementById('magicbox-form').classList.add('hidden');
     document.getElementById('magicbox-loading').classList.remove('hidden');
     if (typeof lucide !== 'undefined') { lucide.createIcons(); }
-    const messages = ["Scanning the video for locations...", "Mapping the route...", "Finding the best hotels nearby...", "Almost done..."];
+
+    const messages = ["Downloading the video...", "Extracting frames...", "AI is analysing locations...", "Building your route..."];
     let i = 0;
     const interval = setInterval(() => {
       i = (i + 1) % messages.length;
       document.getElementById('loading-text').textContent = messages[i];
-    }, 1400);
-    setTimeout(() => {
+    }, 1800);
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/extract`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url, max_frames: 8 })
+      });
+
       clearInterval(interval);
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Server error');
+      }
+
+      const data = await res.json();
+      const itinerary = data.itinerary;
+
+      // Show result
       document.getElementById('magicbox-loading').classList.add('hidden');
       document.getElementById('magicbox-result').classList.remove('hidden');
+
+      // Update result text with real data
+      const resultTitle = document.getElementById('magicbox-result-title');
+      const resultSub = document.getElementById('magicbox-result-sub');
+      if (resultTitle) resultTitle.textContent = `${itinerary.destination} — ready!`;
+      if (resultSub) resultSub.textContent = `${itinerary.days.length} days · ${itinerary.days.reduce((n, d) => n + d.stops.length, 0)} stops extracted`;
+
       if (typeof lucide !== 'undefined') { lucide.createIcons(); }
-    }, 5000);
+
+    } catch (err) {
+      clearInterval(interval);
+      document.getElementById('magicbox-loading').classList.add('hidden');
+      document.getElementById('magicbox-form').classList.remove('hidden');
+      alert('Something went wrong: ' + err.message + '\n\nMake sure you pasted a valid TikTok or YouTube link.');
+    }
   }
 
 

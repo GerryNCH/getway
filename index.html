@@ -505,6 +505,71 @@
 </div>
 
 <!-- ====================================================================== -->
+<!-- SCREEN 6: AI-GENERATED ROUTE                                           -->
+<!-- ====================================================================== -->
+<div id="screen-ai-route" class="screen">
+<div class="min-h-screen">
+<div class="w-full max-w-[390px] md:max-w-none mx-auto">
+
+  <!-- Hero -->
+  <div class="relative h-[280px] md:h-[50vh] md:min-h-[400px] w-full overflow-hidden" style="background: linear-gradient(135deg, #1c2128 0%, #334155 55%, #15171A 100%);">
+    <div id="ai-route-hero-bg" class="absolute inset-0 bg-cover bg-center" style="background-image:url('https://picsum.photos/seed/ai-route-hero/2000/1300'); opacity:0.55;"></div>
+    <div class="absolute inset-0 hero-top-overlay h-32"></div>
+    <div class="absolute inset-0 bg-gradient-to-b from-black/40 via-black/10 to-[#fdfbf7]"></div>
+    <div class="absolute top-[22px] left-[18px] right-[18px] md:top-8 md:left-14 md:right-14 flex items-center justify-between z-10">
+      <button onclick="showScreen('home')" class="text-base md:text-2xl font-medium font-serif-display text-white" style="text-shadow: 0 1px 8px rgba(0,0,0,0.4);">GetWay<span class="text-[#C4B5FD]">.</span></button>
+      <button onclick="copyAiRouteLink()" class="btn-interactive flex items-center gap-1.5 text-[11px] font-medium text-white/90 border border-white/40 rounded-full px-3.5 py-1.5">
+        <i data-lucide="share-2" class="w-3 h-3"></i> Share
+      </button>
+    </div>
+    <div class="absolute left-0 right-0 bottom-0 h-[160px] hero-bottom-overlay">
+      <div class="absolute bottom-12 left-6 right-6 md:left-14 md:right-14">
+        <div id="ai-route-destination" class="font-serif-display text-[32px] sm:text-[44px] md:text-[80px] text-white leading-[0.95] tracking-tight uppercase"></div>
+      </div>
+      <div id="ai-route-source-badge" class="absolute left-6 md:left-14 bottom-[22px] flex items-center gap-1.5 text-xs text-white/80">
+        <i data-lucide="music-2" class="w-3 h-3"></i><span id="ai-route-source-text">via AI Magic Box</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats bar -->
+  <div class="flex items-center justify-center py-5 md:py-7 border-b border-gray-100">
+    <div class="flex items-center gap-1.5 px-5 md:px-10"><i data-lucide="map-pin" class="w-3.5 h-3.5 text-gray-400"></i><div><span id="ai-route-stop-count" class="text-base md:text-xl font-bold">0</span> <span class="text-[10px] md:text-xs text-gray-500">stops</span></div></div>
+    <div class="w-px h-7 bg-gray-200"></div>
+    <div class="flex items-center gap-1.5 px-5 md:px-10"><i data-lucide="calendar-days" class="w-3.5 h-3.5 text-gray-400"></i><div><span id="ai-route-day-count" class="text-base md:text-xl font-bold">1</span> <span id="ai-route-duration-label" class="text-[10px] md:text-xs text-gray-500">day</span></div></div>
+    <div class="w-px h-7 bg-gray-200"></div>
+    <div class="flex items-center gap-1.5 px-5 md:px-10"><i data-lucide="sparkles" class="w-3.5 h-3.5 text-gray-400"></i><div class="text-[10px] md:text-xs text-gray-500">AI generated</div></div>
+  </div>
+
+  <!-- In-route filters -->
+  <div class="px-5 md:px-14 lg:px-24 py-6 md:py-8">
+    <div class="max-w-fit md:mx-auto bg-white/70 backdrop-filter backdrop-blur border border-gray-200/80 rounded-full p-1.5 shadow-sm overflow-x-auto">
+      <div class="peek-scroll flex gap-1.5 md:justify-center">
+        <button onclick="filterAiStops('all', this)" class="ai-filter-chip is-active flex-shrink-0 h-[36px] px-4 flex items-center gap-1.5 text-xs font-medium rounded-full bg-[#8B5CF6] text-white whitespace-nowrap">All Stops</button>
+        <button onclick="filterAiStops('hotel', this)" class="ai-filter-chip flex-shrink-0 h-[36px] px-4 flex items-center gap-1.5 text-xs font-medium rounded-full text-gray-600 whitespace-nowrap"><i data-lucide="bed" class="w-3.5 h-3.5"></i>Hotels</button>
+        <button onclick="filterAiStops('food', this)" class="ai-filter-chip flex-shrink-0 h-[36px] px-4 flex items-center gap-1.5 text-xs font-medium rounded-full text-gray-600 whitespace-nowrap"><i data-lucide="utensils" class="w-3.5 h-3.5"></i>Food & Drinks</button>
+        <button onclick="filterAiStops('sight', this)" class="ai-filter-chip flex-shrink-0 h-[36px] px-4 flex items-center gap-1.5 text-xs font-medium rounded-full text-gray-600 whitespace-nowrap"><i data-lucide="landmark" class="w-3.5 h-3.5"></i>Sights</button>
+        <button onclick="filterAiStops('beach', this)" class="ai-filter-chip flex-shrink-0 h-[36px] px-4 flex items-center gap-1.5 text-xs font-medium rounded-full text-gray-600 whitespace-nowrap"><i data-lucide="waves" class="w-3.5 h-3.5"></i>Beaches</button>
+        <button onclick="filterAiStops('activity', this)" class="ai-filter-chip flex-shrink-0 h-[36px] px-4 flex items-center gap-1.5 text-xs font-medium rounded-full text-gray-600 whitespace-nowrap"><i data-lucide="zap" class="w-3.5 h-3.5"></i>Activities</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Days + stops rendered here -->
+  <div id="ai-route-days" class="px-5 md:px-14 lg:px-24 pb-16 md:pb-24 max-w-4xl mx-auto"></div>
+
+  <footer class="bg-[#15171A] text-white mt-4">
+    <div class="max-w-6xl mx-auto px-6 md:px-14 py-10 flex flex-col md:flex-row items-center justify-between gap-4">
+      <div class="font-serif-display text-xl">GetWay<span class="text-[#C4B5FD]">.</span></div>
+      <div class="text-xs text-white/40">© 2026 GetWay. All rights reserved.</div>
+    </div>
+  </footer>
+
+</div>
+</div>
+</div>
+
+<!-- ====================================================================== -->
 <!-- SCREEN 4 & 5: LEGAL PAGES                                              -->
 <!-- ====================================================================== -->
 <div id="screen-privacy" class="screen">
@@ -1001,6 +1066,152 @@
 
   const BACKEND_URL = "https://getway-production.up.railway.app";
 
+  // ── Category config ──────────────────────────────────────────────────────
+  const CAT_CONFIG = {
+    hotel:    { icon: 'bed',      color: '#8B5CF6', label: 'Hotel' },
+    sight:    { icon: 'landmark', color: '#57534E', label: 'Sight' },
+    village:  { icon: 'trees',    color: '#4D6B2E', label: 'Village' },
+    food:     { icon: 'utensils', color: '#16A34A', label: 'Food & Drinks' },
+    activity: { icon: 'zap',      color: '#0E7490', label: 'Activity' },
+    beach:    { icon: 'waves',    color: '#0E7490', label: 'Beach' },
+  };
+
+  function renderAiStopCard(stop) {
+    const cfg = CAT_CONFIG[stop.category] || { icon: 'map-pin', color: '#8B5CF6', label: stop.category };
+    const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(stop.name)}`;
+    const seed = stop.name.replace(/\s+/g, '-').toLowerCase();
+
+    const isHotel = stop.category === 'hotel';
+
+    if (isHotel) {
+      return `
+      <div data-category="hotel" class="ai-stop-card mb-6 md:mb-8 md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
+        <div class="md:w-2/5 md:flex-shrink-0">
+          <div class="relative h-[140px] md:h-52 mb-3 md:mb-0 rounded-2xl overflow-hidden media-placeholder" style="background:${gradientFor(seed)}">
+            <i data-lucide="bed" class="w-8 h-8 text-white/80"></i>
+          </div>
+        </div>
+        <div class="md:w-3/5 md:pt-2">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-[11px] font-medium text-[#7C3AED] uppercase tracking-wide">Hotel</span>
+          </div>
+          <div class="text-sm font-medium mb-1">${stop.name}</div>
+          <div class="text-xs text-gray-500 mb-3">${stop.description}</div>
+          ${stop.tip ? `<div class="text-xs text-[#8B5CF6] mb-3">💡 ${stop.tip}</div>` : ''}
+          <div class="relative mb-2.5">
+            <button onclick="toggleAiHotelDropdown('${seed}')" class="btn-interactive w-full h-[44px] flex items-center justify-center gap-1.5 bg-[#8B5CF6] text-white text-xs font-medium rounded-xl">
+              Book this hotel <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform"></i>
+            </button>
+            <div id="aihotel-${seed}" class="hidden bg-white rounded-xl mt-1.5 overflow-hidden bento-card">
+              <a href="https://www.booking.com/search.html?ss=${encodeURIComponent(stop.name)}" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 border-b border-gray-100 text-xs"><span>via Booking.com</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
+              <a href="https://www.expedia.com/Hotel-Search?destination=${encodeURIComponent(stop.name)}" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 text-xs"><span>via Expedia</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2.5">
+            <a href="https://www.booking.com/search.html?ss=${encodeURIComponent(stop.name + ' similar')}" target="_blank" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="shuffle" class="w-3.5 h-3.5"></i>Similar</a>
+            <a href="https://www.airbnb.com/s/${encodeURIComponent(stop.name)}/homes" target="_blank" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="home" class="w-3.5 h-3.5"></i>Airbnb</a>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    return `
+    <div data-category="${stop.category}" class="ai-stop-card bento-card bg-white rounded-[22px] overflow-hidden relative flex items-center gap-3 p-4 md:flex-col md:items-stretch md:p-0">
+      <button onclick="window.open('${mapsUrl}','_blank')" class="btn-interactive absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-white shadow flex items-center justify-center">
+        <i data-lucide="map-pin" class="w-4 h-4 text-[#6D28D9]"></i>
+      </button>
+      <div class="w-14 h-14 md:w-full md:h-44 rounded-xl md:rounded-none flex-shrink-0 media-placeholder" style="background:${gradientFor(seed)}">
+        <i data-lucide="${cfg.icon}" class="w-6 h-6 md:w-8 md:h-8 text-white/80"></i>
+      </div>
+      <div class="flex-1 min-w-0 md:p-5">
+        <div class="flex items-start gap-2 mb-1">
+          <i data-lucide="${cfg.icon}" class="w-4 h-4 flex-shrink-0 mt-0.5" style="color:${cfg.color}"></i>
+          <div class="text-sm font-medium leading-snug">${stop.name}</div>
+        </div>
+        <div class="text-[10px] text-gray-400 mb-1 pl-6 md:pl-0">Tap to open in Maps</div>
+        <div class="pl-6 md:pl-0 text-[10px] uppercase tracking-wide font-medium" style="color:${cfg.color}">${cfg.label}</div>
+        <div class="pl-6 md:pl-0 text-xs text-gray-500 mt-1.5 leading-relaxed">${stop.description}</div>
+        ${stop.tip ? `<div class="pl-6 md:pl-0 text-xs text-[#8B5CF6] mt-1.5">💡 ${stop.tip}</div>` : ''}
+      </div>
+    </div>`;
+  }
+
+  function toggleAiHotelDropdown(seed) {
+    document.getElementById('aihotel-' + seed).classList.toggle('hidden');
+  }
+
+  function renderAiRoute(itinerary, videoId, sourceUrl) {
+    // Hero
+    const dest = itinerary.destination.split(',')[0].toUpperCase();
+    document.getElementById('ai-route-destination').textContent = dest;
+    document.getElementById('ai-route-source-text').textContent = sourceUrl ? 'via AI Magic Box ↗' : 'via AI Magic Box';
+
+    // Stats
+    const totalStops = itinerary.days.reduce((n, d) => n + d.stops.length, 0);
+    const totalDays = itinerary.days.length;
+    document.getElementById('ai-route-stop-count').textContent = totalStops;
+    document.getElementById('ai-route-day-count').textContent = totalDays;
+    document.getElementById('ai-route-duration-label').textContent = itinerary.duration || (totalDays === 1 ? 'day' : 'days');
+
+    // Dynamic hero bg — use a location-seeded picsum image
+    const heroBg = document.getElementById('ai-route-hero-bg');
+    const heroSeed = itinerary.destination.replace(/\s+/g, '-').toLowerCase();
+    heroBg.style.backgroundImage = `url('https://picsum.photos/seed/${heroSeed}/2000/1300')`;
+
+    // Store for sharing
+    window._aiRouteVideoId = videoId;
+
+    // Days
+    const container = document.getElementById('ai-route-days');
+    container.innerHTML = itinerary.days.map(day => {
+      const hotels = day.stops.filter(s => s.category === 'hotel');
+      const others = day.stops.filter(s => s.category !== 'hotel');
+      return `
+        <div class="ai-day-group mb-10 md:mb-14">
+          <div class="font-serif-display text-[26px] md:text-4xl leading-tight mb-1">Day ${day.day}</div>
+          <div class="text-xs md:text-sm text-gray-500 mb-6 md:mb-8">${day.label} · ${day.stops.length} stop${day.stops.length !== 1 ? 's' : ''}</div>
+          ${hotels.map(h => renderAiStopCard(h)).join('')}
+          <div class="grid md:grid-cols-2 gap-4 md:gap-6">
+            ${others.map(s => renderAiStopCard(s)).join('')}
+          </div>
+        </div>`;
+    }).join('');
+
+    if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+    if (typeof AOS !== 'undefined') { AOS.refreshHard(); }
+  }
+
+  function filterAiStops(category, clickedBtn) {
+    document.querySelectorAll('.ai-filter-chip').forEach(chip => {
+      chip.classList.remove('is-active', 'bg-[#8B5CF6]', 'text-white');
+      chip.classList.add('text-gray-600');
+    });
+    clickedBtn.classList.add('is-active', 'bg-[#8B5CF6]', 'text-white');
+    clickedBtn.classList.remove('text-gray-600');
+
+    document.querySelectorAll('.ai-stop-card').forEach(card => {
+      const matches = category === 'all' || card.dataset.category === category;
+      card.classList.toggle('filter-hidden', !matches);
+    });
+
+    document.querySelectorAll('.ai-day-group').forEach(group => {
+      const hasVisible = Array.from(group.querySelectorAll('.ai-stop-card')).some(c => !c.classList.contains('filter-hidden'));
+      group.classList.toggle('filter-hidden', !hasVisible);
+    });
+
+    if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+  }
+
+  function copyAiRouteLink() {
+    const id = window._aiRouteVideoId;
+    const url = id ? `${location.origin}${location.pathname}?route=${id}` : location.href;
+    navigator.clipboard.writeText(url).then(() => {
+      alert('Link copied! Share it so others can see this route.');
+    }).catch(() => {
+      prompt('Copy this link:', url);
+    });
+  }
+
   async function startMagicBox() {
     const url = document.getElementById('tiktok-url').value.trim();
     if (!url) {
@@ -1034,39 +1245,17 @@
       }
 
       const data = await res.json();
-      const itinerary = data.itinerary;
 
-      // Show result
-      document.getElementById('magicbox-loading').classList.add('hidden');
-      document.getElementById('magicbox-result').classList.remove('hidden');
+      // Reset AI route filters to "All"
+      document.querySelectorAll('.ai-filter-chip').forEach(c => {
+        c.classList.remove('is-active','bg-[#8B5CF6]','text-white');
+        c.classList.add('text-gray-600');
+      });
+      const allChip = document.querySelector('.ai-filter-chip');
+      if (allChip) { allChip.classList.add('is-active','bg-[#8B5CF6]','text-white'); allChip.classList.remove('text-gray-600'); }
 
-      // Update result text with real data
-      const resultTitle = document.getElementById('magicbox-result-title');
-      const resultSub = document.getElementById('magicbox-result-sub');
-      const daysContainer = document.getElementById('magicbox-days-container');
-
-      if (resultTitle) resultTitle.textContent = `${itinerary.destination} — ${itinerary.duration}`;
-      if (resultSub) resultSub.textContent = `${itinerary.days.reduce((n, d) => n + d.stops.length, 0)} stops extracted by AI`;
-
-      const CAT_ICONS = { hotel:'🏨', sight:'🏛️', food:'🍽️', activity:'🏄', beach:'🏖️', village:'🏘️', transport:'✈️' };
-
-      if (daysContainer) {
-        daysContainer.innerHTML = itinerary.days.map(day => `
-          <div class="mb-5">
-            <div class="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Day ${day.day} — ${day.label}</div>
-            ${day.stops.map(stop => `
-              <div class="flex items-start gap-3 py-2 border-b border-gray-100 last:border-0">
-                <span class="text-lg flex-shrink-0">${CAT_ICONS[stop.category] || '📍'}</span>
-                <div>
-                  <div class="text-sm font-medium text-gray-800">${stop.name}</div>
-                  <div class="text-xs text-gray-500">${stop.description}</div>
-                  ${stop.tip ? `<div class="text-xs text-[#8B5CF6] mt-0.5">💡 ${stop.tip}</div>` : ''}
-                </div>
-              </div>`).join('')}
-          </div>`).join('');
-      }
-
-      if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+      renderAiRoute(data.itinerary, data.video_id, url);
+      showScreen('ai-route');
 
     } catch (err) {
       clearInterval(interval);

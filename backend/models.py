@@ -10,6 +10,7 @@ class Stop(BaseModel):
     category: str        # hotel | sight | food | activity | beach | village
     description: str
     tip: str = ""
+    photo_url: str = "" # Google Places photo or empty string
 
 
 class DayPlan(BaseModel):
@@ -22,6 +23,7 @@ class Itinerary(BaseModel):
     destination: str
     duration: str
     days: list[DayPlan]
+    hero_photo_url: str = ""  # Google Places photo for the destination hero
 
 
 class ExtractRequest(BaseModel):

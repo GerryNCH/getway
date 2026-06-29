@@ -1087,9 +1087,10 @@
       return `
       <div data-category="hotel" class="ai-stop-card mb-6 md:mb-8 md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
         <div class="md:w-2/5 md:flex-shrink-0">
-          <div class="relative h-[140px] md:h-52 mb-3 md:mb-0 rounded-2xl overflow-hidden media-placeholder" style="background:${gradientFor(seed)}">
-            <i data-lucide="bed" class="w-8 h-8 text-white/80"></i>
-          </div>
+          ${stop.photo_url
+            ? `<img src="${stop.photo_url}" alt="${stop.name}" class="h-[140px] md:h-52 mb-3 md:mb-0 rounded-2xl w-full object-cover" onerror="this.outerHTML='<div class=\"relative h-[140px] md:h-52 mb-3 md:mb-0 rounded-2xl overflow-hidden media-placeholder\" style=\"background:${gradientFor(seed)}\"><i data-lucide=\"bed\" class=\"w-8 h-8 text-white/80\"><\/i><\/div>'">`
+            : `<div class="relative h-[140px] md:h-52 mb-3 md:mb-0 rounded-2xl overflow-hidden media-placeholder" style="background:${gradientFor(seed)}"><i data-lucide="bed" class="w-8 h-8 text-white/80"></i></div>`
+          }
         </div>
         <div class="md:w-3/5 md:pt-2">
           <div class="flex items-center gap-2 mb-2">
@@ -1120,9 +1121,10 @@
       <button onclick="window.open('${mapsUrl}','_blank')" class="btn-interactive absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-white shadow flex items-center justify-center">
         <i data-lucide="map-pin" class="w-4 h-4 text-[#6D28D9]"></i>
       </button>
-      <div class="w-14 h-14 md:w-full md:h-44 rounded-xl md:rounded-none flex-shrink-0 media-placeholder" style="background:${gradientFor(seed)}">
-        <i data-lucide="${cfg.icon}" class="w-6 h-6 md:w-8 md:h-8 text-white/80"></i>
-      </div>
+      ${stop.photo_url
+        ? `<img src="${stop.photo_url}" alt="${stop.name}" class="w-14 h-14 md:w-full md:h-44 rounded-xl md:rounded-none object-cover flex-shrink-0" onerror="this.outerHTML='<div class=\"w-14 h-14 md:w-full md:h-44 rounded-xl md:rounded-none flex-shrink-0 media-placeholder\" style=\"background:${gradientFor(seed)}\"><\/div>'">`
+        : `<div class="w-14 h-14 md:w-full md:h-44 rounded-xl md:rounded-none flex-shrink-0 media-placeholder" style="background:${gradientFor(seed)}"><i data-lucide="${cfg.icon}" class="w-6 h-6 md:w-8 md:h-8 text-white/80"></i></div>`
+      }
       <div class="flex-1 min-w-0 md:p-5">
         <div class="flex items-start gap-2 mb-1">
           <i data-lucide="${cfg.icon}" class="w-4 h-4 flex-shrink-0 mt-0.5" style="color:${cfg.color}"></i>
@@ -1132,6 +1134,7 @@
         <div class="pl-6 md:pl-0 text-[10px] uppercase tracking-wide font-medium" style="color:${cfg.color}">${cfg.label}</div>
         <div class="pl-6 md:pl-0 text-xs text-gray-500 mt-1.5 leading-relaxed">${stop.description}</div>
         ${stop.tip ? `<div class="pl-6 md:pl-0 text-xs text-[#8B5CF6] mt-1.5">💡 ${stop.tip}</div>` : ''}
+        ${stop.category === 'food' ? `<a href="https://www.google.com/search?q=${encodeURIComponent(stop.name + ' reservations')}" target="_blank" rel="noopener" class="btn-interactive inline-flex items-center gap-1.5 mt-2.5 pl-6 md:pl-0 h-[30px] px-3 bg-[#8B5CF6] text-white text-[11px] font-medium rounded-lg"><i data-lucide="calendar" class="w-3 h-3"></i>Reserve a table</a>` : ''}
       </div>
     </div>`;
   }
@@ -1144,19 +1147,30 @@
     // Hero
     const dest = itinerary.destination.split(',')[0].toUpperCase();
     document.getElementById('ai-route-destination').textContent = dest;
-    document.getElementById('ai-route-source-text').textContent = sourceUrl ? 'via AI Magic Box ↗' : 'via AI Magic Box';
+    const sourceBadge = document.getElementById('ai-route-source-badge');
+    if (sourceUrl) {
+      sourceBadge.innerHTML = `<i data-lucide="music-2" class="w-3 h-3"></i><a href="${sourceUrl}" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-white">via TikTok ↗</a>`;
+    } else {
+      sourceBadge.innerHTML = '<i data-lucide="music-2" class="w-3 h-3"></i><span>via AI Magic Box</span>';
+    }
 
     // Stats
     const totalStops = itinerary.days.reduce((n, d) => n + d.stops.length, 0);
     const totalDays = itinerary.days.length;
     document.getElementById('ai-route-stop-count').textContent = totalStops;
     document.getElementById('ai-route-day-count').textContent = totalDays;
-    document.getElementById('ai-route-duration-label').textContent = itinerary.duration || (totalDays === 1 ? 'day' : 'days');
+    // duration from API is e.g. "1 day" — strip the leading number to avoid "1 1 day"
+    const durText = itinerary.duration || (totalDays === 1 ? 'day' : 'days');
+    document.getElementById('ai-route-duration-label').textContent = durText.replace(/^\d+\s*/, '');
 
-    // Dynamic hero bg — use a location-seeded picsum image
+    // Dynamic hero bg — use Google Places photo if available, fallback to Unsplash
     const heroBg = document.getElementById('ai-route-hero-bg');
-    const heroSeed = itinerary.destination.replace(/\s+/g, '-').toLowerCase();
-    heroBg.style.backgroundImage = `url('https://picsum.photos/seed/${heroSeed}/2000/1300')`;
+    if (itinerary.hero_photo_url) {
+      heroBg.style.backgroundImage = `url('${itinerary.hero_photo_url}')`;
+    } else {
+      const heroQuery = encodeURIComponent(itinerary.destination);
+      heroBg.style.backgroundImage = `url('https://source.unsplash.com/featured/2000x1300/?${heroQuery},travel')`;
+    }
 
     // Store for sharing
     window._aiRouteVideoId = videoId;

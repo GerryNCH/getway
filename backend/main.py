@@ -32,6 +32,7 @@ import database
 from extractor import extract_video_id, fetch_metadata, download_video, extract_frames
 from troll_filter import check_is_travel
 from ai_analyzer import analyse_frames
+from places import enrich_itinerary_with_photos
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 
@@ -127,6 +128,12 @@ async def extract(req: ExtractRequest):
                   f"{len(itinerary.days)} days")
         except Exception as e:
             raise HTTPException(500, f"AI analysis failed: {e}")
+
+        # ── Layer 7b: enrich with Google Places photos ────────────────────────
+        try:
+            enrich_itinerary_with_photos(itinerary)
+        except Exception as e:
+            print(f"[Places] Enrichment failed (non-fatal): {e}")
 
     # ── Layer 8: save to database ─────────────────────────────────────────────
     database.save_itinerary(video_id, url, itinerary)

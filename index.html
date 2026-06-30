@@ -541,6 +541,10 @@
     <div class="flex items-center gap-1.5 px-5 md:px-10"><i data-lucide="sparkles" class="w-3.5 h-3.5 text-gray-400"></i><div class="text-[10px] md:text-xs text-gray-500">AI generated</div></div>
   </div>
 
+  <!-- Photo gallery thumbnails -->
+  <div id="ai-route-gallery" class="flex justify-center gap-1.5 md:gap-3 px-4 pt-6 pb-2 md:pt-8"></div>
+  <div id="ai-route-gallery-hint" class="hidden text-center px-4 pb-8 md:pb-10 text-[10px] md:text-xs text-gray-400">Tap a thumbnail to preview</div>
+
   <!-- In-route filters -->
   <div class="px-5 md:px-14 lg:px-24 py-6 md:py-8">
     <div class="max-w-fit md:mx-auto bg-white/70 backdrop-filter backdrop-blur border border-gray-200/80 rounded-full p-1.5 shadow-sm overflow-x-auto">
@@ -1087,10 +1091,9 @@
       return `
       <div data-category="hotel" class="ai-stop-card mb-6 md:mb-8 md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
         <div class="md:w-2/5 md:flex-shrink-0">
-          ${stop.photo_url
-            ? `<img src="${stop.photo_url}" alt="${stop.name}" class="h-[140px] md:h-52 mb-3 md:mb-0 rounded-2xl w-full object-cover" onerror="this.outerHTML='<div class=\"relative h-[140px] md:h-52 mb-3 md:mb-0 rounded-2xl overflow-hidden media-placeholder\" style=\"background:${gradientFor(seed)}\"><i data-lucide=\"bed\" class=\"w-8 h-8 text-white/80\"><\/i><\/div>'">`
-            : `<div class="relative h-[140px] md:h-52 mb-3 md:mb-0 rounded-2xl overflow-hidden media-placeholder" style="background:${gradientFor(seed)}"><i data-lucide="bed" class="w-8 h-8 text-white/80"></i></div>`
-          }
+          <div class="relative h-[140px] md:h-52 mb-3 md:mb-0 rounded-2xl overflow-hidden ${stop.photo_url ? '' : 'media-placeholder'}" style="${stop.photo_url ? `background-image:url('${stop.photo_url}');background-size:cover;background-position:center;` : `background:${gradientFor(seed)}`}">
+            ${stop.photo_url ? '' : '<i data-lucide="bed" class="w-8 h-8 text-white/80"></i>'}
+          </div>
         </div>
         <div class="md:w-3/5 md:pt-2">
           <div class="flex items-center gap-2 mb-2">
@@ -1121,10 +1124,9 @@
       <button onclick="window.open('${mapsUrl}','_blank')" class="btn-interactive absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-white shadow flex items-center justify-center">
         <i data-lucide="map-pin" class="w-4 h-4 text-[#6D28D9]"></i>
       </button>
-      ${stop.photo_url
-        ? `<img src="${stop.photo_url}" alt="${stop.name}" class="w-14 h-14 md:w-full md:h-44 rounded-xl md:rounded-none object-cover flex-shrink-0" onerror="this.outerHTML='<div class=\"w-14 h-14 md:w-full md:h-44 rounded-xl md:rounded-none flex-shrink-0 media-placeholder\" style=\"background:${gradientFor(seed)}\"><\/div>'">`
-        : `<div class="w-14 h-14 md:w-full md:h-44 rounded-xl md:rounded-none flex-shrink-0 media-placeholder" style="background:${gradientFor(seed)}"><i data-lucide="${cfg.icon}" class="w-6 h-6 md:w-8 md:h-8 text-white/80"></i></div>`
-      }
+      <div class="w-14 h-14 md:w-full md:h-44 rounded-xl md:rounded-none flex-shrink-0 ${stop.photo_url ? '' : 'media-placeholder'}" style="${stop.photo_url ? `background-image:url('${stop.photo_url}');background-size:cover;background-position:center;` : `background:${gradientFor(seed)}`}">
+        ${stop.photo_url ? '' : `<i data-lucide="${cfg.icon}" class="w-6 h-6 md:w-8 md:h-8 text-white/80"></i>`}
+      </div>
       <div class="flex-1 min-w-0 md:p-5">
         <div class="flex items-start gap-2 mb-1">
           <i data-lucide="${cfg.icon}" class="w-4 h-4 flex-shrink-0 mt-0.5" style="color:${cfg.color}"></i>
@@ -1163,14 +1165,32 @@
     const durText = itinerary.duration || (totalDays === 1 ? 'day' : 'days');
     document.getElementById('ai-route-duration-label').textContent = durText.replace(/^\d+\s*/, '');
 
-    // Dynamic hero bg — use Google Places photo if available, fallback to Unsplash
+    // Dynamic hero bg — use Google Places gallery if available, fallback to Unsplash
     const heroBg = document.getElementById('ai-route-hero-bg');
+    const gallery = itinerary.gallery_photo_urls || [];
     if (itinerary.hero_photo_url) {
       heroBg.style.backgroundImage = `url('${itinerary.hero_photo_url}')`;
+      heroBg.style.opacity = '1';
     } else {
       const heroQuery = encodeURIComponent(itinerary.destination);
       heroBg.style.backgroundImage = `url('https://source.unsplash.com/featured/2000x1300/?${heroQuery},travel')`;
+      heroBg.style.opacity = '1';
     }
+
+    // Gallery thumbnails — click to swap the hero photo
+    const galleryEl = document.getElementById('ai-route-gallery');
+    const galleryHint = document.getElementById('ai-route-gallery-hint');
+    if (gallery.length > 1) {
+      galleryEl.innerHTML = gallery.map((url, i) => `
+        <button onclick="selectAiGalleryPhoto(${i})" class="ai-gallery-thumb flex-shrink-0 w-[54px] h-[54px] md:w-20 md:h-20 rounded-2xl overflow-hidden border-2 ${i === 0 ? 'border-[#8B5CF6]' : 'border-transparent'}">
+          <img src="${url}" alt="" class="w-full h-full object-cover">
+        </button>`).join('');
+      galleryHint.classList.remove('hidden');
+    } else {
+      galleryEl.innerHTML = '';
+      galleryHint.classList.add('hidden');
+    }
+    window._aiRouteGallery = gallery;
 
     // Store for sharing
     window._aiRouteVideoId = videoId;
@@ -1193,6 +1213,18 @@
 
     if (typeof lucide !== 'undefined') { lucide.createIcons(); }
     if (typeof AOS !== 'undefined') { AOS.refreshHard(); }
+  }
+
+  function selectAiGalleryPhoto(index) {
+    const gallery = window._aiRouteGallery || [];
+    const url = gallery[index];
+    if (!url) return;
+    const heroBg = document.getElementById('ai-route-hero-bg');
+    heroBg.style.backgroundImage = `url('${url}')`;
+    document.querySelectorAll('.ai-gallery-thumb').forEach((el, i) => {
+      el.classList.toggle('border-[#8B5CF6]', i === index);
+      el.classList.toggle('border-transparent', i !== index);
+    });
   }
 
   function filterAiStops(category, clickedBtn) {

@@ -1,16 +1,26 @@
 """
-places.py — Google Places API integration.
-Fetches photo URLs per stop name, and a gallery of photos for the destination hero.
-Uses Places API (New) Text Search + photo endpoint.
-Free tier: $200/month credit → ~5000 photo lookups free.
+places.py — Google Places API integration (stops) + Unsplash (destination photos).
+
+Places API (New) is used for specific named stops (hotels, restaurants,
+landmarks) where it returns accurate, place-specific photos.
+
+Unsplash is used for the destination hero/gallery, because Places API
+photos for a bare city/region query are often low-quality or blurry
+(user-submitted snapshots), whereas Unsplash returns curated, high-res
+travel photography — exactly what a hero banner needs.
+
+Free tier: Places $200/month credit (~5000 lookups). Unsplash: 50 req/hour
+on the free Demo tier — plenty for this use case.
 """
 
 import os
 import requests
 
 PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")
+UNSPLASH_ACCESS_KEY = os.getenv("UNSPLASH_ACCESS_KEY", "")
 
 SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
+UNSPLASH_SEARCH_URL = "https://api.unsplash.com/search/photos"
 
 
 def _build_photo_url(photo_name: str, max_width: int = 1600) -> str:
@@ -57,56 +67,59 @@ def _get_place_photo_url(query: str, max_width: int = 800) -> str:
     return _build_photo_url(photos[0].get("name", ""), max_width)
 
 
-def _get_destination_gallery(destination: str, count: int = 5) -> list[str]:
+def _get_destination_gallery_unsplash(destination: str, count: int = 5) -> list[str]:
     """
-    Builds a gallery of `count` high-quality photo URLs for a destination.
-    Strategy: query several landmark/skyline angles and pool results, so the
-    first photo (used as hero) is a strong, recognisable shot rather than
-    whatever a single generic city-name search happens to return first.
+    Returns `count` curated, high-resolution travel photo URLs for a
+    destination from Unsplash. Falls back to an empty list if no key
+    is configured or the request fails — frontend then falls back to
+    its own placeholder.
     """
-    photo_urls: list[str] = []
+    if not UNSPLASH_ACCESS_KEY:
+        print("[Unsplash] No API key — skipping destination gallery")
+        return []
 
-    queries = [
-        f"top tourist attractions in {destination}",
-        f"{destination} iconic skyline",
-        f"{destination} historic landmark",
-        destination,
-    ]
+    try:
+        resp = requests.get(
+            UNSPLASH_SEARCH_URL,
+            params={
+                "query": f"{destination} travel landmark",
+                "per_page": count,
+                "orientation": "landscape",
+            },
+            headers={"Authorization": f"Client-ID {UNSPLASH_ACCESS_KEY}"},
+            timeout=6,
+        )
+        if resp.status_code != 200:
+            print(f"[Unsplash] HTTP {resp.status_code}: {resp.text[:300]}")
+            return []
 
-    for query in queries:
-        if len(photo_urls) >= count:
-            break
-        places = _search_places(query, max_results=count)
-        for place in places:
-            if len(photo_urls) >= count:
-                break
-            photos = place.get("photos", [])
-            if photos:
-                url = _build_photo_url(photos[0].get("name", ""))
-                if url not in photo_urls:
-                    photo_urls.append(url)
+        results = resp.json().get("results", [])
+        urls = [r["urls"]["regular"] for r in results if "urls" in r]
+        print(f"[Unsplash] Gallery for '{destination}': {len(urls)} photos")
+        return urls
 
-    print(f"[Places] Gallery for '{destination}': {len(photo_urls)} photos")
-    return photo_urls
+    except Exception as e:
+        print(f"[Unsplash] Exception for '{destination}': {type(e).__name__}: {e}")
+        return []
 
 
 def enrich_itinerary_with_photos(itinerary) -> None:
     """
     Mutates the itinerary in-place:
-      - adds photo_url to every stop
-      - sets hero_photo_url (best single shot) and gallery_photo_urls (4-5 shots)
+      - gallery_photo_urls / hero_photo_url: Unsplash (curated destination shots)
+      - each stop's photo_url: Google Places (accurate place-specific shots)
     """
-    if not PLACES_API_KEY:
-        print("[Places] No API key — skipping photo enrichment")
-        return
-
-    # Destination gallery — first photo doubles as the hero (best quality first)
-    gallery = _get_destination_gallery(itinerary.destination, count=5)
+    # Destination gallery from Unsplash — first photo doubles as the hero
+    gallery = _get_destination_gallery_unsplash(itinerary.destination, count=5)
     itinerary.gallery_photo_urls = gallery
     itinerary.hero_photo_url = gallery[0] if gallery else ""
-    print(f"[Places] Hero: {itinerary.destination} → {bool(itinerary.hero_photo_url)}")
+    print(f"[Photos] Hero: {itinerary.destination} → {bool(itinerary.hero_photo_url)}")
 
-    # Photo for each stop
+    if not PLACES_API_KEY:
+        print("[Places] No API key — skipping stop photo enrichment")
+        return
+
+    # Photo for each stop — still Google Places (accurate for named locations)
     for day in itinerary.days:
         for stop in day.stops:
             stop.photo_url = _get_place_photo_url(stop.name)

@@ -60,15 +60,18 @@ def _get_place_photo_url(query: str, max_width: int = 800) -> str:
 def _get_destination_gallery(destination: str, count: int = 5) -> list[str]:
     """
     Builds a gallery of `count` high-quality photo URLs for a destination.
-    Strategy: search for "{destination} landmarks" to bias toward iconic,
-    photogenic results rather than a single generic city pin (which often
-    has weak or no photos in Places API).
+    Strategy: query several landmark/skyline angles and pool results, so the
+    first photo (used as hero) is a strong, recognisable shot rather than
+    whatever a single generic city-name search happens to return first.
     """
     photo_urls: list[str] = []
 
-    # Try a landmark-biased query first — gives much better photo results
-    # than searching the bare city name.
-    queries = [f"{destination} famous landmarks", f"{destination} skyline", destination]
+    queries = [
+        f"top tourist attractions in {destination}",
+        f"{destination} iconic skyline",
+        f"{destination} historic landmark",
+        destination,
+    ]
 
     for query in queries:
         if len(photo_urls) >= count:

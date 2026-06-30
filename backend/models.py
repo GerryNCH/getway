@@ -23,7 +23,8 @@ class Itinerary(BaseModel):
     destination: str
     duration: str
     days: list[DayPlan]
-    hero_photo_url: str = ""  # Google Places photo for the destination hero
+    hero_photo_url: str = ""  # Best single photo for the destination
+    gallery_photo_urls: list[str] = []  # 4-5 photos for the hero gallery
 
 
 class ExtractRequest(BaseModel):

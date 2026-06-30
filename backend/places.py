@@ -34,13 +34,20 @@ def _get_place_photo_url(query: str, max_width: int = 800) -> str:
             },
             timeout=5,
         )
+
+        if resp.status_code != 200:
+            print(f"[Places] HTTP {resp.status_code} for '{query}': {resp.text[:300]}")
+            return ""
+
         data = resp.json()
         places = data.get("places", [])
         if not places:
+            print(f"[Places] No places found for '{query}' — raw response: {data}")
             return ""
 
         photos = places[0].get("photos", [])
         if not photos:
+            print(f"[Places] Place found but no photos for '{query}'")
             return ""
 
         photo_name = photos[0].get("name", "")
@@ -55,7 +62,7 @@ def _get_place_photo_url(query: str, max_width: int = 800) -> str:
         return photo_url
 
     except Exception as e:
-        print(f"[Places] Error fetching photo for '{query}': {e}")
+        print(f"[Places] Exception fetching photo for '{query}': {type(e).__name__}: {e}")
         return ""
 
 

@@ -69,38 +69,50 @@ def _get_place_photo_url(query: str, max_width: int = 800) -> str:
 
 def _get_destination_gallery_unsplash(destination: str, count: int = 5) -> list[str]:
     """
-    Returns `count` curated, high-resolution travel photo URLs for a
-    destination from Unsplash. Falls back to an empty list if no key
-    is configured or the request fails — frontend then falls back to
-    its own placeholder.
+    Returns up to `count` curated, high-resolution travel photo URLs for a
+    destination from Unsplash. Uses several distinct queries (rather than
+    one broad query) so the gallery shows varied shots of the destination
+    instead of several near-duplicate frames from the same photo session.
+    Falls back to an empty list if no key is configured or all requests fail.
     """
     if not UNSPLASH_ACCESS_KEY:
         print("[Unsplash] No API key — skipping destination gallery")
         return []
 
-    try:
-        resp = requests.get(
-            UNSPLASH_SEARCH_URL,
-            params={
-                "query": f"{destination} travel landmark",
-                "per_page": count,
-                "orientation": "landscape",
-            },
-            headers={"Authorization": f"Client-ID {UNSPLASH_ACCESS_KEY}"},
-            timeout=6,
-        )
-        if resp.status_code != 200:
-            print(f"[Unsplash] HTTP {resp.status_code}: {resp.text[:300]}")
-            return []
+    city = destination.split(",")[0].strip()
+    queries = [
+        f"{city} skyline",
+        f"{city} old town",
+        f"{city} landmark",
+        f"{city} cityscape",
+        f"{city} street",
+    ]
 
-        results = resp.json().get("results", [])
-        urls = [r["urls"]["regular"] for r in results if "urls" in r]
-        print(f"[Unsplash] Gallery for '{destination}': {len(urls)} photos")
-        return urls
+    photo_urls: list[str] = []
+    for query in queries:
+        if len(photo_urls) >= count:
+            break
+        try:
+            resp = requests.get(
+                UNSPLASH_SEARCH_URL,
+                params={"query": query, "per_page": 1, "orientation": "landscape"},
+                headers={"Authorization": f"Client-ID {UNSPLASH_ACCESS_KEY}"},
+                timeout=6,
+            )
+            if resp.status_code != 200:
+                print(f"[Unsplash] HTTP {resp.status_code} for '{query}': {resp.text[:200]}")
+                continue
+            results = resp.json().get("results", [])
+            if results and "urls" in results[0]:
+                url = results[0]["urls"]["regular"]
+                if url not in photo_urls:
+                    photo_urls.append(url)
+        except Exception as e:
+            print(f"[Unsplash] Exception for '{query}': {type(e).__name__}: {e}")
+            continue
 
-    except Exception as e:
-        print(f"[Unsplash] Exception for '{destination}': {type(e).__name__}: {e}")
-        return []
+    print(f"[Unsplash] Gallery for '{destination}': {len(photo_urls)} photos")
+    return photo_urls
 
 
 def enrich_itinerary_with_photos(itinerary) -> None:

@@ -65,13 +65,12 @@ def download_video(url: str, output_dir: str) -> str:
         [
             "yt-dlp",
             "--format",
-            # Prefer a single-file mp4 that needs no merging (no ffmpeg needed).
-            # Fall back to any single-file format, then any best single file.
-            "bestvideo[height<=720][ext=mp4]/best[height<=720][ext=mp4]"
-            "/bestvideo[height<=720]/best[height<=720]/best",
-            "--no-merge",           # never attempt audio+video merge (needs ffmpeg)
+            # Request single-file formats only — no audio+video merging needed.
+            # mp4 with video+audio in one file, no ffmpeg required.
+            "best[ext=mp4][height<=720]/best[ext=mp4]/best[height<=720]/best",
             "--output", output_template,
             "--no-playlist",
+            "--no-part",
             "--quiet",
             url,
         ],

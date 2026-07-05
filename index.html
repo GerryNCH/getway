@@ -112,7 +112,7 @@
         <i data-lucide="music-2" class="w-[18px] h-[18px] text-gray-500 flex-shrink-0"></i>
         <input type="text" placeholder="Paste the TikTok video link here..." class="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400">
       </div>
-      <button onclick="showScreen('magicbox')" class="btn-interactive w-full h-[50px] flex items-center justify-center gap-2 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">
+      <button onclick="(function(){ var v=document.querySelector('#screen-home input[type=text]').value.trim(); if(v){document.getElementById('tiktok-url').value=v;} showScreen('magicbox'); if(v){startMagicBox();} })()" class="btn-interactive w-full h-[50px] flex items-center justify-center gap-2 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">
         Build my route <i data-lucide="rocket" class="w-4 h-4"></i>
       </button>
     </div>
@@ -645,9 +645,9 @@
   const MEDIA = {
     hero: {
       slides: [
-        "https://picsum.photos/seed/getway-coast/2000/1300",
-        "https://picsum.photos/seed/getway-mountain/2000/1300",
-        "https://picsum.photos/seed/getway-village/2000/1300"
+        "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=2000&auto=format&fit=crop",
+        "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=2000&auto=format&fit=crop",
+        "https://images.unsplash.com/photo-1488085061387-422e29b40080?w=2000&auto=format&fit=crop"
       ],
       intervalMs: 5000
     },
@@ -1117,7 +1117,6 @@
           <a href="https://www.airbnb.com/s/${encodeURIComponent(stop.name)}/homes" target="_blank" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="home" class="w-3.5 h-3.5"></i>Airbnb</a>
         </div>`;
 
-    if (isHotel) {
       return `
       <div data-category="hotel" class="ai-stop-card mb-6 md:mb-8 md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
         <div class="md:w-2/5 md:flex-shrink-0">

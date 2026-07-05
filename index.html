@@ -122,7 +122,7 @@
 
   <div id="routes-section" class="max-w-6xl mx-auto px-6 md:px-14 pt-4">
     <div data-aos="fade-up" class="font-serif-display text-3xl md:text-4xl mb-2">Routes</div>
-    <div class="text-xs md:text-sm text-gray-500 mb-6">3 curated routes, more added weekly</div>
+    <div class="text-xs md:text-sm text-gray-500 mb-6">1 curated route, more added weekly</div>
 
     <!-- Destination search + Duration filter -->
     <div class="flex flex-col md:flex-row md:items-center gap-3 mb-5">
@@ -670,9 +670,7 @@
   };
 
   const ROUTES = [
-    { slug: "mallorca-5-days", destination: "Mallorca", duration: "5 days", dayCount: 5, priceCategory: "€€", creatorHandle: "@kelseyinlondon", stopCount: 14, fallbackColor: "#334155", tags: ["most_popular"] },
-    { slug: "santorini-4-days", destination: "Santorini", duration: "4 days", dayCount: 4, priceCategory: "€€€", creatorHandle: "@greekgetaway", stopCount: 9, fallbackColor: "#78350F", tags: ["luxury"] },
-    { slug: "bali-6-days", destination: "Bali", duration: "6 days", dayCount: 6, priceCategory: "€", creatorHandle: "@wanderwithella", stopCount: 18, fallbackColor: "#4D6B2E", tags: ["budget_friendly", "exotic"] }
+    { slug: "mallorca-5-days", destination: "Mallorca", duration: "5 days", dayCount: 5, priceCategory: "€€", creatorHandle: "@kelseyinlondon", stopCount: 14, fallbackColor: "#334155", tags: ["most_popular"] }
   ];
 
   const DAY1_STOPS = [
@@ -1087,6 +1085,39 @@
     const isHotel = stop.category === 'hotel';
 
     if (isHotel) {
+      // Detect if AI found a real hotel name or just a description
+      // Real names: "Ars Magna Hotel", "Hotel Arts Barcelona"
+      // Descriptions: "Modern design hotel with...", "Boutique hotel near..."
+      const descriptionKeywords = ['hotel with', 'hotel near', 'design hotel', 'boutique hotel', 'modern hotel', 'luxury hotel', 'resort with', 'guesthouse with', 'airbnb with'];
+      const isDescriptionNotName = descriptionKeywords.some(kw => stop.name.toLowerCase().includes(kw));
+
+      // Extract location from destination for fallback search
+      const locationForSearch = stop.name.split(',').slice(-1)[0].trim() || stop.name;
+
+      const bookingBlock = isDescriptionNotName ? `
+        <a href="https://www.booking.com/search.html?ss=${encodeURIComponent(locationForSearch)}" target="_blank" rel="noopener sponsored"
+           class="btn-interactive w-full h-[44px] flex items-center justify-center gap-1.5 bg-[#8B5CF6] text-white text-xs font-medium rounded-xl mb-2.5">
+          <i data-lucide="search" class="w-3.5 h-3.5"></i> Find hotels in this area
+        </a>
+        <div class="grid grid-cols-2 gap-2.5">
+          <a href="https://www.expedia.com/Hotel-Search?destination=${encodeURIComponent(locationForSearch)}" target="_blank" rel="noopener sponsored" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="external-link" class="w-3.5 h-3.5"></i>Expedia</a>
+          <a href="https://www.airbnb.com/s/${encodeURIComponent(locationForSearch)}/homes" target="_blank" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="home" class="w-3.5 h-3.5"></i>Airbnb</a>
+        </div>` : `
+        <div class="relative mb-2.5">
+          <button onclick="toggleAiHotelDropdown('${seed}')" class="btn-interactive w-full h-[44px] flex items-center justify-center gap-1.5 bg-[#8B5CF6] text-white text-xs font-medium rounded-xl">
+            Book this hotel <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform"></i>
+          </button>
+          <div id="aihotel-${seed}" class="hidden bg-white rounded-xl mt-1.5 overflow-hidden bento-card">
+            <a href="https://www.booking.com/search.html?ss=${encodeURIComponent(stop.name)}" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 border-b border-gray-100 text-xs"><span>via Booking.com</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
+            <a href="https://www.expedia.com/Hotel-Search?destination=${encodeURIComponent(stop.name)}" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 text-xs"><span>via Expedia</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2.5">
+          <a href="https://www.booking.com/search.html?ss=${encodeURIComponent(stop.name + ' similar')}" target="_blank" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="shuffle" class="w-3.5 h-3.5"></i>Similar</a>
+          <a href="https://www.airbnb.com/s/${encodeURIComponent(stop.name)}/homes" target="_blank" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="home" class="w-3.5 h-3.5"></i>Airbnb</a>
+        </div>`;
+
+    if (isHotel) {
       return `
       <div data-category="hotel" class="ai-stop-card mb-6 md:mb-8 md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
         <div class="md:w-2/5 md:flex-shrink-0">
@@ -1101,19 +1132,7 @@
           <div class="text-sm font-medium mb-1">${stop.name}</div>
           <div class="text-xs text-gray-500 mb-3">${stop.description}</div>
           ${stop.tip ? `<div class="text-xs text-[#8B5CF6] mb-3">💡 ${stop.tip}</div>` : ''}
-          <div class="relative mb-2.5">
-            <button onclick="toggleAiHotelDropdown('${seed}')" class="btn-interactive w-full h-[44px] flex items-center justify-center gap-1.5 bg-[#8B5CF6] text-white text-xs font-medium rounded-xl">
-              Book this hotel <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform"></i>
-            </button>
-            <div id="aihotel-${seed}" class="hidden bg-white rounded-xl mt-1.5 overflow-hidden bento-card">
-              <a href="https://www.booking.com/search.html?ss=${encodeURIComponent(stop.name)}" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 border-b border-gray-100 text-xs"><span>via Booking.com</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
-              <a href="https://www.expedia.com/Hotel-Search?destination=${encodeURIComponent(stop.name)}" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 text-xs"><span>via Expedia</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
-            </div>
-          </div>
-          <div class="grid grid-cols-2 gap-2.5">
-            <a href="https://www.booking.com/search.html?ss=${encodeURIComponent(stop.name + ' similar')}" target="_blank" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="shuffle" class="w-3.5 h-3.5"></i>Similar</a>
-            <a href="https://www.airbnb.com/s/${encodeURIComponent(stop.name)}/homes" target="_blank" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="home" class="w-3.5 h-3.5"></i>Airbnb</a>
-          </div>
+          ${bookingBlock}
         </div>
       </div>`;
     }

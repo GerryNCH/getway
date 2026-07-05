@@ -52,6 +52,10 @@ Schema:
 
 Category guide:
   hotel    → accommodation, guesthouse, resort, Airbnb
+             IMPORTANT: Las Vegas casino-resorts (Venetian, Bellagio, MGM Grand,
+             Caesars Palace, etc.) are ALWAYS "hotel" even though they are also
+             tourist attractions. If a place has the word "Resort", "Hotel", or
+             "Suites" in its name, classify as "hotel" regardless of visual appearance.
   sight    → landmark, viewpoint, museum, cathedral, village, natural feature
   food     → restaurant, café, bar, market, beach club with food/drinks
   activity → water sport, hike, tour, boat trip, zip-line

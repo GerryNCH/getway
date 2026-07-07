@@ -29,7 +29,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from models import ExtractRequest, ExtractResponse, Itinerary
 import database
-from extractor import extract_video_id, fetch_metadata, download_video, extract_frames
+from extractor import (
+    extract_video_id, fetch_metadata, download_video, extract_frames,
+    is_slideshow, download_slideshow_images,
+)
 from troll_filter import check_is_travel
 from ai_analyzer import analyse_frames
 from places import enrich_itinerary_with_photos
@@ -106,19 +109,28 @@ async def extract(req: ExtractRequest):
     # ── Layers 5–7: download → frames → multimodal AI ────────────────────────
     with tempfile.TemporaryDirectory() as tmp:
 
-        # Download video
-        try:
-            video_path = download_video(url, tmp)
-            print(f"[Download] {video_path}")
-        except RuntimeError as e:
-            raise HTTPException(422, f"Video download failed: {e}")
+        if is_slideshow(url):
+            # TikTok slideshow (/photo/) post — series of images, no video
+            # stream. Download the slides directly instead of extracting
+            # frames from a video file.
+            try:
+                frames = download_slideshow_images(url, tmp)
+                print(f"[Slideshow] Downloaded {len(frames)} slide images")
+            except RuntimeError as e:
+                raise HTTPException(422, f"Slideshow download failed: {e}")
+        else:
+            # Regular video post — download then extract evenly-spaced frames
+            try:
+                video_path = download_video(url, tmp)
+                print(f"[Download] {video_path}")
+            except RuntimeError as e:
+                raise HTTPException(422, f"Video download failed: {e}")
 
-        # Extract frames
-        try:
-            frames = extract_frames(video_path, tmp, req.max_frames)
-            print(f"[Frames] Extracted {len(frames)} frames")
-        except RuntimeError as e:
-            raise HTTPException(500, f"Frame extraction failed: {e}")
+            try:
+                frames = extract_frames(video_path, tmp, req.max_frames)
+                print(f"[Frames] Extracted {len(frames)} frames")
+            except RuntimeError as e:
+                raise HTTPException(500, f"Frame extraction failed: {e}")
 
         # Claude multimodal analysis
         try:
@@ -147,6 +159,24 @@ async def extract(req: ExtractRequest):
 
 
 # ── Admin endpoints (basic — full panel comes later) ─────────────────────────
+
+@app.get("/itinerary/{video_id}", response_model=ExtractResponse)
+def get_itinerary(video_id: str):
+    """
+    Fetches a previously-generated itinerary by its stable video_id.
+    Used to restore a shared route link (?route=<video_id>) on page load,
+    since the frontend only has the ID at that point, not the original URL.
+    """
+    cached = database.get_itinerary(video_id)
+    if not cached:
+        raise HTTPException(404, "Itinerary not found for this route ID")
+    return ExtractResponse(
+        itinerary=cached,
+        source="cache",
+        video_id=video_id,
+        cached=True,
+    )
+
 
 @app.get("/admin/itineraries")
 def list_itineraries():

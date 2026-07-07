@@ -1087,9 +1087,14 @@
     if (isHotel) {
       // Detect if AI found a real hotel name or just a description
       // Real names: "Ars Magna Hotel", "Hotel Arts Barcelona"
-      // Descriptions: "Modern design hotel with...", "Boutique hotel near..."
+      // Descriptions: "Modern design hotel with...", "Boutique hotel near...",
+      // or the AI's own fallback pattern "<generic description>, <City>"
+      // (this comma pattern is literally what the AI prompt asks for when
+      // it can't find a real name — e.g. "Resort hotel, Hurghada" — so any
+      // hotel name containing a comma is treated as non-specific too,
+      // instead of trying to keyword-match every possible generic phrase).
       const descriptionKeywords = ['hotel with', 'hotel near', 'design hotel', 'boutique hotel', 'modern hotel', 'luxury hotel', 'resort with', 'guesthouse with', 'airbnb with'];
-      const isDescriptionNotName = descriptionKeywords.some(kw => stop.name.toLowerCase().includes(kw));
+      const isDescriptionNotName = descriptionKeywords.some(kw => stop.name.toLowerCase().includes(kw)) || stop.name.includes(',');
 
       // Extract location from destination for fallback search
       const locationForSearch = stop.name.split(',').slice(-1)[0].trim() || stop.name;

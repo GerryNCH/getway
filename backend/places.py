@@ -81,10 +81,10 @@ def _get_destination_gallery_unsplash(destination: str, count: int = 5) -> list[
 
     city = destination.split(",")[0].strip()
     queries = [
-        f"{city} skyline",
-        f"{city} old town",
         f"{city} landmark",
-        f"{city} cityscape",
+        f"{city} aerial view",
+        f"{city} old town",
+        f"{city} skyline",
         f"{city} street",
     ]
 

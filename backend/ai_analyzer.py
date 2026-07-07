@@ -100,10 +100,17 @@ def analyse_frames(frame_paths: list[str]) -> Itinerary:
 
     response = _client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=1500,
+        max_tokens=8000,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": content}],
     )
+
+    if response.stop_reason == "max_tokens":
+        raise ValueError(
+            "Claude's response was cut off before finishing (too many stops "
+            "for the token limit). Try again — if this keeps happening, "
+            "the itinerary may need to be split or max_tokens raised further."
+        )
 
     raw = response.content[0].text.strip()
 
@@ -111,5 +118,9 @@ def analyse_frames(frame_paths: list[str]) -> Itinerary:
     if raw.startswith("```"):
         raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
 
-    data = json.loads(raw)
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Claude's response wasn't valid JSON: {e}") from e
+
     return Itinerary(**data)

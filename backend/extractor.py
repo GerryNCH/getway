@@ -10,14 +10,15 @@ import re
 import subprocess
 from pathlib import Path
 
-import cv2  # pip install opencv-python
+import cv2       # pip install opencv-python
+import requests  # pip install requests
 
 
 # ── Video ID normalisation ────────────────────────────────────────────────────
 
 def extract_video_id(url: str) -> str:
     """Stable, platform-agnostic video ID used as the database key."""
-    m = re.search(r"/video/(\d+)", url)
+    m = re.search(r"/(?:video|photo)/(\d+)", url)
     if m:
         return f"tt_{m.group(1)}"
     m = re.search(r"(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})", url)
@@ -25,6 +26,17 @@ def extract_video_id(url: str) -> str:
         return f"yt_{m.group(1)}"
     import hashlib
     return "u_" + hashlib.md5(url.encode()).hexdigest()[:16]
+
+
+# ── Slideshow detection ───────────────────────────────────────────────────────
+
+def is_slideshow(url: str) -> bool:
+    """
+    TikTok slideshow posts use /photo/ URLs (a series of images) instead of
+    /video/ URLs. These need a different download path since there's no
+    video stream to pull frames from.
+    """
+    return "/photo/" in url
 
 
 # ── Metadata fetch (no download) ─────────────────────────────────────────────
@@ -83,6 +95,83 @@ def download_video(url: str, output_dir: str) -> str:
     if not matches:
         raise RuntimeError("Download completed but no video file was found.")
     return str(matches[0])
+
+
+# ── Slideshow image download ─────────────────────────────────────────────────
+
+def download_slideshow_images(url: str, output_dir: str) -> list[str]:
+    """
+    Downloads the individual images from a TikTok slideshow (/photo/) post.
+
+    TikTok slideshows have no video stream, so yt-dlp can't download them the
+    normal way. Instead we pull the post's metadata JSON (same --dump-json
+    call used for fetch_metadata) and read the slide images straight out of
+    it, then fetch each one directly:
+
+      - Newer yt-dlp versions expose the slides under `image_post_info.images`
+        (each with a `display_image.url_list` of CDN URLs).
+      - As a fallback, yt-dlp always normalises extractor images into the
+        generic `thumbnails` list, which for a slideshow post is the set of
+        slides themselves.
+
+    Returns paths to the downloaded slide images, in original slide order —
+    these get passed to analyse_frames() exactly like video frames would.
+    """
+    result = subprocess.run(
+        ["yt-dlp", "--dump-json", "--no-download",
+         "--no-playlist", "--quiet", url],
+        capture_output=True, text=True, timeout=30,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Could not fetch slideshow metadata: {result.stderr.strip()}"
+        )
+
+    data = json.loads(result.stdout)
+
+    image_urls: list[str] = []
+
+    image_post = data.get("image_post_info") or {}
+    for img in image_post.get("images", []):
+        url_list = (img.get("display_image") or {}).get("url_list") or []
+        if url_list:
+            image_urls.append(url_list[0])
+
+    if not image_urls:
+        seen = set()
+        for thumb in data.get("thumbnails", []):
+            thumb_url = thumb.get("url")
+            if thumb_url and thumb_url not in seen:
+                seen.add(thumb_url)
+                image_urls.append(thumb_url)
+
+    if not image_urls:
+        raise RuntimeError(
+            "No slideshow images were found in this TikTok post's metadata."
+        )
+
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; GetWayBot/1.0)"}
+    image_paths: list[str] = []
+
+    for i, img_url in enumerate(image_urls):
+        try:
+            resp = requests.get(img_url, headers=headers, timeout=20)
+            resp.raise_for_status()
+        except requests.RequestException as e:
+            print(f"[Slideshow] Skipping image {i} — download failed: {e}")
+            continue
+
+        out_path = os.path.join(output_dir, f"slide_{i:02d}.jpg")
+        with open(out_path, "wb") as f:
+            f.write(resp.content)
+        image_paths.append(out_path)
+
+    if not image_paths:
+        raise RuntimeError(
+            "Slideshow images were found but none could be downloaded."
+        )
+
+    return image_paths
 
 
 # ── Frame extraction — OpenCV only, zero system deps ─────────────────────────

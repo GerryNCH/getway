@@ -50,6 +50,17 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_itineraries_destination
                 ON itineraries (destination);
         """)
+
+        # Migration: earlier versions of this table didn't store the hero
+        # image or gallery photos, so cached/shared routes lost them on
+        # reload even though a fresh generation had them. Add the columns
+        # if they're missing (safe to run every startup).
+        existing_cols = {row["name"] for row in conn.execute("PRAGMA table_info(itineraries)")}
+        if "hero_photo_url" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN hero_photo_url TEXT DEFAULT ''")
+        if "gallery_photo_urls_json" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN gallery_photo_urls_json TEXT DEFAULT '[]'")
+
     print(f"[DB] Initialised at {DB_PATH}")
 
 
@@ -64,10 +75,13 @@ def get_itinerary(video_id: str) -> Itinerary | None:
     if not row:
         return None
     days = json.loads(row["days_json"])
+    gallery_urls = json.loads(row["gallery_photo_urls_json"] or "[]")
     return Itinerary(
         destination=row["destination"],
         duration=row["duration"],
         days=days,
+        hero_photo_url=row["hero_photo_url"] or "",
+        gallery_photo_urls=gallery_urls,
     )
 
 
@@ -76,8 +90,9 @@ def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
     with _conn() as conn:
         conn.execute(
             """INSERT OR REPLACE INTO itineraries
-               (video_id, url, destination, duration, days_json, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+               (video_id, url, destination, duration, days_json, created_at,
+                hero_photo_url, gallery_photo_urls_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 video_id,
                 url,
@@ -85,6 +100,8 @@ def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
                 itinerary.duration,
                 json.dumps([d.model_dump() for d in itinerary.days]),
                 datetime.utcnow().isoformat(),
+                itinerary.hero_photo_url,
+                json.dumps(itinerary.gallery_photo_urls),
             ),
         )
     print(f"[DB] Saved itinerary for {video_id} ({itinerary.destination})")

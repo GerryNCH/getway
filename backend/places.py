@@ -14,6 +14,7 @@ on the free Demo tier — plenty for this use case.
 """
 
 import os
+import re
 import requests
 
 PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")
@@ -79,7 +80,11 @@ def _get_destination_gallery_unsplash(destination: str, count: int = 5) -> list[
         print("[Unsplash] No API key — skipping destination gallery")
         return []
 
-    city = destination.split(",")[0].strip()
+    # Multi-city destinations (e.g. "Cairo & Luxor", "Rome and Florence")
+    # need to be split down to a single clean city name — querying Unsplash
+    # with the full compound string returns few or no results, which starved
+    # the gallery down to 0-1 photos and hid the thumbnail strip entirely.
+    city = re.split(r"\s*(?:,|&|\band\b)\s*", destination, maxsplit=1, flags=re.IGNORECASE)[0].strip()
     queries = [
         f"{city} landmark",
         f"{city} aerial view",

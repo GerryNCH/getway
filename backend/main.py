@@ -31,7 +31,7 @@ from models import ExtractRequest, ExtractResponse, Itinerary
 import database
 from extractor import (
     extract_video_id, fetch_metadata, download_video, extract_frames,
-    is_slideshow, download_slideshow_images,
+    is_slideshow, fetch_slideshow_post, download_slideshow_images,
 )
 from troll_filter import check_is_travel
 from ai_analyzer import analyse_frames
@@ -85,11 +85,25 @@ async def extract(req: ExtractRequest):
     print(f"[Cache MISS] {video_id} not in database — proceeding to AI pipeline")
 
     # ── Layer 3: fetch metadata (fast, no download) ───────────────────────────
-    try:
-        meta = fetch_metadata(url)
-        print(f"[Meta] Title: {meta['title'][:60]}")
-    except RuntimeError as e:
-        raise HTTPException(422, f"Could not fetch video info: {e}")
+    # Slideshow (/photo/) posts can't go through yt-dlp at all — it has no
+    # /photo/ support (confirmed: not in its URL regex, and the feature
+    # request was closed upstream as "wontfix"). For those, one Apify call
+    # gets us both the caption (for the troll filter below) and the slide
+    # image URLs, so we stash the full result to reuse after the filter.
+    slideshow_data = None
+    if is_slideshow(url):
+        try:
+            slideshow_data = fetch_slideshow_post(url)
+            meta = {"title": slideshow_data["title"], "description": slideshow_data["description"]}
+            print(f"[Meta] (slideshow) Title: {meta['title'][:60]}")
+        except RuntimeError as e:
+            raise HTTPException(422, f"Could not fetch slideshow info: {e}")
+    else:
+        try:
+            meta = fetch_metadata(url)
+            print(f"[Meta] Title: {meta['title'][:60]}")
+        except RuntimeError as e:
+            raise HTTPException(422, f"Could not fetch video info: {e}")
 
     # ── Layer 4: troll filter — Claude Haiku (~$0.0003) ───────────────────────
     is_travel, reason = check_is_travel(
@@ -110,11 +124,9 @@ async def extract(req: ExtractRequest):
     with tempfile.TemporaryDirectory() as tmp:
 
         if is_slideshow(url):
-            # TikTok slideshow (/photo/) post — series of images, no video
-            # stream. Download the slides directly instead of extracting
-            # frames from a video file.
+            # Images URLs were already fetched above — just download them.
             try:
-                frames = download_slideshow_images(url, tmp)
+                frames = download_slideshow_images(slideshow_data["image_urls"], tmp)
                 print(f"[Slideshow] Downloaded {len(frames)} slide images")
             except RuntimeError as e:
                 raise HTTPException(422, f"Slideshow download failed: {e}")

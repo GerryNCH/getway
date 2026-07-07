@@ -1184,7 +1184,8 @@
 
     // Dynamic hero bg — use Google Places gallery if available, fallback to Unsplash
     const heroBg = document.getElementById('ai-route-hero-bg');
-    const gallery = itinerary.gallery_photo_urls || [];
+    // Dedup by URL — different stops can share the same Google Places photo
+    const gallery = [...new Set(itinerary.gallery_photo_urls || [])];
     if (itinerary.hero_photo_url) {
       heroBg.style.backgroundImage = `url('${itinerary.hero_photo_url}')`;
       heroBg.style.opacity = '1';
@@ -1329,6 +1330,36 @@
   }
 
 
+  // Restores a shared route from the URL's ?route= param on page load.
+  // Two cases:
+  //   1. A known static demo route slug (e.g. ?route=mallorca-5-days)
+  //   2. An AI-generated route's video_id (e.g. ?route=tt_123456), which
+  //      gets re-fetched from the backend cache and rendered.
+  function handleSharedRouteParam() {
+    const params = new URLSearchParams(location.search);
+    const routeParam = params.get('route');
+    if (!routeParam) return;
+
+    const staticRoute = ROUTES.find(r => r.slug === routeParam);
+    if (staticRoute) {
+      showScreen('route');
+      return;
+    }
+
+    fetch(`${BACKEND_URL}/itinerary/${encodeURIComponent(routeParam)}`)
+      .then(res => {
+        if (!res.ok) throw new Error('Route not found: ' + res.status);
+        return res.json();
+      })
+      .then(data => {
+        renderAiRoute(data.itinerary, data.video_id, '');
+        showScreen('ai-route');
+      })
+      .catch(err => {
+        console.error('Could not restore shared route "' + routeParam + '":', err);
+      });
+  }
+
   // Runs a single init step in isolation: if it throws, log it and move on
   // instead of letting one bad step take down everything after it.
   function safeRun(label, fn) {
@@ -1354,6 +1385,7 @@
     safeRun('AOS.init', function () {
       if (typeof AOS !== 'undefined') { AOS.init({ duration: 800, once: true }); }
     });
+    safeRun('handleSharedRouteParam', handleSharedRouteParam);
   });
 
   // Last-resort diagnostic: log the real error instead of letting it

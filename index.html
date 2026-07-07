@@ -1096,30 +1096,29 @@
       const descriptionKeywords = ['hotel with', 'hotel near', 'design hotel', 'boutique hotel', 'modern hotel', 'luxury hotel', 'resort with', 'guesthouse with', 'airbnb with'];
       const isDescriptionNotName = descriptionKeywords.some(kw => stop.name.toLowerCase().includes(kw)) || stop.name.includes(',');
 
-      // Extract location from destination for fallback search
+      // Extract location from destination for fallback search when there's
+      // no real hotel name to search by
       const locationForSearch = stop.name.split(',').slice(-1)[0].trim() || stop.name;
+      const searchQuery = isDescriptionNotName ? locationForSearch : stop.name;
 
-      const bookingBlock = isDescriptionNotName ? `
-        <a href="https://www.booking.com/search.html?ss=${encodeURIComponent(locationForSearch)}" target="_blank" rel="noopener sponsored"
-           class="btn-interactive w-full h-[44px] flex items-center justify-center gap-1.5 bg-[#8B5CF6] text-white text-xs font-medium rounded-xl mb-2.5">
-          <i data-lucide="search" class="w-3.5 h-3.5"></i> Find hotels in this area
-        </a>
-        <div class="grid grid-cols-2 gap-2.5">
-          <a href="https://www.expedia.com/Hotel-Search?destination=${encodeURIComponent(locationForSearch)}" target="_blank" rel="noopener sponsored" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="external-link" class="w-3.5 h-3.5"></i>Expedia</a>
-          <a href="https://www.airbnb.com/s/${encodeURIComponent(locationForSearch)}/homes" target="_blank" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="home" class="w-3.5 h-3.5"></i>Airbnb</a>
-        </div>` : `
+      // Same dropdown UI either way — Booking.com and Expedia are both
+      // legitimate options and the person should get to pick, whether we
+      // have a specific hotel name or just the area to search in.
+      // NOTE: Booking.com's real search-results path is /searchresults.html,
+      // not /search.html — the latter 404s even with a perfectly valid query.
+      const bookingBlock = `
         <div class="relative mb-2.5">
           <button onclick="toggleAiHotelDropdown('${seed}')" class="btn-interactive w-full h-[44px] flex items-center justify-center gap-1.5 bg-[#8B5CF6] text-white text-xs font-medium rounded-xl">
             Book this hotel <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform"></i>
           </button>
           <div id="aihotel-${seed}" class="hidden bg-white rounded-xl mt-1.5 overflow-hidden bento-card">
-            <a href="https://www.booking.com/search.html?ss=${encodeURIComponent(stop.name)}" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 border-b border-gray-100 text-xs"><span>via Booking.com</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
-            <a href="https://www.expedia.com/Hotel-Search?destination=${encodeURIComponent(stop.name)}" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 text-xs"><span>via Expedia</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
+            <a href="https://www.booking.com/searchresults.html?ss=${encodeURIComponent(searchQuery)}" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 border-b border-gray-100 text-xs"><span>via Booking.com</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
+            <a href="https://www.expedia.com/Hotel-Search?destination=${encodeURIComponent(searchQuery)}" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 text-xs"><span>via Expedia</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
           </div>
         </div>
         <div class="grid grid-cols-2 gap-2.5">
-          <a href="https://www.booking.com/search.html?ss=${encodeURIComponent(stop.name + ' similar')}" target="_blank" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="shuffle" class="w-3.5 h-3.5"></i>Similar</a>
-          <a href="https://www.airbnb.com/s/${encodeURIComponent(stop.name)}/homes" target="_blank" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="home" class="w-3.5 h-3.5"></i>Airbnb</a>
+          <a href="https://www.booking.com/searchresults.html?ss=${encodeURIComponent(searchQuery + ' similar')}" target="_blank" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="shuffle" class="w-3.5 h-3.5"></i>Similar</a>
+          <a href="https://www.airbnb.com/s/${encodeURIComponent(searchQuery)}/homes" target="_blank" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="home" class="w-3.5 h-3.5"></i>Airbnb</a>
         </div>`;
 
       return `

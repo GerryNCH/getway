@@ -97,65 +97,114 @@ def download_video(url: str, output_dir: str) -> str:
     return str(matches[0])
 
 
-# ── Slideshow image download ─────────────────────────────────────────────────
+# ── Slideshow post fetch (metadata + images via Apify) ───────────────────────
+#
+# yt-dlp has NO support for TikTok /photo/ (slideshow) posts — confirmed by
+# reading yt-dlp's own tiktok.py source (its URL regex only matches /video/)
+# and by checking yt-dlp's GitHub issue tracker: "[TikTok] Support for
+# Photos" (#9990) and "Add photo album download support" (#8360) were both
+# closed by the maintainers as "wontfix". This isn't a version problem —
+# no yt-dlp update will fix it.
+#
+# Instead, slideshow posts go through the Apify "TikTok Scraper" actor
+# (clockworks/tiktok-scraper) — a well-established, actively maintained
+# actor with a built-in "download slideshow images" option. One request
+# returns both the post's caption (for the troll filter) and the slide
+# image URLs, so we only call it once per slideshow.
+#
+# Requires APIFY_API_TOKEN set in the environment (Railway → Variables).
 
-def download_slideshow_images(url: str, output_dir: str) -> list[str]:
+APIFY_API_TOKEN = os.environ.get("APIFY_API_TOKEN")
+APIFY_TIKTOK_ACTOR = "clockworks~tiktok-scraper"
+
+
+def fetch_slideshow_post(url: str) -> dict:
     """
-    Downloads the individual images from a TikTok slideshow (/photo/) post.
+    Single Apify call for a TikTok slideshow post. Returns everything the
+    pipeline needs: title/description (for the troll filter) and the
+    ordered list of slide image URLs (for the AI analysis step).
 
-    TikTok slideshows have no video stream, so yt-dlp can't download them the
-    normal way. Instead we pull the post's metadata JSON (same --dump-json
-    call used for fetch_metadata) and read the slide images straight out of
-    it, then fetch each one directly:
-
-      - Newer yt-dlp versions expose the slides under `image_post_info.images`
-        (each with a `display_image.url_list` of CDN URLs).
-      - As a fallback, yt-dlp always normalises extractor images into the
-        generic `thumbnails` list, which for a slideshow post is the set of
-        slides themselves.
-
-    Returns paths to the downloaded slide images, in original slide order —
-    these get passed to analyse_frames() exactly like video frames would.
+    Field names below were confirmed against a real run's output (not
+    guessed): each dataset item has `text` (the caption) and
+    `slideshowImageLinks`, a list of {"tiktokLink", "downloadLink"} objects.
+    We use `downloadLink` — it's hosted on Apify's own storage and doesn't
+    expire, unlike the raw signed `tiktokLink` CDN URL.
     """
-    result = subprocess.run(
-        ["yt-dlp", "--dump-json", "--no-download",
-         "--no-playlist", "--quiet", url],
-        capture_output=True, text=True, timeout=30,
-    )
-    if result.returncode != 0:
+    if not APIFY_API_TOKEN:
         raise RuntimeError(
-            f"Could not fetch slideshow metadata: {result.stderr.strip()}"
+            "APIFY_API_TOKEN is not set — add it in Railway → Variables."
         )
 
-    data = json.loads(result.stdout)
+    endpoint = f"https://api.apify.com/v2/acts/{APIFY_TIKTOK_ACTOR}/run-sync-get-dataset-items"
+    payload = {
+        "postURLs": [url],
+        "shouldDownloadSlideshowImages": True,
+        "shouldDownloadVideos": False,
+        "shouldDownloadCovers": False,
+        "shouldDownloadSubtitles": False,
+        "shouldDownloadAvatars": False,
+        "shouldDownloadMusicCovers": False,
+    }
 
-    image_urls: list[str] = []
+    try:
+        resp = requests.post(
+            endpoint, params={"token": APIFY_API_TOKEN}, json=payload, timeout=90,
+        )
+        resp.raise_for_status()
+        items = resp.json()
+    except requests.RequestException as e:
+        raise RuntimeError(f"Apify request failed: {e}")
 
-    image_post = data.get("image_post_info") or {}
-    for img in image_post.get("images", []):
-        url_list = (img.get("display_image") or {}).get("url_list") or []
-        if url_list:
-            image_urls.append(url_list[0])
+    if not items:
+        raise RuntimeError(
+            "Apify returned no data for this post — make sure the URL is public."
+        )
 
-    if not image_urls:
-        seen = set()
-        for thumb in data.get("thumbnails", []):
-            thumb_url = thumb.get("url")
-            if thumb_url and thumb_url not in seen:
-                seen.add(thumb_url)
-                image_urls.append(thumb_url)
+    post = items[0]
+    slideshow_links = post.get("slideshowImageLinks") or []
+    image_urls = [
+        link.get("downloadLink") or link.get("tiktokLink")
+        for link in slideshow_links
+        if link.get("downloadLink") or link.get("tiktokLink")
+    ]
 
     if not image_urls:
         raise RuntimeError(
-            "No slideshow images were found in this TikTok post's metadata."
+            "No slideshow images returned. Either this post isn't a slideshow, "
+            "or Apify's output field name has changed — check the Actor's API "
+            "tab on apify.com for the current field name."
         )
 
+    caption = post.get("text", "")
+    return {
+        "title": caption,
+        "description": caption,
+        "webpage_url": post.get("webVideoUrl", url),
+        "image_urls": image_urls,
+    }
+
+
+def download_slideshow_images(image_urls: list[str], output_dir: str) -> list[str]:
+    """
+    Downloads slide images whose URLs were already fetched by
+    fetch_slideshow_post(). Kept separate so the Apify call only happens
+    once even though we need the images after the troll filter check.
+
+    Apify's key-value-store download links are normally public, but if a
+    request comes back 401/403 we retry once with the API token attached
+    (?token=...) in case the store needs auth.
+    """
     headers = {"User-Agent": "Mozilla/5.0 (compatible; GetWayBot/1.0)"}
     image_paths: list[str] = []
 
     for i, img_url in enumerate(image_urls):
         try:
             resp = requests.get(img_url, headers=headers, timeout=20)
+            if resp.status_code in (401, 403) and APIFY_API_TOKEN:
+                resp = requests.get(
+                    img_url, headers=headers, timeout=20,
+                    params={"token": APIFY_API_TOKEN},
+                )
             resp.raise_for_status()
         except requests.RequestException as e:
             print(f"[Slideshow] Skipping image {i} — download failed: {e}")
@@ -167,9 +216,7 @@ def download_slideshow_images(url: str, output_dir: str) -> list[str]:
         image_paths.append(out_path)
 
     if not image_paths:
-        raise RuntimeError(
-            "Slideshow images were found but none could be downloaded."
-        )
+        raise RuntimeError("Slideshow images were found but none could be downloaded.")
 
     return image_paths
 

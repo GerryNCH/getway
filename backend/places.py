@@ -85,12 +85,17 @@ def _get_destination_gallery_unsplash(destination: str, count: int = 5) -> list[
     # with the full compound string returns few or no results, which starved
     # the gallery down to 0-1 photos and hid the thumbnail strip entirely.
     city = re.split(r"\s*(?:,|&|\band\b)\s*", destination, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+    # Keep these conceptually distinct from each other — "aerial view" and
+    # "skyline" both return the same kind of tall-buildings-from-above shot
+    # for a city like Dubai, so the gallery ended up with near-duplicate
+    # photos (different URLs, same look). Each query below targets a
+    # different kind of shot on purpose.
     queries = [
         f"{city} landmark",
-        f"{city} aerial view",
         f"{city} old town",
-        f"{city} skyline",
         f"{city} street",
+        f"{city} waterfront",
+        f"{city} night skyline",
     ]
 
     photo_urls: list[str] = []

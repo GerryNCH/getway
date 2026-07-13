@@ -11,6 +11,12 @@ class Stop(BaseModel):
     description: str
     tip: str = ""
     photo_url: str = "" # Google Places photo or empty string
+    is_specific_name: bool = True  # False = AI couldn't confirm a real named
+                                    # property/place — `name` is a generic
+                                    # description, not a specific match.
+                                    # Defaults True so cached itineraries
+                                    # generated before this field existed
+                                    # keep their old (assumed-specific) behavior.
 
 
 class DayPlan(BaseModel):

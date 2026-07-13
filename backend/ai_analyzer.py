@@ -43,12 +43,22 @@ Schema:
           "name": "Exact location name as a tourist would search it",
           "category": "hotel|sight|food|activity|beach|village",
           "description": "One sentence — what makes it special",
-          "tip": "Practical tip from the creator, max 12 words (empty string if none)"
+          "tip": "Practical tip from the creator, max 12 words (empty string if none)",
+          "is_specific_name": true
         }
       ]
     }
   ]
 }
+
+"is_specific_name" must be:
+  true  — "name" is a real, searchable property/place name (e.g. "Hotel
+          Arts Barcelona", "Ars Magna Hotel", "Café 67")
+  false — you could NOT confirm a specific name, so "name" is a generic
+          description you wrote yourself (e.g. "Resort hotel, Hurghada",
+          "Cliffside restaurant with blue umbrellas, Positano")
+This flag is used to decide whether to show a direct booking link or a
+"search this area" fallback — get it right rather than defaulting to true.
 
 Category guide:
   hotel    → accommodation, guesthouse, resort, Airbnb
@@ -61,9 +71,22 @@ Category guide:
   activity → water sport, hike, tour, boat trip, zip-line
   beach    → beach with no primary food/bar focus
 
+Before giving up on a hotel/restaurant name, check every available clue:
+  - Signage, awnings, matchbooks, receipts, chalkboards, menus, coasters
+  - Staff uniform badges/logos, keycards, room-key fobs, welcome folders
+  - Branded towels, robes, slippers, toiletries, minibar items
+  - Pool furniture branding, umbrella logos, branded floats
+  - Location tags or captions burned into the video itself
+  - On-screen text overlays the creator added (hotel/restaurant names are
+    often typed as captions even when not visible in the shot)
+Only fall back to a generic description ("is_specific_name": false) after
+genuinely checking for these — don't default to giving up early.
+
 Rules:
 - Extract EVERY named location — do not summarise or skip stops
-- If a place has no visible name, describe it precisely: "Cliffside restaurant with blue umbrellas, Positano"
+- If a place has no visible name after checking the clues above, describe it
+  precisely and set "is_specific_name": false — e.g. "Cliffside restaurant
+  with blue umbrellas, Positano"
 - Group logically by day; if days unclear, distribute across Day 1
 - If you see fewer than 3 identifiable locations, mention it in Day 1 label
 - NEVER invent places you cannot see or read in the frames

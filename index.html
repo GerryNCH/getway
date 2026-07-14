@@ -494,6 +494,11 @@
     </div>
   </div>
 
+  <!-- Always-shown hotel booking banner — independent of whether the AI
+       found a "hotel" stop in the video itself, so every route earns a
+       shot at affiliate commission. -->
+  <div id="ai-route-hotels-banner" class="px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-8 md:mb-10"></div>
+
   <!-- Days + stops rendered here -->
   <div id="ai-route-days" class="px-5 md:px-14 lg:px-24 pb-16 md:pb-24 max-w-4xl mx-auto"></div>
 
@@ -666,6 +671,34 @@
     if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
     if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
     return String(n);
+  }
+
+  // ── Always-shown hotels banner (guaranteed affiliate opportunity) ───────
+  // Shows a "Hotels in {destination}" card at the top of every AI-generated
+  // route, regardless of whether the source video actually featured a
+  // hotel — so every route has a shot at Booking.com commission, not just
+  // the ones where the AI found a specific named hotel stop.
+  function renderHotelsBanner(destination) {
+    const container = document.getElementById('ai-route-hotels-banner');
+    if (!container) return;
+    const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim() || destination || '';
+    const bookingHref = bookingAffiliateSearchUrl(city);
+    const expediaHref = `https://www.expedia.com/Hotel-Search?destination=${encodeURIComponent(city)}`;
+    container.innerHTML = `
+      <div class="bento-card bg-white rounded-2xl p-4 md:p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+        <div class="w-10 h-10 rounded-xl bg-[#F1EEFF] flex items-center justify-center flex-shrink-0">
+          <i data-lucide="bed" class="w-5 h-5 text-[#6D28D9]"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-medium">Hotels in ${escapeHtml(city)}</div>
+          <div class="text-xs text-gray-500">Compare stays for this trip, even ones not in the video</div>
+        </div>
+        <div class="flex gap-2 flex-shrink-0">
+          <a href="${bookingHref}" target="_blank" rel="noopener sponsored" class="btn-interactive h-[38px] px-4 flex items-center justify-center bg-[#8B5CF6] text-white text-xs font-medium rounded-xl whitespace-nowrap">via Booking.com</a>
+          <a href="${expediaHref}" target="_blank" rel="noopener sponsored" class="btn-outline-interactive h-[38px] px-4 flex items-center justify-center bg-gray-50 text-xs font-medium text-gray-700 rounded-xl whitespace-nowrap">via Expedia</a>
+        </div>
+      </div>`;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
   }
 
   function renderAiRouteComments(comments) {
@@ -1424,6 +1457,7 @@
 
     // Store for sharing
     window._aiRouteVideoId = videoId;
+    renderHotelsBanner(itinerary.destination);
     renderAiRouteComments(itinerary.comments);
     initReviewsSection('ai-route', videoId);
 

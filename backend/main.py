@@ -262,21 +262,26 @@ def health():
 # ── Static demo route photos ──────────────────────────────────────────────
 
 _MALLORCA_PHOTO_QUERIES = {
-    "hero": "Mallorca Spain coastline aerial",
-    "gallery1": "Palma de Mallorca old town",
-    "gallery2": "Mallorca beach turquoise water",
-    "gallery3": "Mallorca Tramuntana mountains",
-    "gallery4": "Mallorca sunset",
-    "palma_cathedral": "Palma Cathedral Mallorca",
-    "restaurant_illeta": "Mallorca seaside restaurant terrace",
-    "valldemossa": "Valldemossa Mallorca village",
-    "beach_calo_del_moro": "Cala del Moro Mallorca",
-    "beach_salmunia": "S'Almunia Mallorca beach",
-    "beach_cala_llombards": "Cala Llombards Mallorca",
-    "beach_platja_santanyi": "Platja de Santanyi Mallorca",
-    "deia": "Deia Mallorca village",
-    "hotel": "boutique hotel Mallorca",
-    "hotel2": "beachfront resort Mallorca",
+    # Specific, vivid imagery terms rather than generic ones — this is a
+    # fixed demo for one destination, so unlike the general AI pipeline
+    # there's no need for queries that generalize across every city/island.
+    # These target the shots Mallorca is actually known for: turquoise
+    # coves, the cathedral's lake reflection, colorful old town streets.
+    "hero": "Mallorca turquoise coast aerial",
+    "gallery1": "Palma Cathedral reflection lake",
+    "gallery2": "Mallorca turquoise cove beach",
+    "gallery3": "Mallorca old town colorful street",
+    "gallery4": "Mallorca coastal cliffs sunset",
+    "palma_cathedral": "Palma Cathedral La Seu Mallorca",
+    "restaurant_illeta": "Mallorca seaside restaurant turquoise water",
+    "valldemossa": "Valldemossa Mallorca stone village",
+    "beach_calo_del_moro": "Cala del Moro Mallorca turquoise",
+    "beach_salmunia": "S'Almunia Mallorca beach turquoise",
+    "beach_cala_llombards": "Cala Llombards Mallorca turquoise",
+    "beach_platja_santanyi": "Platja de Santanyi Mallorca turquoise",
+    "deia": "Deia Mallorca village mountains",
+    "hotel": "luxury boutique hotel pool Mallorca",
+    "hotel2": "beachfront resort infinity pool Mallorca",
 }
 
 
@@ -293,7 +298,7 @@ def get_mallorca_demo_photos():
     result = {}
     for key, query in _MALLORCA_PHOTO_QUERIES.items():
         candidates = sorted(
-            _unsplash_candidates(query, per_page=4),
+            _unsplash_candidates(query, per_page=10),
             key=lambda r: r.get("likes", 0), reverse=True,
         )
         result[key] = candidates[0].get("urls", {}).get("regular", "") if candidates else ""

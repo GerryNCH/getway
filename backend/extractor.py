@@ -221,6 +221,73 @@ def download_slideshow_images(image_urls: list[str], output_dir: str) -> list[st
     return image_paths
 
 
+# ── Real TikTok comments (Apify) ──────────────────────────────────────────────
+#
+# Uses the "TikTok Comments Scraper" actor (clockworks/tiktok-comments-scraper)
+# — same vendor as the slideshow scraper above. Both the input parameter
+# names and the output field names below were confirmed against a real run
+# (Apify Console → Runs → Output → JSON), not guessed:
+#
+#   Input (apify.com/clockworks/tiktok-comments-scraper/input-schema):
+#     postURLs, commentsPerPost, topLevelCommentsPerPost, maxRepliesPerComment
+#
+#   Output (one dataset item per comment):
+#     text, diggCount, replyCommentTotal, createTimeISO, uniqueId, avatarThumbnail
+#
+# Comments are a nice-to-have, not core to the itinerary — callers should
+# treat failures here as non-fatal and just skip the comments section
+# rather than blocking route generation.
+
+APIFY_COMMENTS_ACTOR = "clockworks~tiktok-comments-scraper"
+
+
+def fetch_top_comments(url: str, max_comments: int = 15) -> list[dict]:
+    """
+    Fetches up to `max_comments` top-level comments for a TikTok post,
+    sorted by like count (most-liked first). Returns a list of dicts with
+    keys: text, username, likes, reply_count, avatar_url, created_at.
+    """
+    if not APIFY_API_TOKEN:
+        raise RuntimeError(
+            "APIFY_API_TOKEN is not set — add it in Railway → Variables."
+        )
+
+    endpoint = f"https://api.apify.com/v2/acts/{APIFY_COMMENTS_ACTOR}/run-sync-get-dataset-items"
+    payload = {
+        "postURLs": [url],
+        "commentsPerPost": max_comments,
+        "topLevelCommentsPerPost": max_comments,
+        "maxRepliesPerComment": 0,  # replies aren't shown in the UI — skip them to save cost
+    }
+
+    try:
+        resp = requests.post(
+            endpoint, params={"token": APIFY_API_TOKEN}, json=payload, timeout=60,
+        )
+        resp.raise_for_status()
+        items = resp.json()
+    except requests.RequestException as e:
+        raise RuntimeError(f"Apify comments request failed: {e}")
+
+    comments = []
+    for item in items:
+        text = (item.get("text") or "").strip()
+        if not text:
+            continue
+        comments.append({
+            "text": text,
+            "username": item.get("uniqueId", ""),
+            "likes": item.get("diggCount", 0) or 0,
+            "reply_count": item.get("replyCommentTotal", 0) or 0,
+            "avatar_url": item.get("avatarThumbnail", ""),
+            "created_at": item.get("createTimeISO", ""),
+        })
+
+    # Most-liked first — surfaces the comments people actually cared about.
+    comments.sort(key=lambda c: c["likes"], reverse=True)
+    return comments[:max_comments]
+
+
 # ── Frame extraction — OpenCV only, zero system deps ─────────────────────────
 
 def extract_frames(video_path: str, output_dir: str, n_frames: int = 8) -> list[str]:

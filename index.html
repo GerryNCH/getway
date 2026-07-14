@@ -235,7 +235,7 @@
 
     <div data-category="hotel" data-aos="fade-up" class="mb-7 md:mb-10 md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
       <div class="md:w-2/5 md:flex-shrink-0">
-        <div class="relative h-[140px] md:h-56 mb-3 md:mb-0 rounded-2xl overflow-hidden media-placeholder" style="background: linear-gradient(135deg, #8B5CF6, #6D28D9);">
+        <div id="mallorca-hotel1-photo" class="relative h-[140px] md:h-56 mb-3 md:mb-0 rounded-2xl overflow-hidden media-placeholder" style="background: linear-gradient(135deg, #8B5CF6, #6D28D9);">
           <i data-lucide="bed" class="w-8 h-8 text-white/80"></i>
         </div>
       </div>
@@ -284,7 +284,7 @@
 
     <div data-category="hotel" data-aos="fade-up" class="mb-6 md:mb-8 md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
       <div class="md:w-2/5 md:flex-shrink-0">
-        <div class="relative h-[140px] md:h-56 mb-3 md:mb-0 rounded-2xl overflow-hidden media-placeholder" style="background: linear-gradient(135deg, #0E7490, #155E75);">
+        <div id="mallorca-hotel2-photo" class="relative h-[140px] md:h-56 mb-3 md:mb-0 rounded-2xl overflow-hidden media-placeholder" style="background: linear-gradient(135deg, #0E7490, #155E75);">
           <i data-lucide="bed" class="w-8 h-8 text-white/80"></i>
         </div>
       </div>
@@ -677,25 +677,41 @@
   // Shows a "Hotels in {destination}" card at the top of every AI-generated
   // route, regardless of whether the source video actually featured a
   // hotel — so every route has a shot at Booking.com commission, not just
-  // the ones where the AI found a specific named hotel stop.
-  function renderHotelsBanner(destination) {
+  // the ones where the AI found a specific named hotel stop. Styled to
+  // match the real hotel stop cards (photo, label, dropdown booking button)
+  // rather than a plain bar, and reuses one of the already-fetched
+  // destination gallery photos so it doesn't need its own API call.
+  function renderHotelsBanner(destination, galleryPhotos) {
     const container = document.getElementById('ai-route-hotels-banner');
     if (!container) return;
     const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim() || destination || '';
     const bookingHref = bookingAffiliateSearchUrl(city);
     const expediaHref = `https://www.expedia.com/Hotel-Search?destination=${encodeURIComponent(city)}`;
+    const photo = (galleryPhotos && galleryPhotos.length) ? galleryPhotos[galleryPhotos.length - 1] : '';
+    const seed = 'hotels-banner-' + city.replace(/\s+/g, '-').toLowerCase();
+
     container.innerHTML = `
-      <div class="bento-card bg-white rounded-2xl p-4 md:p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
-        <div class="w-10 h-10 rounded-xl bg-[#F1EEFF] flex items-center justify-center flex-shrink-0">
-          <i data-lucide="bed" class="w-5 h-5 text-[#6D28D9]"></i>
+      <div class="ai-stop-card md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
+        <div class="md:w-2/5 md:flex-shrink-0">
+          <div class="relative h-[140px] md:h-52 mb-3 md:mb-0 rounded-2xl overflow-hidden ${photo ? '' : 'media-placeholder'}" style="${photo ? `background-image:url('${photo}');background-size:cover;background-position:center;` : `background:${gradientFor(seed)}`}">
+            ${photo ? '' : '<i data-lucide="bed" class="w-8 h-8 text-white/80"></i>'}
+          </div>
         </div>
-        <div class="flex-1 min-w-0">
-          <div class="text-sm font-medium">Hotels in ${escapeHtml(city)}</div>
-          <div class="text-xs text-gray-500">Compare stays for this trip, even ones not in the video</div>
-        </div>
-        <div class="flex gap-2 flex-shrink-0">
-          <a href="${bookingHref}" target="_blank" rel="noopener sponsored" class="btn-interactive h-[38px] px-4 flex items-center justify-center bg-[#8B5CF6] text-white text-xs font-medium rounded-xl whitespace-nowrap">via Booking.com</a>
-          <a href="${expediaHref}" target="_blank" rel="noopener sponsored" class="btn-outline-interactive h-[38px] px-4 flex items-center justify-center bg-gray-50 text-xs font-medium text-gray-700 rounded-xl whitespace-nowrap">via Expedia</a>
+        <div class="md:w-3/5 md:pt-2">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-[11px] font-medium text-[#7C3AED] uppercase tracking-wide">Hotels</span>
+          </div>
+          <div class="text-sm font-medium mb-1">Hotels in ${escapeHtml(city)}</div>
+          <div class="text-xs text-gray-500 mb-3">Compare stays for this trip, even ones not featured in the video</div>
+          <div class="relative mb-2.5">
+            <button onclick="toggleAiHotelDropdown('${seed}')" class="btn-interactive w-full h-[44px] flex items-center justify-center gap-1.5 bg-[#8B5CF6] text-white text-xs font-medium rounded-xl">
+              Browse hotels <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform"></i>
+            </button>
+            <div id="aihotel-${seed}" class="hidden bg-white rounded-xl mt-1.5 overflow-hidden bento-card">
+              <a href="${bookingHref}" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 border-b border-gray-100 text-xs"><span>via Booking.com</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
+              <a href="${expediaHref}" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 text-xs"><span>via Expedia</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
+            </div>
+          </div>
         </div>
       </div>`;
     if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -1457,7 +1473,7 @@
 
     // Store for sharing
     window._aiRouteVideoId = videoId;
-    renderHotelsBanner(itinerary.destination);
+    renderHotelsBanner(itinerary.destination, itinerary.gallery_photo_urls);
     renderAiRouteComments(itinerary.comments);
     initReviewsSection('ai-route', videoId);
 
@@ -1618,6 +1634,59 @@
     }
   }
 
+  // ── Real photos for the static Mallorca demo (replaces Picsum placeholders) ──
+  // Fetched server-side (keeps the Unsplash key off the client) and swapped
+  // in after the initial render, so the page never blocks on this — cards
+  // show their gradient/icon placeholder until the real photos arrive.
+  async function loadMallorcaRealPhotos() {
+    try {
+      const res = await fetch(`${BACKEND_URL}/demo/mallorca-photos`);
+      if (!res.ok) throw new Error('Failed to load demo photos');
+      const p = await res.json();
+
+      // gallery[0] is the video placeholder; gallery[1..4] are the 4 photo
+      // slots, and gallery[1] doubles as the default hero (see
+      // renderMallorcaHero, which shows the first photo-type entry).
+      if (p.hero) MEDIA.mallorca.gallery[1].url = p.hero;
+      if (p.gallery1) MEDIA.mallorca.gallery[2].url = p.gallery1;
+      if (p.gallery2) MEDIA.mallorca.gallery[3].url = p.gallery2;
+      if (p.gallery3) MEDIA.mallorca.gallery[4].url = p.gallery3;
+
+      if (p.palma_cathedral) DAY1_STOPS[0].photo = p.palma_cathedral;
+      if (p.restaurant_illeta) DAY1_STOPS[1].photo = p.restaurant_illeta;
+      if (p.valldemossa) DAY2_STOPS[0].photo = p.valldemossa;
+      if (p.deia) DAY5_STOPS[1].photo = p.deia;
+
+      const beachPhotoKeys = ['beach_calo_del_moro', 'beach_salmunia', 'beach_cala_llombards', 'beach_platja_santanyi'];
+      BEACH_STOPS.forEach((stop, i) => {
+        const key = beachPhotoKeys[i];
+        if (key && p[key]) stop.photo = p[key];
+      });
+
+      // The two demo hotel cards use static placeholder divs (not a JS
+      // array), so swap their backgrounds directly.
+      const hotel1El = document.getElementById('mallorca-hotel1-photo');
+      if (hotel1El && p.hotel) {
+        hotel1El.style.background = `url('${p.hotel}') center/cover`;
+        hotel1El.classList.remove('media-placeholder');
+        hotel1El.innerHTML = '';
+      }
+      const hotel2El = document.getElementById('mallorca-hotel2-photo');
+      if (hotel2El && p.hotel2) {
+        hotel2El.style.background = `url('${p.hotel2}') center/cover`;
+        hotel2El.classList.remove('media-placeholder');
+        hotel2El.innerHTML = '';
+      }
+
+      // Re-render with the now-populated photo URLs
+      renderMallorcaHero();
+      renderAllStops();
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    } catch (e) {
+      console.error('loadMallorcaRealPhotos failed (non-fatal, keeping placeholders):', e);
+    }
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     safeRun('renderHeroMedia', renderHeroMedia);
     safeRun('renderRoutes', renderRoutes);
@@ -1633,6 +1702,7 @@
       if (typeof AOS !== 'undefined') { AOS.init({ duration: 800, once: true }); }
     });
     safeRun('handleSharedRouteParam', handleSharedRouteParam);
+    loadMallorcaRealPhotos();
   });
 
   // Last-resort diagnostic: log the real error instead of letting it

@@ -336,69 +336,8 @@
 
   </div>
 
-  <!-- ================== TikTok Comments (mock data) ================== -->
-  <div class="px-5 md:px-14 lg:px-24 pb-16 md:pb-24 max-w-4xl mx-auto">
-    <div data-aos="fade-up" class="font-serif-display text-2xl md:text-3xl mb-2">What people say on TikTok</div>
-    <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 mb-8">Real reactions from viewers of the original itinerary video</div>
-
-    <div class="space-y-3" id="tiktok-comments"></div>
-  </div>
-
-  <!-- ================== Community Reviews (mock data) ================== -->
-  <div class="px-5 md:px-14 lg:px-24 pb-16 md:pb-24 max-w-6xl mx-auto">
-    <div data-aos="fade-up" class="font-serif-display text-2xl md:text-3xl mb-2">Community Reviews</div>
-    <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 mb-8">What travelers say about booking this route through GetWay</div>
-
-    <!-- Rating summary -->
-    <div data-aos="fade-up" class="bento-card bg-white rounded-[26px] p-7 flex flex-col items-center justify-center text-center max-w-xs mx-auto mb-8 md:mb-10">
-      <div class="text-5xl font-bold font-serif-display mb-2">4.9</div>
-      <div class="text-xs text-gray-400 mb-3">out of 5</div>
-      <div class="flex gap-1 mb-3">
-        <i data-lucide="star" class="w-4 h-4 text-amber-500 fill-amber-500"></i><i data-lucide="star" class="w-4 h-4 text-amber-500 fill-amber-500"></i><i data-lucide="star" class="w-4 h-4 text-amber-500 fill-amber-500"></i><i data-lucide="star" class="w-4 h-4 text-amber-500 fill-amber-500"></i><i data-lucide="star" class="w-4 h-4 text-amber-500 fill-amber-500"></i>
-      </div>
-      <div class="text-xs text-gray-500">Based on 312 reviews</div>
-    </div>
-
-    <!-- Leave a Review form -->
-    <div data-aos="fade-up" class="bento-card bg-white rounded-[28px] p-6 md:p-10 max-w-2xl mx-auto mb-10 md:mb-14">
-      <div class="text-center mb-7">
-        <div class="font-serif-display text-xl md:text-2xl mb-1.5">Leave a Review</div>
-        <div class="text-xs md:text-sm text-gray-500">Tell other travelers how your GetWay booking went</div>
-      </div>
-
-      <form id="review-form" onsubmit="submitReview(event)">
-        <div id="review-form-fields">
-          <div class="grid sm:grid-cols-2 gap-3.5 mb-3.5">
-            <input id="review-name" type="text" required placeholder="Your name" class="h-[46px] px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none placeholder:text-gray-400 focus:border-[#8B5CF6]">
-            <input id="review-title" type="text" required placeholder="Review title" class="h-[46px] px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none placeholder:text-gray-400 focus:border-[#8B5CF6]">
-          </div>
-
-          <div class="mb-3.5">
-            <div class="text-xs text-gray-500 mb-2">Your rating</div>
-            <div id="star-rating" class="flex gap-1.5"></div>
-            <input type="hidden" id="review-rating" value="0">
-          </div>
-
-          <textarea id="review-text" required rows="4" placeholder="Share your experience with this route..." class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none placeholder:text-gray-400 focus:border-[#8B5CF6] resize-none mb-5"></textarea>
-
-          <button type="submit" class="btn-interactive w-full sm:w-auto sm:mx-auto flex items-center justify-center gap-2 h-[48px] px-10 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl transition-transform hover:scale-[1.03] active:scale-[0.97]">
-            <span>Submit Review</span> <i data-lucide="send" class="w-4 h-4"></i>
-          </button>
-        </div>
-
-        <div id="review-form-success" class="hidden text-center py-6">
-          <div class="w-14 h-14 bg-[#E1F5EE] rounded-full flex items-center justify-center mx-auto mb-4"><i data-lucide="check" class="w-6 h-6 text-[#085041]"></i></div>
-          <div class="text-sm font-medium mb-1">Thanks for your review!</div>
-          <div class="text-xs text-gray-500">This is a UI preview — submissions aren't saved yet.</div>
-        </div>
-      </form>
-    </div>
-
-    <!-- Existing reviews -->
-    <div class="grid md:grid-cols-3 gap-6 md:gap-8">
-      <div id="reviews-grid" class="contents"></div>
-    </div>
-  </div>
+  <!-- ================== Community Reviews (real — backend-driven) ================== -->
+  <div id="mallorca-reviews-section"></div>
 
   <footer class="bg-[#15171A] text-white mt-4">
     <div class="max-w-6xl mx-auto px-6 md:px-14 py-14 md:py-16 grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-8">
@@ -567,6 +506,12 @@
   <!-- Days + stops rendered here -->
   <div id="ai-route-days" class="px-5 md:px-14 lg:px-24 pb-16 md:pb-24 max-w-4xl mx-auto"></div>
 
+  <!-- ================== TikTok Comments (real — fetched via Apify) ================== -->
+  <div id="ai-route-comments-section"></div>
+
+  <!-- ================== Community Reviews (real — backend-driven) ================== -->
+  <div id="ai-route-reviews-section"></div>
+
   <footer class="bg-[#15171A] text-white mt-4">
     <div class="max-w-6xl mx-auto px-6 md:px-14 py-10 flex flex-col md:flex-row items-center justify-between gap-4">
       <div class="font-serif-display text-xl">GetWay<span class="text-[#C4B5FD]">.</span></div>
@@ -720,21 +665,47 @@
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
 
-  // Mock TikTok comments — static placeholder data for this UI preview.
-  // In production this gets replaced by a real API call.
-  const TIKTOK_COMMENTS = [
-    { handle: "@travel_with_me", verified: true, text: "Omg stayed at Ars Magna because of this video, absolute 10/10 recommendation! 🔥", time: "2d ago", likes: 234, color: "#8B5CF6" },
-    { handle: "@beachlover_99", verified: false, text: "The boat transfer to Restaurant Illeta is non-negotiable, thanks for the tip!", time: "5d ago", likes: 89, color: "#0E7490" },
-    { handle: "@wanderlust_kate", verified: true, text: "Booked everything through GetWay in literally 2 minutes, this is insane 😭", time: "1d ago", likes: 412, color: "#C2603C" },
-    { handle: "@palma_local", verified: false, text: "As someone from Mallorca, this route is actually so accurate, well done!", time: "1w ago", likes: 67, color: "#4D6B2E" }
-  ];
+  // Fixed video_id used to key reviews for the static Mallorca demo route
+  // (it has no real TikTok video behind it, so there's no natural video_id).
+  const MALLORCA_DEMO_VIDEO_ID = 'mallorca-demo-route';
 
-  // Mock community reviews — static placeholder data for this UI preview.
-  const REVIEWS = [
-    { title: "Booked in minutes!", text: "I pasted the TikTok link and had a full itinerary with hotels ready before my coffee got cold.", name: "Sarah M." },
-    { title: "Felt like a local", text: "The driving times and tips made the whole trip so much smoother than planning it myself.", name: "James T." },
-    { title: "Worth every star", text: "Booking the hotel directly from the route page saved me so much time before the trip.", name: "Elena R." }
-  ];
+  // ── Real TikTok comments (from itinerary.comments, fetched via Apify) ───
+  function formatCount(n) {
+    n = Number(n) || 0;
+    if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+    return String(n);
+  }
+
+  function renderAiRouteComments(comments) {
+    const container = document.getElementById('ai-route-comments-section');
+    if (!container) return;
+    if (!comments || comments.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+    container.innerHTML = `
+      <div class="px-5 md:px-14 lg:px-24 pb-16 md:pb-24 max-w-4xl mx-auto">
+        <div data-aos="fade-up" class="font-serif-display text-2xl md:text-3xl mb-2">What people say on TikTok</div>
+        <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 mb-8">Real comments from the original itinerary video</div>
+        <div class="space-y-3">
+          ${comments.map((c, i) => `
+            <div data-aos="fade-up" data-aos-delay="${i * 60}" class="bento-card bg-white rounded-[20px] p-4 md:p-5 flex items-start gap-3">
+              <div class="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-white text-sm font-semibold" style="background:${gradientFor(c.username || 'tiktok')}">${escapeHtml((c.username || '?').charAt(0).toUpperCase())}</div>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-medium mb-1">@${escapeHtml(c.username || 'tiktok_user')}</div>
+                <div class="text-sm text-gray-700 leading-relaxed">${escapeHtml(c.text)}</div>
+              </div>
+              <div class="flex flex-col items-center gap-1 flex-shrink-0 pt-1">
+                <i data-lucide="heart" class="w-4 h-4 text-gray-400"></i>
+                <span class="text-[10px] text-gray-400">${formatCount(c.likes)}</span>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>`;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
 
   function showScreen(name) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -936,37 +907,212 @@
     document.getElementById('day5-stops').innerHTML = DAY5_STOPS.map(renderStopCard).join('');
   }
 
-  function renderTikTokComments() {
-    document.getElementById('tiktok-comments').innerHTML = TIKTOK_COMMENTS.map((c, i) => `
-      <div data-aos="fade-up" data-aos-delay="${i * 60}" class="bento-card bg-white rounded-[20px] p-4 md:p-5 flex items-start gap-3">
-        <div class="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-white text-sm font-semibold" style="background:${c.color}">${c.handle.charAt(1).toUpperCase()}</div>
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-1.5 mb-1">
-            <span class="text-sm font-medium">${c.handle}</span>
-            ${c.verified ? '<i data-lucide="badge-check" class="w-3.5 h-3.5 text-[#3B82F6]"></i>' : ''}
-            <span class="text-[11px] text-gray-400">· ${c.time}</span>
-          </div>
-          <div class="text-sm text-gray-700 leading-relaxed">${c.text}</div>
-        </div>
-        <div class="flex flex-col items-center gap-1 flex-shrink-0 pt-1">
-          <i data-lucide="heart" class="w-4 h-4 text-gray-400"></i>
-          <span class="text-[10px] text-gray-400">${c.likes}</span>
-        </div>
-      </div>
-    `).join('');
+  // ── Real reviews (backend-driven) ────────────────────────────────────────
+  // Used for both the Mallorca demo route and every AI-generated route.
+  // `prefix` namespaces DOM ids (e.g. "mallorca" / "ai-route") since both
+  // screens can be in the DOM at once; `videoId` is the backend review key.
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str == null ? '' : String(str);
+    return div.innerHTML;
   }
 
-  function renderReviews() {
-    document.getElementById('reviews-grid').innerHTML = REVIEWS.map((r, i) => `
+  function reviewSectionHTML(prefix) {
+    return `
+    <div class="px-5 md:px-14 lg:px-24 pb-16 md:pb-24 max-w-6xl mx-auto">
+      <div data-aos="fade-up" class="font-serif-display text-2xl md:text-3xl mb-2">Community Reviews</div>
+      <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 mb-8">What travelers say about booking this route through GetWay</div>
+
+      <div id="${prefix}-review-summary" class="hidden bento-card bg-white rounded-[26px] p-7 flex-col items-center justify-center text-center max-w-xs mx-auto mb-8 md:mb-10">
+        <div id="${prefix}-review-avg" class="text-5xl font-bold font-serif-display mb-2">0</div>
+        <div class="text-xs text-gray-400 mb-3">out of 5</div>
+        <div id="${prefix}-review-avg-stars" class="flex gap-1 mb-3"></div>
+        <div id="${prefix}-review-count" class="text-xs text-gray-500">Based on 0 reviews</div>
+      </div>
+
+      <div data-aos="fade-up" class="bento-card bg-white rounded-[28px] p-6 md:p-10 max-w-2xl mx-auto mb-10 md:mb-14">
+        <div class="text-center mb-7">
+          <div class="font-serif-display text-xl md:text-2xl mb-1.5">Leave a Review</div>
+          <div class="text-xs md:text-sm text-gray-500">Tell other travelers how your GetWay booking went</div>
+        </div>
+
+        <form id="${prefix}-review-form" onsubmit="submitReview(event, '${prefix}')">
+          <div id="${prefix}-review-form-fields">
+            <div class="grid sm:grid-cols-2 gap-3.5 mb-3.5">
+              <input id="${prefix}-review-name" type="text" required maxlength="100" placeholder="Your name" class="h-[46px] px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none placeholder:text-gray-400 focus:border-[#8B5CF6]">
+              <input id="${prefix}-review-title" type="text" required maxlength="150" placeholder="Review title" class="h-[46px] px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none placeholder:text-gray-400 focus:border-[#8B5CF6]">
+            </div>
+
+            <div class="mb-3.5">
+              <div class="text-xs text-gray-500 mb-2">Your rating</div>
+              <div id="${prefix}-star-rating" class="flex gap-1.5"></div>
+              <input type="hidden" id="${prefix}-review-rating" value="0">
+            </div>
+
+            <textarea id="${prefix}-review-text" required maxlength="2000" rows="4" placeholder="Share your experience with this route..." class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none placeholder:text-gray-400 focus:border-[#8B5CF6] resize-none mb-5"></textarea>
+
+            <button type="submit" class="btn-interactive w-full sm:w-auto sm:mx-auto flex items-center justify-center gap-2 h-[48px] px-10 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl transition-transform hover:scale-[1.03] active:scale-[0.97]">
+              <span>Submit Review</span> <i data-lucide="send" class="w-4 h-4"></i>
+            </button>
+            <div id="${prefix}-review-error" class="hidden text-center text-xs text-red-600 mt-3"></div>
+          </div>
+
+          <div id="${prefix}-review-form-success" class="hidden text-center py-6">
+            <div class="w-14 h-14 bg-[#E1F5EE] rounded-full flex items-center justify-center mx-auto mb-4"><i data-lucide="check" class="w-6 h-6 text-[#085041]"></i></div>
+            <div class="text-sm font-medium mb-1">Thanks for your review!</div>
+            <div class="text-xs text-gray-500">It's live below for other travelers now.</div>
+          </div>
+        </form>
+      </div>
+
+      <div id="${prefix}-reviews-empty" class="hidden text-center text-sm text-gray-400 pb-4">No reviews yet — be the first to share how your trip went.</div>
+      <div class="grid md:grid-cols-3 gap-6 md:gap-8">
+        <div id="${prefix}-reviews-grid" class="contents"></div>
+      </div>
+    </div>`;
+  }
+
+  const selectedRatings = {}; // per-prefix star rating state
+
+  function initReviewsSection(prefix, videoId) {
+    const container = document.getElementById(prefix + '-reviews-section');
+    if (!container) return;
+    selectedRatings[prefix] = 0;
+    container.innerHTML = reviewSectionHTML(prefix);
+    container.dataset.videoId = videoId;
+    renderStarRating(prefix);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    loadAndRenderReviews(prefix, videoId);
+  }
+
+  function renderStarRating(prefix) {
+    const el = document.getElementById(prefix + '-star-rating');
+    if (!el) return;
+    el.innerHTML = [1, 2, 3, 4, 5].map(n => `
+      <button type="button" class="star-btn" data-star="${n}" onmouseenter="previewStars('${prefix}', ${n})" onmouseleave="previewStars('${prefix}', selectedRatings['${prefix}'] || 0)" onclick="selectStars('${prefix}', ${n})">
+        <i data-lucide="star" class="w-7 h-7 text-gray-300 transition-colors"></i>
+      </button>
+    `).join('');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+
+  function previewStars(prefix, rating) {
+    document.querySelectorAll('#' + prefix + '-star-rating .star-btn').forEach(btn => {
+      const n = parseInt(btn.dataset.star, 10);
+      const icon = btn.querySelector('svg');
+      if (!icon) return;
+      if (n <= rating) {
+        icon.classList.add('text-amber-500', 'fill-amber-500');
+        icon.classList.remove('text-gray-300');
+      } else {
+        icon.classList.remove('text-amber-500', 'fill-amber-500');
+        icon.classList.add('text-gray-300');
+      }
+    });
+  }
+
+  function selectStars(prefix, rating) {
+    selectedRatings[prefix] = rating;
+    document.getElementById(prefix + '-review-rating').value = rating;
+    previewStars(prefix, rating);
+  }
+
+  async function submitReview(event, prefix) {
+    event.preventDefault();
+    const container = document.getElementById(prefix + '-reviews-section');
+    const videoId = container ? container.dataset.videoId : '';
+    const errorEl = document.getElementById(prefix + '-review-error');
+    errorEl.classList.add('hidden');
+
+    const rating = selectedRatings[prefix] || 0;
+    if (rating === 0) {
+      errorEl.textContent = 'Please select a star rating before submitting.';
+      errorEl.classList.remove('hidden');
+      return;
+    }
+
+    const payload = {
+      video_id: videoId,
+      name: document.getElementById(prefix + '-review-name').value.trim(),
+      title: document.getElementById(prefix + '-review-title').value.trim(),
+      rating: rating,
+      text: document.getElementById(prefix + '-review-text').value.trim(),
+    };
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/reviews`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Could not submit your review — please try again.');
+      }
+      document.getElementById(prefix + '-review-form-fields').classList.add('hidden');
+      document.getElementById(prefix + '-review-form-success').classList.remove('hidden');
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+      loadAndRenderReviews(prefix, videoId);
+    } catch (e) {
+      errorEl.textContent = e.message || 'Network error — please try again.';
+      errorEl.classList.remove('hidden');
+    }
+  }
+
+  async function loadAndRenderReviews(prefix, videoId) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/reviews/${encodeURIComponent(videoId)}`);
+      if (!res.ok) throw new Error('Failed to load reviews');
+      const data = await res.json();
+      renderReviewsGrid(prefix, data);
+    } catch (e) {
+      console.error('loadAndRenderReviews failed:', e);
+    }
+  }
+
+  function renderReviewsGrid(prefix, data) {
+    const reviews = data.reviews || [];
+    const summaryEl = document.getElementById(prefix + '-review-summary');
+    const emptyEl = document.getElementById(prefix + '-reviews-empty');
+    const gridEl = document.getElementById(prefix + '-reviews-grid');
+    if (!gridEl) return;
+
+    if (reviews.length === 0) {
+      if (summaryEl) { summaryEl.classList.add('hidden'); summaryEl.classList.remove('flex'); }
+      if (emptyEl) emptyEl.classList.remove('hidden');
+      gridEl.innerHTML = '';
+      return;
+    }
+
+    if (emptyEl) emptyEl.classList.add('hidden');
+    if (summaryEl) {
+      summaryEl.classList.remove('hidden');
+      summaryEl.classList.add('flex');
+      document.getElementById(prefix + '-review-avg').textContent = data.average_rating;
+      document.getElementById(prefix + '-review-count').textContent = `Based on ${data.count} review${data.count !== 1 ? 's' : ''}`;
+      const starsEl = document.getElementById(prefix + '-review-avg-stars');
+      if (starsEl) {
+        const fullStars = Math.round(data.average_rating);
+        starsEl.innerHTML = [1, 2, 3, 4, 5].map(n =>
+          `<i data-lucide="star" class="w-4 h-4 ${n <= fullStars ? 'text-amber-500 fill-amber-500' : 'text-gray-300'}"></i>`
+        ).join('');
+      }
+    }
+
+    gridEl.innerHTML = reviews.map((r, i) => `
       <div data-aos="fade-up" data-aos-delay="${i * 80}" class="bento-card bg-white rounded-[26px] p-7">
         <div class="flex gap-1 mb-4">
-          <i data-lucide="star" class="w-4 h-4 text-amber-500 fill-amber-500"></i><i data-lucide="star" class="w-4 h-4 text-amber-500 fill-amber-500"></i><i data-lucide="star" class="w-4 h-4 text-amber-500 fill-amber-500"></i><i data-lucide="star" class="w-4 h-4 text-amber-500 fill-amber-500"></i><i data-lucide="star" class="w-4 h-4 text-amber-500 fill-amber-500"></i>
+          ${[1, 2, 3, 4, 5].map(n => `<i data-lucide="star" class="w-4 h-4 ${n <= r.rating ? 'text-amber-500 fill-amber-500' : 'text-gray-300'}"></i>`).join('')}
         </div>
-        <div class="text-sm font-semibold mb-2">${r.title}</div>
-        <div class="text-xs text-gray-600 leading-relaxed mb-5">${r.text}</div>
-        <div class="text-xs font-medium text-gray-400">${r.name}</div>
+        <div class="text-sm font-semibold mb-2">${escapeHtml(r.title)}</div>
+        <div class="text-xs text-gray-600 leading-relaxed mb-5">${escapeHtml(r.text)}</div>
+        <div class="text-xs font-medium text-gray-400">${escapeHtml(r.name)}</div>
       </div>
     `).join('');
+
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    if (typeof AOS !== 'undefined') AOS.refreshHard();
   }
 
   // In-route filtering. "All Stops" keeps the chronological day layout.
@@ -1009,48 +1155,6 @@
     }
   }
 
-  // Interactive 5-star rating: hover previews the rating, click locks it in.
-  let selectedRating = 0;
-  function renderStarRating() {
-    const container = document.getElementById('star-rating');
-    container.innerHTML = [1, 2, 3, 4, 5].map(n => `
-      <button type="button" class="star-btn" data-star="${n}" onmouseenter="previewStars(${n})" onmouseleave="previewStars(selectedRating)" onclick="selectStars(${n})">
-        <i data-lucide="star" class="w-7 h-7 text-gray-300 transition-colors"></i>
-      </button>
-    `).join('');
-    if (typeof lucide !== 'undefined') { lucide.createIcons(); }
-  }
-  function previewStars(rating) {
-    document.querySelectorAll('.star-btn').forEach(btn => {
-      const n = parseInt(btn.dataset.star, 10);
-      const icon = btn.querySelector('svg');
-      if (!icon) return;
-      if (n <= rating) {
-        icon.classList.add('text-amber-500', 'fill-amber-500');
-        icon.classList.remove('text-gray-300');
-      } else {
-        icon.classList.remove('text-amber-500', 'fill-amber-500');
-        icon.classList.add('text-gray-300');
-      }
-    });
-  }
-  function selectStars(rating) {
-    selectedRating = rating;
-    document.getElementById('review-rating').value = rating;
-    previewStars(rating);
-  }
-
-  function submitReview(event) {
-    event.preventDefault();
-    if (selectedRating === 0) {
-      alert('Please select a star rating before submitting.');
-      return;
-    }
-    document.getElementById('review-form-fields').classList.add('hidden');
-    document.getElementById('review-form-success').classList.remove('hidden');
-    if (typeof lucide !== 'undefined') { lucide.createIcons(); }
-  }
-
   function toggleHotelDropdown(id) {
     document.getElementById(id + '-menu').classList.toggle('hidden');
   }
@@ -1082,6 +1186,51 @@
   function bookingAffiliateSearchUrl(query) {
     const target = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(query)}`;
     return `${CJ_AFFILIATE_BASE}?url=${encodeURIComponent(target)}`;
+  }
+
+  // ── Admin panel (hidden — open getway-theta.vercel.app/#admin) ──────────
+  // Lets Gerry clear the cached-routes table so old TikTok links regenerate
+  // fresh (e.g. after a pricing/link-format change) without touching Railway
+  // directly. Guarded by ADMIN_SECRET (set in Railway env vars — falls back
+  // to a default if unset, so change it there for real security).
+  function initAdminPanel() {
+    if (window.location.hash !== '#admin') return;
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+    overlay.innerHTML = `
+      <div style="background:white;border-radius:20px;padding:28px;max-width:360px;width:100%;font-family:inherit;">
+        <div style="font-weight:600;font-size:18px;margin-bottom:4px;">Admin</div>
+        <div style="font-size:12px;color:#6b7280;margin-bottom:16px;">Clear all cached routes so old TikTok links regenerate fresh with the latest logic.</div>
+        <input id="admin-secret-input" type="password" placeholder="Admin secret" style="width:100%;height:44px;padding:0 14px;border:1px solid #e5e7eb;border-radius:12px;margin-bottom:12px;font-size:14px;box-sizing:border-box;">
+        <button id="admin-clear-btn" style="width:100%;height:44px;background:#8B5CF6;color:white;border:none;border-radius:12px;font-size:14px;font-weight:500;cursor:pointer;">Clear Cache</button>
+        <div id="admin-status" style="margin-top:12px;font-size:12px;color:#6b7280;"></div>
+        <button id="admin-close-btn" style="width:100%;margin-top:10px;background:none;border:none;color:#9ca3af;font-size:12px;cursor:pointer;">Close</button>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    document.getElementById('admin-close-btn').onclick = () => overlay.remove();
+
+    document.getElementById('admin-clear-btn').onclick = async () => {
+      const secret = document.getElementById('admin-secret-input').value;
+      const statusEl = document.getElementById('admin-status');
+      statusEl.style.color = '#6b7280';
+      statusEl.textContent = 'Clearing…';
+      try {
+        const res = await fetch(`${BACKEND_URL}/admin/clear-cache?secret=${encodeURIComponent(secret)}`, { method: 'POST' });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          statusEl.style.color = '#16A34A';
+          statusEl.textContent = `Cleared ${data.cleared} cached route(s).`;
+        } else {
+          statusEl.style.color = '#DC2626';
+          statusEl.textContent = data.detail || 'Failed — wrong secret?';
+        }
+      } catch (e) {
+        statusEl.style.color = '#DC2626';
+        statusEl.textContent = 'Network error — check the backend is reachable.';
+      }
+    };
   }
 
   // ── Category config ──────────────────────────────────────────────────────
@@ -1272,6 +1421,8 @@
 
     // Store for sharing
     window._aiRouteVideoId = videoId;
+    renderAiRouteComments(itinerary.comments);
+    initReviewsSection('ai-route', videoId);
 
     // Days
     const container = document.getElementById('ai-route-days');
@@ -1436,9 +1587,8 @@
     safeRun('renderMallorcaHero', renderMallorcaHero);
     safeRun('renderRouteMedia', renderRouteMedia);
     safeRun('renderAllStops', renderAllStops);
-    safeRun('renderTikTokComments', renderTikTokComments);
-    safeRun('renderReviews', renderReviews);
-    safeRun('renderStarRating', renderStarRating);
+    safeRun('initReviewsSection (mallorca)', function () { initReviewsSection('mallorca', MALLORCA_DEMO_VIDEO_ID); });
+    safeRun('initAdminPanel', initAdminPanel);
     safeRun('lucide.createIcons', function () {
       if (typeof lucide !== 'undefined') { lucide.createIcons(); }
     });

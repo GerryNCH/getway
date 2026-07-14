@@ -31,12 +31,26 @@ class DayPlan(BaseModel):
     stops: list[Stop]
 
 
+class Comment(BaseModel):
+    text: str
+    username: str = ""
+    likes: int = 0
+    reply_count: int = 0
+    avatar_url: str = ""
+    created_at: str = ""
+
+
 class Itinerary(BaseModel):
     destination: str
     duration: str
     days: list[DayPlan]
     hero_photo_url: str = ""  # Best single photo for the destination
     gallery_photo_urls: list[str] = []  # 4-5 photos for the hero gallery
+    comments: list[Comment] = []  # Real TikTok comments, fetched via Apify
+                                   # (clockworks/tiktok-comments-scraper).
+                                   # Empty for itineraries cached before this
+                                   # field existed, or if the fetch failed
+                                   # (non-fatal — see extractor.py).
 
 
 class ExtractRequest(BaseModel):
@@ -49,3 +63,27 @@ class ExtractResponse(BaseModel):
     source: str          # "cache" | "ai_generated"
     video_id: str = ""
     cached: bool = False
+
+
+class ReviewCreate(BaseModel):
+    video_id: str
+    name: str
+    title: str
+    rating: int
+    text: str
+
+
+class Review(BaseModel):
+    id: int
+    video_id: str
+    name: str
+    title: str
+    rating: int
+    text: str
+    created_at: str
+
+
+class ReviewsResponse(BaseModel):
+    reviews: list[Review]
+    average_rating: float = 0.0
+    count: int = 0

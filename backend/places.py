@@ -102,7 +102,7 @@ def _get_place_photo_url(query: str, max_width: int = 800) -> str:
 
 
 def _unsplash_candidates(query: str, per_page: int = 6) -> list[dict]:
-    """Fetches raw Unsplash search results (id, urls, likes) for one query."""
+    """Fetches raw Unsplash search results (id, urls, likes, user, links) for one query."""
     if not UNSPLASH_ACCESS_KEY:
         return []
     try:
@@ -119,6 +119,40 @@ def _unsplash_candidates(query: str, per_page: int = 6) -> list[dict]:
     except Exception as e:
         print(f"[Unsplash] Exception for '{query}': {type(e).__name__}: {e}")
         return []
+
+
+def _attribution_from_candidate(c: dict) -> dict:
+    """
+    Extracts the fields Unsplash's API guidelines require us to display
+    whenever a photo is shown: the photographer's name + profile link, and
+    a link to the photo's own Unsplash page.
+    """
+    user = c.get("user") or {}
+    return {
+        "photographer_name": user.get("name", ""),
+        "photographer_url": (user.get("links") or {}).get("html", ""),
+        "unsplash_url": (c.get("links") or {}).get("html", ""),
+    }
+
+
+def _trigger_unsplash_download(c: dict) -> None:
+    """
+    Fires Unsplash's required "download" tracking event for a photo that's
+    actually being used (not just browsed in search results) — part of
+    their API guidelines for Production access. Best-effort: this should
+    never block or fail the actual response to the user.
+    """
+    download_location = (c.get("links") or {}).get("download_location")
+    if not download_location or not UNSPLASH_ACCESS_KEY:
+        return
+    try:
+        requests.get(
+            download_location,
+            headers={"Authorization": f"Client-ID {UNSPLASH_ACCESS_KEY}"},
+            timeout=4,
+        )
+    except Exception as e:
+        print(f"[Unsplash] Download-tracking ping failed (non-fatal): {type(e).__name__}: {e}")
 
 
 def _get_destination_gallery_unsplash(destination: str, count: int = 5) -> list[dict]:
@@ -180,7 +214,8 @@ def _get_destination_gallery_unsplash(destination: str, count: int = 5) -> list[
             if not url or cid in used_ids:
                 continue
             used_ids.add(cid)
-            photos.append({"url": url, "likes": c.get("likes", 0)})
+            _trigger_unsplash_download(c)
+            photos.append({"url": url, "likes": c.get("likes", 0), "attribution": _attribution_from_candidate(c)})
             break  # took the best fresh candidate from this query, move on
 
     print(f"[Unsplash] Gallery for '{destination}': {len(photos)} photos")
@@ -226,7 +261,10 @@ def enrich_itinerary_with_photos(itinerary) -> None:
     # when "sunset" or "landmark" returned a much more striking photo).
     gallery = _get_destination_gallery_unsplash(itinerary.destination, count=5)
     itinerary.gallery_photo_urls = [p["url"] for p in gallery]
-    itinerary.hero_photo_url = max(gallery, key=lambda p: p["likes"])["url"] if gallery else ""
+    itinerary.gallery_attributions = [p["attribution"] for p in gallery]
+    hero = max(gallery, key=lambda p: p["likes"]) if gallery else None
+    itinerary.hero_photo_url = hero["url"] if hero else ""
+    itinerary.hero_attribution = hero["attribution"] if hero else None
     print(f"[Photos] Hero: {itinerary.destination} → {bool(itinerary.hero_photo_url)}")
 
     # Single primary city (e.g. "Cairo" from "Cairo & Luxor") — same split
@@ -241,13 +279,15 @@ def enrich_itinerary_with_photos(itinerary) -> None:
     city = re.split(r"\s*(?:,|&|\band\b)\s*", itinerary.destination, maxsplit=1, flags=re.IGNORECASE)[0].strip()
     used_ids: set[str] = set()  # avoid repeating a photo across stop cards
 
-    def _best_fresh_unsplash(query: str) -> str:
+    def _best_fresh_unsplash(query: str) -> tuple[str, dict | None]:
+        """Returns (url, attribution) — attribution is None if nothing found."""
         for c in sorted(_unsplash_candidates(query, per_page=6), key=lambda r: r.get("likes", 0), reverse=True):
             cid, url = c.get("id"), c.get("urls", {}).get("regular")
             if url and cid not in used_ids:
                 used_ids.add(cid)
-                return url
-        return ""
+                _trigger_unsplash_download(c)
+                return url, _attribution_from_candidate(c)
+        return "", None
 
     for day in itinerary.days:
         for stop in day.stops:
@@ -255,14 +295,14 @@ def enrich_itinerary_with_photos(itinerary) -> None:
             name_query = stop.name if city.lower() in stop.name.lower() else f"{stop.name}, {city}"
 
             if is_specific and stop.category in _UNSPLASH_FIRST_CATEGORIES:
-                stop.photo_url = _best_fresh_unsplash(name_query)
+                stop.photo_url, stop.photo_attribution = _best_fresh_unsplash(name_query)
                 print(f"[Photos] Unsplash (named) for '{stop.name}' → {bool(stop.photo_url)}")
             elif is_specific and PLACES_API_KEY:
                 # Don't double up the city if the AI already wrote it into
                 # the name (e.g. "Nile Corniche, Cairo") — searching
                 # "Nile Corniche, Cairo, Cairo & Luxor" is redundant and
                 # doesn't help Places match the right place.
-                stop.photo_url = _get_place_photo_url(name_query)
+                stop.photo_url = _get_place_photo_url(name_query)  # Places photo — no Unsplash attribution needed
                 print(f"[Places] Stop: {name_query} → {bool(stop.photo_url)}")
 
             if stop.photo_url:
@@ -272,5 +312,5 @@ def enrich_itinerary_with_photos(itinerary) -> None:
             # no API key configured, or the attempt above found nothing —
             # fall back to a representative (not misleading) category photo.
             term = _CATEGORY_PHOTO_TERMS.get(stop.category, "travel")
-            stop.photo_url = _best_fresh_unsplash(f"{city} {term}".strip())
+            stop.photo_url, stop.photo_attribution = _best_fresh_unsplash(f"{city} {term}".strip())
             print(f"[Photos] Category fallback for '{stop.name}' → {bool(stop.photo_url)}")

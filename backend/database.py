@@ -77,6 +77,10 @@ def init_db() -> None:
             conn.execute("ALTER TABLE itineraries ADD COLUMN gallery_photo_urls_json TEXT DEFAULT '[]'")
         if "comments_json" not in existing_cols:
             conn.execute("ALTER TABLE itineraries ADD COLUMN comments_json TEXT DEFAULT '[]'")
+        if "hero_attribution_json" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN hero_attribution_json TEXT DEFAULT NULL")
+        if "gallery_attributions_json" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN gallery_attributions_json TEXT DEFAULT '[]'")
 
     print(f"[DB] Initialised at {DB_PATH}")
 
@@ -94,12 +98,16 @@ def get_itinerary(video_id: str) -> Itinerary | None:
     days = json.loads(row["days_json"])
     gallery_urls = json.loads(row["gallery_photo_urls_json"] or "[]")
     comments = json.loads(row["comments_json"] or "[]")
+    hero_attribution = json.loads(row["hero_attribution_json"]) if row["hero_attribution_json"] else None
+    gallery_attributions = json.loads(row["gallery_attributions_json"] or "[]")
     return Itinerary(
         destination=row["destination"],
         duration=row["duration"],
         days=days,
         hero_photo_url=row["hero_photo_url"] or "",
+        hero_attribution=hero_attribution,
         gallery_photo_urls=gallery_urls,
+        gallery_attributions=gallery_attributions,
         comments=comments,
     )
 
@@ -110,8 +118,9 @@ def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
         conn.execute(
             """INSERT OR REPLACE INTO itineraries
                (video_id, url, destination, duration, days_json, created_at,
-                hero_photo_url, gallery_photo_urls_json, comments_json)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                hero_photo_url, gallery_photo_urls_json, comments_json,
+                hero_attribution_json, gallery_attributions_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 video_id,
                 url,
@@ -122,6 +131,8 @@ def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
                 itinerary.hero_photo_url,
                 json.dumps(itinerary.gallery_photo_urls),
                 json.dumps([c.model_dump() for c in itinerary.comments]),
+                json.dumps(itinerary.hero_attribution.model_dump()) if itinerary.hero_attribution else None,
+                json.dumps([a.model_dump() for a in itinerary.gallery_attributions]),
             ),
         )
     print(f"[DB] Saved itinerary for {video_id} ({itinerary.destination})")

@@ -36,7 +36,7 @@ from extractor import (
 )
 from troll_filter import check_is_travel
 from ai_analyzer import analyse_frames
-from places import enrich_itinerary_with_photos
+from places import enrich_itinerary_with_photos, _unsplash_candidates
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 
@@ -257,6 +257,47 @@ def list_itineraries():
 @app.get("/health")
 def health():
     return {"status": "ok", "version": "0.2.0"}
+
+
+# ── Static demo route photos ──────────────────────────────────────────────
+
+_MALLORCA_PHOTO_QUERIES = {
+    "hero": "Mallorca Spain coastline aerial",
+    "gallery1": "Palma de Mallorca old town",
+    "gallery2": "Mallorca beach turquoise water",
+    "gallery3": "Mallorca Tramuntana mountains",
+    "gallery4": "Mallorca sunset",
+    "palma_cathedral": "Palma Cathedral Mallorca",
+    "restaurant_illeta": "Mallorca seaside restaurant terrace",
+    "valldemossa": "Valldemossa Mallorca village",
+    "beach_calo_del_moro": "Cala del Moro Mallorca",
+    "beach_salmunia": "S'Almunia Mallorca beach",
+    "beach_cala_llombards": "Cala Llombards Mallorca",
+    "beach_platja_santanyi": "Platja de Santanyi Mallorca",
+    "deia": "Deia Mallorca village",
+    "hotel": "boutique hotel Mallorca",
+    "hotel2": "beachfront resort Mallorca",
+}
+
+
+@app.get("/demo/mallorca-photos")
+def get_mallorca_demo_photos():
+    """
+    Real photos for the static homepage Mallorca demo route, fetched from
+    Unsplash server-side (keeps the API key off the client — this is a
+    plain GET the frontend can call directly). Replaces the old Lorem
+    Picsum placeholder images: Picsum's "seed" is just a random-photo seed,
+    not a content filter, so "mallorca-g1" never actually returned a photo
+    of Mallorca.
+    """
+    result = {}
+    for key, query in _MALLORCA_PHOTO_QUERIES.items():
+        candidates = sorted(
+            _unsplash_candidates(query, per_page=4),
+            key=lambda r: r.get("likes", 0), reverse=True,
+        )
+        result[key] = candidates[0].get("urls", {}).get("regular", "") if candidates else ""
+    return result
 
 
 if __name__ == "__main__":

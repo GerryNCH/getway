@@ -285,6 +285,9 @@ _MALLORCA_PHOTO_QUERIES = {
 }
 
 
+_mallorca_photos_cache: dict | None = None
+
+
 @app.get("/demo/mallorca-photos")
 def get_mallorca_demo_photos():
     """
@@ -294,7 +297,16 @@ def get_mallorca_demo_photos():
     Picsum placeholder images: Picsum's "seed" is just a random-photo seed,
     not a content filter, so "mallorca-g1" never actually returned a photo
     of Mallorca.
+
+    Cached in memory after the first call: this content is fixed (a demo
+    route, not a live search), so there's no reason to spend Unsplash's
+    50-requests/hour free-tier quota again for every single homepage visit
+    — that quota is needed for real AI-generated routes.
     """
+    global _mallorca_photos_cache
+    if _mallorca_photos_cache is not None:
+        return _mallorca_photos_cache
+
     result = {}
     for key, query in _MALLORCA_PHOTO_QUERIES.items():
         candidates = sorted(
@@ -302,6 +314,17 @@ def get_mallorca_demo_photos():
             key=lambda r: r.get("likes", 0), reverse=True,
         )
         result[key] = candidates[0].get("urls", {}).get("regular", "") if candidates else ""
+
+    # Only cache a mostly-successful result. If Unsplash was rate-limited
+    # (or the key is unset) right after a restart, most/all entries come
+    # back "" — caching that would permanently serve blank photos until
+    # the next deploy. Leaving it uncached lets the next request retry.
+    found = sum(1 for v in result.values() if v)
+    if found >= len(_MALLORCA_PHOTO_QUERIES) // 2:
+        _mallorca_photos_cache = result
+    else:
+        print(f"[Demo] Only found {found}/{len(_MALLORCA_PHOTO_QUERIES)} Mallorca photos — not caching, will retry next request")
+
     return result
 
 

@@ -17,6 +17,8 @@ import os
 import re
 import requests
 
+from models import UnsplashAttribution
+
 PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")
 UNSPLASH_ACCESS_KEY = os.getenv("UNSPLASH_ACCESS_KEY", "")
 
@@ -121,18 +123,18 @@ def _unsplash_candidates(query: str, per_page: int = 6) -> list[dict]:
         return []
 
 
-def _attribution_from_candidate(c: dict) -> dict:
+def _attribution_from_candidate(c: dict) -> UnsplashAttribution:
     """
     Extracts the fields Unsplash's API guidelines require us to display
     whenever a photo is shown: the photographer's name + profile link, and
     a link to the photo's own Unsplash page.
     """
     user = c.get("user") or {}
-    return {
-        "photographer_name": user.get("name", ""),
-        "photographer_url": (user.get("links") or {}).get("html", ""),
-        "unsplash_url": (c.get("links") or {}).get("html", ""),
-    }
+    return UnsplashAttribution(
+        photographer_name=user.get("name", ""),
+        photographer_url=(user.get("links") or {}).get("html", ""),
+        unsplash_url=(c.get("links") or {}).get("html", ""),
+    )
 
 
 def _trigger_unsplash_download(c: dict) -> None:

@@ -121,13 +121,14 @@ def _unsplash_candidates(query: str, per_page: int = 6) -> list[dict]:
         return []
 
 
-def _get_destination_gallery_unsplash(destination: str, count: int = 5) -> list[str]:
+def _get_destination_gallery_unsplash(destination: str, count: int = 5) -> list[dict]:
     """
-    Returns up to `count` curated, high-resolution travel photo URLs for a
-    destination from Unsplash. Uses several distinct queries (rather than
-    one broad query) so the gallery shows varied shots of the destination
-    instead of several near-duplicate frames from the same photo session.
-    Falls back to an empty list if no key is configured or all requests fail.
+    Returns up to `count` curated, high-resolution travel photo entries for
+    a destination from Unsplash, each as {"url": ..., "likes": ...}. Uses
+    several distinct queries (rather than one broad query) so the gallery
+    shows varied shots instead of several near-duplicate frames from the
+    same photo session. Falls back to an empty list if no key is
+    configured or all requests fail.
     """
     if not UNSPLASH_ACCESS_KEY:
         print("[Unsplash] No API key — skipping destination gallery")
@@ -168,9 +169,9 @@ def _get_destination_gallery_unsplash(destination: str, count: int = 5) -> list[
     # every query* and falling through to the next-best candidate within
     # a query (instead of giving up on that query) fixes it properly.
     used_ids: set[str] = set()
-    photo_urls: list[str] = []
+    photos: list[dict] = []
     for query in queries + fallback_queries:
-        if len(photo_urls) >= count:
+        if len(photos) >= count:
             break
         candidates = sorted(_unsplash_candidates(query), key=lambda r: r.get("likes", 0), reverse=True)
         for c in candidates:
@@ -179,12 +180,22 @@ def _get_destination_gallery_unsplash(destination: str, count: int = 5) -> list[
             if not url or cid in used_ids:
                 continue
             used_ids.add(cid)
-            photo_urls.append(url)
+            photos.append({"url": url, "likes": c.get("likes", 0)})
             break  # took the best fresh candidate from this query, move on
 
-    print(f"[Unsplash] Gallery for '{destination}': {len(photo_urls)} photos")
-    return photo_urls
+    print(f"[Unsplash] Gallery for '{destination}': {len(photos)} photos")
+    return photos
 
+
+# Categories where Google Places' photos[0] tends to be an arbitrary
+# user-submitted snapshot rather than a representative shot of the place
+# itself — e.g. a hotel guest's pool selfie for "Dubai Marina", or a
+# fountain-lake view for "The Dubai Mall" — even when the name-match is
+# completely correct. Unsplash's tagged/curated photography is more
+# reliable for well-known named landmarks, districts, and areas. Hotel and
+# food stay on Places since the exact business's own photo genuinely
+# matters there (and tends to be accurate in practice).
+_UNSPLASH_FIRST_CATEGORIES = {"sight", "activity", "beach", "village"}
 
 # Rough Unsplash query term per category — used as a fallback photo when a
 # stop's name isn't a real, searchable place (see enrich_itinerary_with_photos).
@@ -202,16 +213,20 @@ def enrich_itinerary_with_photos(itinerary) -> None:
     """
     Mutates the itinerary in-place:
       - gallery_photo_urls / hero_photo_url: Unsplash (curated destination shots)
-      - each stop's photo_url: Google Places for real, specifically-named
-        stops; a category-matched Unsplash photo for stops the AI couldn't
-        confirm a specific name for (`is_specific_name=False`) — searching
-        Places with an invented description (e.g. "Café with Nile view,
-        Zamalek") just returns nothing, so there's no point trying.
+      - each stop's photo_url: Google Places for hotels/food (need the
+        exact business's own photo); Unsplash search-by-name for sights,
+        activities, beaches, and villages (more reliable for well-known
+        named places than Places' often-arbitrary first photo); a
+        category-matched Unsplash photo as the final fallback when the
+        AI couldn't confirm a specific name at all (`is_specific_name=False`).
     """
-    # Destination gallery from Unsplash — first photo doubles as the hero
+    # Destination gallery from Unsplash — the *best-liked* photo doubles as
+    # the hero, not just whichever of the 5 queries happened to run first
+    # (that previously meant "aerial view" always won the hero slot even
+    # when "sunset" or "landmark" returned a much more striking photo).
     gallery = _get_destination_gallery_unsplash(itinerary.destination, count=5)
-    itinerary.gallery_photo_urls = gallery
-    itinerary.hero_photo_url = gallery[0] if gallery else ""
+    itinerary.gallery_photo_urls = [p["url"] for p in gallery]
+    itinerary.hero_photo_url = max(gallery, key=lambda p: p["likes"])["url"] if gallery else ""
     print(f"[Photos] Hero: {itinerary.destination} → {bool(itinerary.hero_photo_url)}")
 
     # Single primary city (e.g. "Cairo" from "Cairo & Luxor") — same split
@@ -224,34 +239,38 @@ def enrich_itinerary_with_photos(itinerary) -> None:
     # (e.g. "Egyptian Museum, Cairo") — the fallback below only kicks in
     # when it didn't.
     city = re.split(r"\s*(?:,|&|\band\b)\s*", itinerary.destination, maxsplit=1, flags=re.IGNORECASE)[0].strip()
-    used_gallery_ids = set()  # avoid repeating a gallery photo on a stop card
+    used_ids: set[str] = set()  # avoid repeating a photo across stop cards
+
+    def _best_fresh_unsplash(query: str) -> str:
+        for c in sorted(_unsplash_candidates(query, per_page=6), key=lambda r: r.get("likes", 0), reverse=True):
+            cid, url = c.get("id"), c.get("urls", {}).get("regular")
+            if url and cid not in used_ids:
+                used_ids.add(cid)
+                return url
+        return ""
 
     for day in itinerary.days:
         for stop in day.stops:
             is_specific = getattr(stop, "is_specific_name", True)
+            name_query = stop.name if city.lower() in stop.name.lower() else f"{stop.name}, {city}"
 
-            if is_specific and PLACES_API_KEY:
+            if is_specific and stop.category in _UNSPLASH_FIRST_CATEGORIES:
+                stop.photo_url = _best_fresh_unsplash(name_query)
+                print(f"[Photos] Unsplash (named) for '{stop.name}' → {bool(stop.photo_url)}")
+            elif is_specific and PLACES_API_KEY:
                 # Don't double up the city if the AI already wrote it into
                 # the name (e.g. "Nile Corniche, Cairo") — searching
                 # "Nile Corniche, Cairo, Cairo & Luxor" is redundant and
                 # doesn't help Places match the right place.
-                query = stop.name if city.lower() in stop.name.lower() else f"{stop.name}, {city}"
-                stop.photo_url = _get_place_photo_url(query)
-                print(f"[Places] Stop: {query} → {bool(stop.photo_url)}")
-                if stop.photo_url:
-                    continue
+                stop.photo_url = _get_place_photo_url(name_query)
+                print(f"[Places] Stop: {name_query} → {bool(stop.photo_url)}")
+
+            if stop.photo_url:
+                continue
 
             # Either the AI flagged this as a generic/invented name, there's
-            # no Places key configured, or Places found nothing confident —
+            # no API key configured, or the attempt above found nothing —
             # fall back to a representative (not misleading) category photo.
             term = _CATEGORY_PHOTO_TERMS.get(stop.category, "travel")
-            fallback_query = f"{city} {term}".strip()
-            candidates = sorted(_unsplash_candidates(fallback_query, per_page=6), key=lambda r: r.get("likes", 0), reverse=True)
-            for c in candidates:
-                cid = c.get("id")
-                url = c.get("urls", {}).get("regular")
-                if url and cid not in used_gallery_ids:
-                    used_gallery_ids.add(cid)
-                    stop.photo_url = url
-                    break
-            print(f"[Photos] Fallback for '{stop.name}' ({fallback_query}) → {bool(stop.photo_url)}")
+            stop.photo_url = _best_fresh_unsplash(f"{city} {term}".strip())
+            print(f"[Photos] Category fallback for '{stop.name}' → {bool(stop.photo_url)}")

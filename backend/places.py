@@ -85,41 +85,62 @@ def _get_destination_gallery_unsplash(destination: str, count: int = 5) -> list[
     # with the full compound string returns few or no results, which starved
     # the gallery down to 0-1 photos and hid the thumbnail strip entirely.
     city = re.split(r"\s*(?:,|&|\band\b)\s*", destination, maxsplit=1, flags=re.IGNORECASE)[0].strip()
-    # Keep these conceptually distinct from each other — "aerial view" and
-    # "skyline" both return the same kind of tall-buildings-from-above shot
-    # for a city like Dubai, so the gallery ended up with near-duplicate
-    # photos (different URLs, same look). Each query below targets a
-    # different kind of shot on purpose.
-    queries = [
-        f"{city} landmark",
-        f"{city} old town",
-        f"{city} street",
-        f"{city} waterfront",
-        f"{city} night skyline",
-    ]
 
-    photo_urls: list[str] = []
-    for query in queries:
-        if len(photo_urls) >= count:
-            break
+    # These target generically striking travel photography rather than
+    # city-specific shots — "night skyline" or "waterfront" return nothing
+    # useful for an island/nature destination (e.g. Bali), which is what
+    # starved the gallery down to 2-3 photos instead of 5. "Aerial",
+    # "sunset", "scenic", and "beautiful" are terms photographers tag
+    # constantly across every destination type, so they reliably surface
+    # a full gallery of appealing shots for cities, islands, and nature
+    # destinations alike.
+    queries = [
+        f"{city} aerial view",
+        f"{city} scenic",
+        f"{city} sunset",
+        f"{city} landmark",
+        f"{city} beautiful",
+    ]
+    # Used only to top up the gallery if the specific queries above didn't
+    # collectively return `count` photos (e.g. an obscure destination) —
+    # broad enough to almost always return something, still tied to the
+    # destination rather than falling back to something generic like
+    # "travel", which could return a photo of an unrelated place.
+    fallback_queries = [f"{city} travel", f"{city} view", city]
+
+    def _best_photo_for_query(query: str) -> str | None:
+        """
+        Fetches a few candidates for one query and returns the most-liked
+        one — a same-query set can range from a striking professional shot
+        to someone's blurry vacation snapshot, and Unsplash's default
+        ranking doesn't reliably put the best one first for narrow queries.
+        """
         try:
             resp = requests.get(
                 UNSPLASH_SEARCH_URL,
-                params={"query": query, "per_page": 1, "orientation": "landscape"},
+                params={"query": query, "per_page": 5, "orientation": "landscape"},
                 headers={"Authorization": f"Client-ID {UNSPLASH_ACCESS_KEY}"},
                 timeout=6,
             )
             if resp.status_code != 200:
                 print(f"[Unsplash] HTTP {resp.status_code} for '{query}': {resp.text[:200]}")
-                continue
+                return None
             results = resp.json().get("results", [])
-            if results and "urls" in results[0]:
-                url = results[0]["urls"]["regular"]
-                if url not in photo_urls:
-                    photo_urls.append(url)
+            if not results:
+                return None
+            best = max(results, key=lambda r: r.get("likes", 0))
+            return best.get("urls", {}).get("regular")
         except Exception as e:
             print(f"[Unsplash] Exception for '{query}': {type(e).__name__}: {e}")
-            continue
+            return None
+
+    photo_urls: list[str] = []
+    for query in queries + fallback_queries:
+        if len(photo_urls) >= count:
+            break
+        url = _best_photo_for_query(query)
+        if url and url not in photo_urls:
+            photo_urls.append(url)
 
     print(f"[Unsplash] Gallery for '{destination}': {len(photo_urls)} photos")
     return photo_urls
@@ -141,8 +162,16 @@ def enrich_itinerary_with_photos(itinerary) -> None:
         print("[Places] No API key — skipping stop photo enrichment")
         return
 
+    # City/region name only (e.g. "Bali" from "Bali, Indonesia") — appended
+    # to every stop's search query below. Without it, generic or ambiguous
+    # stop names (e.g. "Diamond Beach", which also exists in Iceland and
+    # Australia) can match a place on the wrong side of the world, pulling
+    # back a photo — and a Maps link — that has nothing to do with the trip.
+    city = itinerary.destination.split(",")[0].strip()
+
     # Photo for each stop — still Google Places (accurate for named locations)
     for day in itinerary.days:
         for stop in day.stops:
-            stop.photo_url = _get_place_photo_url(stop.name)
-            print(f"[Places] Stop: {stop.name} → {bool(stop.photo_url)}")
+            query = f"{stop.name}, {city}" if city else stop.name
+            stop.photo_url = _get_place_photo_url(query)
+            print(f"[Places] Stop: {query} → {bool(stop.photo_url)}")

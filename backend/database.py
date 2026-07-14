@@ -112,6 +112,19 @@ def get_itinerary(video_id: str) -> Itinerary | None:
     )
 
 
+def _attr_to_dict(attr) -> dict | None:
+    """
+    Normalizes an attribution value to a plain dict for JSON storage.
+    Accepts either an UnsplashAttribution instance (has .model_dump()) or
+    an already-plain dict (places.py sets it directly as a dict, which
+    doesn't have .model_dump()) — calling .model_dump() unconditionally
+    crashed on the latter.
+    """
+    if attr is None:
+        return None
+    return attr.model_dump() if hasattr(attr, "model_dump") else dict(attr)
+
+
 def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
     """Saves a freshly extracted itinerary to the cache."""
     with _conn() as conn:
@@ -131,8 +144,8 @@ def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
                 itinerary.hero_photo_url,
                 json.dumps(itinerary.gallery_photo_urls),
                 json.dumps([c.model_dump() for c in itinerary.comments]),
-                json.dumps(itinerary.hero_attribution.model_dump()) if itinerary.hero_attribution else None,
-                json.dumps([a.model_dump() for a in itinerary.gallery_attributions]),
+                json.dumps(_attr_to_dict(itinerary.hero_attribution)),
+                json.dumps([_attr_to_dict(a) for a in itinerary.gallery_attributions]),
             ),
         )
     print(f"[DB] Saved itinerary for {video_id} ({itinerary.destination})")

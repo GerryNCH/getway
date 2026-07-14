@@ -36,7 +36,7 @@ from extractor import (
 )
 from troll_filter import check_is_travel
 from ai_analyzer import analyse_frames
-from places import enrich_itinerary_with_photos, _unsplash_candidates
+from places import enrich_itinerary_with_photos, _unsplash_candidates, _attribution_from_candidate, _trigger_unsplash_download
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 
@@ -313,13 +313,21 @@ def get_mallorca_demo_photos():
             _unsplash_candidates(query, per_page=10),
             key=lambda r: r.get("likes", 0), reverse=True,
         )
-        result[key] = candidates[0].get("urls", {}).get("regular", "") if candidates else ""
+        if candidates:
+            best = candidates[0]
+            _trigger_unsplash_download(best)
+            result[key] = {
+                "url": best.get("urls", {}).get("regular", ""),
+                "attribution": _attribution_from_candidate(best),
+            }
+        else:
+            result[key] = {"url": "", "attribution": None}
 
     # Only cache a mostly-successful result. If Unsplash was rate-limited
     # (or the key is unset) right after a restart, most/all entries come
     # back "" — caching that would permanently serve blank photos until
     # the next deploy. Leaving it uncached lets the next request retry.
-    found = sum(1 for v in result.values() if v)
+    found = sum(1 for v in result.values() if v.get("url"))
     if found >= len(_MALLORCA_PHOTO_QUERIES) // 2:
         _mallorca_photos_cache = result
     else:

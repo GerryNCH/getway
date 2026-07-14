@@ -255,13 +255,13 @@
             Book this hotel <i data-lucide="chevron-down" class="hotel-chevron w-3.5 h-3.5 transition-transform"></i>
           </button>
           <div id="hotel1-menu" class="hidden bg-white rounded-xl mt-1.5 overflow-hidden bento-card">
-            <a href="#" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 border-b border-gray-100 text-xs"><span>via Booking.com</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
-            <a href="#" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 text-xs"><span>via Expedia</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
+            <a id="hotel1-booking-link" href="#" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 border-b border-gray-100 text-xs"><span>via Booking.com</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
+            <a id="hotel1-expedia-link" href="#" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 text-xs"><span>via Expedia</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
           </div>
         </div>
         <div class="grid grid-cols-2 gap-2.5">
-          <a href="#" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="shuffle" class="w-3.5 h-3.5"></i>Similar</a>
-          <a href="#" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="home" class="w-3.5 h-3.5"></i>Airbnb</a>
+          <a id="hotel1-similar-link" href="#" target="_blank" rel="noopener sponsored" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="shuffle" class="w-3.5 h-3.5"></i>Similar</a>
+          <a id="hotel1-airbnb-link" href="#" target="_blank" rel="noopener" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="home" class="w-3.5 h-3.5"></i>Airbnb</a>
         </div>
       </div>
     </div>
@@ -304,13 +304,13 @@
             Book this hotel <i data-lucide="chevron-down" class="hotel-chevron w-3.5 h-3.5 transition-transform"></i>
           </button>
           <div id="hotel2-menu" class="hidden bg-white rounded-xl mt-1.5 overflow-hidden bento-card">
-            <a href="#" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 border-b border-gray-100 text-xs"><span>via Booking.com</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
-            <a href="#" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 text-xs"><span>via Expedia</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
+            <a id="hotel2-booking-link" href="#" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 border-b border-gray-100 text-xs"><span>via Booking.com</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
+            <a id="hotel2-expedia-link" href="#" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 text-xs"><span>via Expedia</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
           </div>
         </div>
         <div class="grid grid-cols-2 gap-2.5">
-          <a href="#" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="shuffle" class="w-3.5 h-3.5"></i>Similar</a>
-          <a href="#" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="home" class="w-3.5 h-3.5"></i>Airbnb</a>
+          <a id="hotel2-similar-link" href="#" target="_blank" rel="noopener sponsored" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="shuffle" class="w-3.5 h-3.5"></i>Similar</a>
+          <a id="hotel2-airbnb-link" href="#" target="_blank" rel="noopener" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="home" class="w-3.5 h-3.5"></i>Airbnb</a>
         </div>
       </div>
     </div>
@@ -1634,6 +1634,25 @@
     }
   }
 
+  // ── Wire real affiliate links into the static Mallorca demo hotel cards ──
+  // These two cards were built with href="#" placeholders that were never
+  // filled in — clicking "Book this hotel" just reloaded the page instead
+  // of going anywhere. No fetch needed here, just URL construction.
+  function wireMallorcaDemoHotelLinks() {
+    const hotels = [
+      { prefix: 'hotel1', name: 'Ars Magna Bleisure Hotel' },
+      { prefix: 'hotel2', name: 'Hotel Santanyi Port' },
+    ];
+    hotels.forEach(({ prefix, name }) => {
+      const query = `${name} Mallorca`;
+      const set = (id, href) => { const el = document.getElementById(id); if (el) el.href = href; };
+      set(`${prefix}-booking-link`, bookingAffiliateSearchUrl(query));
+      set(`${prefix}-expedia-link`, `https://www.expedia.com/Hotel-Search?destination=${encodeURIComponent(query)}`);
+      set(`${prefix}-similar-link`, bookingAffiliateSearchUrl('Mallorca'));
+      set(`${prefix}-airbnb-link`, `https://www.airbnb.com/s/${encodeURIComponent('Mallorca')}/homes`);
+    });
+  }
+
   // ── Real photos for the static Mallorca demo (replaces Picsum placeholders) ──
   // Fetched server-side (keeps the Unsplash key off the client) and swapped
   // in after the initial render, so the page never blocks on this — cards
@@ -1651,6 +1670,13 @@
       if (p.gallery1) MEDIA.mallorca.gallery[2].url = p.gallery1;
       if (p.gallery2) MEDIA.mallorca.gallery[3].url = p.gallery2;
       if (p.gallery3) MEDIA.mallorca.gallery[4].url = p.gallery3;
+
+      // The "Discover Routes" grid card also used a Picsum placeholder —
+      // reuse the hero shot so the card thumbnail actually shows Mallorca.
+      if (p.hero && MEDIA.routes['mallorca-5-days']) {
+        MEDIA.routes['mallorca-5-days'].cardPhoto = p.hero;
+        renderRoutes();
+      }
 
       if (p.palma_cathedral) DAY1_STOPS[0].photo = p.palma_cathedral;
       if (p.restaurant_illeta) DAY1_STOPS[1].photo = p.restaurant_illeta;
@@ -1702,6 +1728,7 @@
       if (typeof AOS !== 'undefined') { AOS.init({ duration: 800, once: true }); }
     });
     safeRun('handleSharedRouteParam', handleSharedRouteParam);
+    safeRun('wireMallorcaDemoHotelLinks', wireMallorcaDemoHotelLinks);
     loadMallorcaRealPhotos();
   });
 

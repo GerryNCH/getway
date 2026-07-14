@@ -11,11 +11,68 @@ that handles the "unnamed restaurant" problem:
 
 import base64
 import json
+import urllib.parse
 
 import anthropic
 from models import Itinerary
 
 _client = anthropic.Anthropic()
+
+# ── Affiliate link config (Phase 2) ──────────────────────────────────────────
+# CJ Affiliate account — Gerry's Publisher ID + Booking.com's Advertiser/Link
+# ID. Booking.com North America approval covers the deep-link format below.
+_CJ_PUBLISHER_ID = "101819605"
+_BOOKING_LINK_ID = "17293132"
+_CJ_BASE_URL = f"https://www.anrdoezrs.net/click-{_CJ_PUBLISHER_ID}-{_BOOKING_LINK_ID}"
+
+
+def _booking_affiliate_url(search_query: str) -> str:
+    """
+    Booking.com search-results URL, wrapped in the CJ affiliate tracking
+    link so hotel clicks are attributed to Gerry's account.
+    NOTE: the real search path is /searchresults.html, not /search.html.
+    """
+    target = f"https://www.booking.com/searchresults.html?ss={urllib.parse.quote_plus(search_query)}"
+    return f"{_CJ_BASE_URL}?url={urllib.parse.quote(target, safe='')}"
+
+
+def _google_maps_search_url(search_query: str) -> str:
+    """
+    Temporary restaurant link until the TheFork affiliate application is
+    approved — a plain Google Maps search, not affiliate-tracked.
+    """
+    return f"https://www.google.com/maps/search/{urllib.parse.quote_plus(search_query)}"
+
+
+def _attach_booking_urls(data: dict) -> dict:
+    """
+    Fills in `booking_url` for every hotel/food stop, in place, before the
+    JSON is turned into an Itinerary:
+      - hotel → Booking.com search wrapped in the CJ affiliate link. Uses
+        the exact stop name when the AI confirmed it (`is_specific_name`),
+        otherwise falls back to just the destination city — same rule the
+        frontend already applies for its own "unconfirmed hotel" fallback.
+      - food  → Google Maps search (name + city) as a stand-in until
+        TheFork affiliate is live.
+    Any other category is left untouched.
+    """
+    destination = data.get("destination", "")
+    city = destination.split(",")[0].strip() if destination else ""
+
+    for day in data.get("days", []):
+        for stop in day.get("stops", []):
+            category = stop.get("category")
+            name = (stop.get("name") or "").strip()
+            is_specific = stop.get("is_specific_name", True)
+
+            if category == "hotel":
+                query = f"{name} {city}".strip() if is_specific else city
+                stop["booking_url"] = _booking_affiliate_url(query)
+            elif category == "food":
+                query = f"{name} {city}".strip()
+                stop["booking_url"] = _google_maps_search_url(query)
+
+    return data
 
 SYSTEM_PROMPT = """You are an expert travel itinerary extraction AI with strong visual recognition skills.
 
@@ -145,5 +202,7 @@ def analyse_frames(frame_paths: list[str]) -> Itinerary:
         data = json.loads(raw)
     except json.JSONDecodeError as e:
         raise ValueError(f"Claude's response wasn't valid JSON: {e}") from e
+
+    data = _attach_booking_urls(data)
 
     return Itinerary(**data)

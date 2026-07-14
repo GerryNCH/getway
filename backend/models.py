@@ -17,6 +17,12 @@ class Stop(BaseModel):
                                     # Defaults True so cached itineraries
                                     # generated before this field existed
                                     # keep their old (assumed-specific) behavior.
+    booking_url: str = ""  # Affiliate/booking link generated server-side in
+                            # ai_analyzer.py: Booking.com (via CJ affiliate)
+                            # for hotel stops, Google Maps search for food
+                            # stops. Empty string for itineraries cached
+                            # before this field existed — frontend falls
+                            # back to building its own (non-affiliate) link.
 
 
 class DayPlan(BaseModel):

@@ -5,12 +5,27 @@ from pydantic import BaseModel
 from typing import Optional
 
 
+class UnsplashAttribution(BaseModel):
+    """
+    Required by Unsplash's API guidelines whenever a photo they returned is
+    displayed: the photographer's name + profile link, and a link to the
+    photo's own Unsplash page. Only set when a photo actually came from
+    Unsplash — Google Places photos use a different license and don't need
+    this.
+    """
+    photographer_name: str = ""
+    photographer_url: str = ""
+    unsplash_url: str = ""
+
+
 class Stop(BaseModel):
     name: str
     category: str        # hotel | sight | food | activity | beach | village
     description: str
     tip: str = ""
     photo_url: str = "" # Google Places photo or empty string
+    photo_attribution: Optional[UnsplashAttribution] = None  # set only when
+                                                               # photo_url came from Unsplash
     is_specific_name: bool = True  # False = AI couldn't confirm a real named
                                     # property/place — `name` is a generic
                                     # description, not a specific match.
@@ -45,7 +60,9 @@ class Itinerary(BaseModel):
     duration: str
     days: list[DayPlan]
     hero_photo_url: str = ""  # Best single photo for the destination
+    hero_attribution: Optional[UnsplashAttribution] = None
     gallery_photo_urls: list[str] = []  # 4-5 photos for the hero gallery
+    gallery_attributions: list[UnsplashAttribution] = []  # parallel to gallery_photo_urls
     comments: list[Comment] = []  # Real TikTok comments, fetched via Apify
                                    # (clockworks/tiktok-comments-scraper).
                                    # Empty for itineraries cached before this

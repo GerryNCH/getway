@@ -197,6 +197,7 @@
         <i data-lucide="music-2" class="w-3 h-3 flex-shrink-0"></i><span id="mallorca-tiktok-handle" class="truncate"></span>
       </a>
       <div id="mallorca-gallery-counter" class="absolute right-5 md:right-14 bottom-[28px] md:bottom-7 text-[11px] md:text-xs text-white">1 / 5</div>
+      <div id="mallorca-hero-credit" class="absolute right-5 md:right-14 bottom-[8px] md:bottom-[10px] text-[9px] md:text-[10px] text-white/60"></div>
     </div>
   </div>
 
@@ -464,6 +465,7 @@
       <div id="ai-route-source-badge" class="absolute left-6 md:left-14 bottom-[22px] flex items-center gap-1.5 text-xs text-white/80">
         <i data-lucide="music-2" class="w-3 h-3"></i><span id="ai-route-source-text">via AI Magic Box</span>
       </div>
+      <div id="ai-route-hero-credit" class="absolute right-6 md:right-14 bottom-[6px] text-[9px] md:text-[10px] text-white/60"></div>
     </div>
   </div>
 
@@ -875,6 +877,7 @@
     const mediaLayer = document.getElementById('mallorca-hero-media');
     mediaLayer.innerHTML = `<img id="mallorca-hero-photo" src="" class="absolute inset-0 w-full h-full object-cover" alt="" onerror="imgFallback(this,'image','mallorca-hero')">`;
     document.getElementById('mallorca-hero-photo').src = MEDIA.mallorca.gallery.find(g => g.type === 'photo').url;
+    renderUnsplashCredit('mallorca-hero-credit', (window._mallorcaGalleryAttributions || [])[1]);
 
     const thumbs = document.getElementById('mallorca-thumbnails');
     thumbs.innerHTML = MEDIA.mallorca.gallery.map((item, i) => {
@@ -893,6 +896,7 @@
       photo.src = item.url;
       photo.style.display = '';
     }
+    renderUnsplashCredit('mallorca-hero-credit', item.type === 'photo' ? (window._mallorcaGalleryAttributions || [])[index] : null);
     document.querySelectorAll('.gallery-thumb').forEach((el, i) => {
       el.classList.toggle('border-[#8B5CF6]', i === index);
       el.classList.toggle('border-transparent', i !== index);
@@ -956,6 +960,22 @@
     const div = document.createElement('div');
     div.textContent = str == null ? '' : String(str);
     return div.innerHTML;
+  }
+
+  // Required by Unsplash's API guidelines whenever a photo they returned
+  // is displayed: credit the photographer by name, linked to their
+  // profile, plus a link to Unsplash itself.
+  function renderUnsplashCredit(containerId, attribution) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    if (!attribution || !attribution.photographer_name) {
+      el.innerHTML = '';
+      return;
+    }
+    const name = escapeHtml(attribution.photographer_name);
+    const photographerUrl = attribution.photographer_url || 'https://unsplash.com';
+    const unsplashUrl = attribution.unsplash_url || 'https://unsplash.com';
+    el.innerHTML = `Photo by <a href="${photographerUrl}" target="_blank" rel="noopener" class="underline hover:text-white">${name}</a> on <a href="${unsplashUrl}" target="_blank" rel="noopener" class="underline hover:text-white">Unsplash</a>`;
   }
 
   function reviewSectionHTML(prefix) {
@@ -1455,6 +1475,7 @@
       heroBg.style.background = gradientFor(itinerary.destination || 'trip');
       heroBg.style.opacity = '1';
     }
+    renderUnsplashCredit('ai-route-hero-credit', itinerary.hero_attribution);
 
     // Gallery thumbnails — click to swap the hero photo
     const galleryEl = document.getElementById('ai-route-gallery');
@@ -1470,6 +1491,7 @@
       galleryHint.classList.add('hidden');
     }
     window._aiRouteGallery = gallery;
+    window._aiRouteGalleryAttributions = itinerary.gallery_attributions || [];
 
     // Store for sharing
     window._aiRouteVideoId = videoId;
@@ -1507,6 +1529,8 @@
       el.classList.toggle('border-[#8B5CF6]', i === index);
       el.classList.toggle('border-transparent', i !== index);
     });
+    const attributions = window._aiRouteGalleryAttributions || [];
+    renderUnsplashCredit('ai-route-hero-credit', attributions[index]);
   }
 
   function filterAiStops(category, clickedBtn) {
@@ -1662,44 +1686,61 @@
       const res = await fetch(`${BACKEND_URL}/demo/mallorca-photos`);
       if (!res.ok) throw new Error('Failed to load demo photos');
       const p = await res.json();
+      const urlOf = (key) => (p[key] && p[key].url) || '';
+      const attrOf = (key) => (p[key] && p[key].attribution) || null;
 
       // gallery[0] is the video placeholder; gallery[1..4] are the 4 photo
       // slots, and gallery[1] doubles as the default hero (see
       // renderMallorcaHero, which shows the first photo-type entry).
-      if (p.hero) MEDIA.mallorca.gallery[1].url = p.hero;
-      if (p.gallery1) MEDIA.mallorca.gallery[2].url = p.gallery1;
-      if (p.gallery2) MEDIA.mallorca.gallery[3].url = p.gallery2;
-      if (p.gallery3) MEDIA.mallorca.gallery[4].url = p.gallery3;
+      // window._mallorcaGalleryAttributions is index-aligned with
+      // MEDIA.mallorca.gallery so selectGalleryItem can update the credit.
+      window._mallorcaGalleryAttributions = window._mallorcaGalleryAttributions || [];
+      if (urlOf('hero')) {
+        MEDIA.mallorca.gallery[1].url = urlOf('hero');
+        window._mallorcaGalleryAttributions[1] = attrOf('hero');
+      }
+      if (urlOf('gallery1')) {
+        MEDIA.mallorca.gallery[2].url = urlOf('gallery1');
+        window._mallorcaGalleryAttributions[2] = attrOf('gallery1');
+      }
+      if (urlOf('gallery2')) {
+        MEDIA.mallorca.gallery[3].url = urlOf('gallery2');
+        window._mallorcaGalleryAttributions[3] = attrOf('gallery2');
+      }
+      if (urlOf('gallery3')) {
+        MEDIA.mallorca.gallery[4].url = urlOf('gallery3');
+        window._mallorcaGalleryAttributions[4] = attrOf('gallery3');
+      }
 
       // The "Discover Routes" grid card also used a Picsum placeholder —
       // reuse the hero shot so the card thumbnail actually shows Mallorca.
-      if (p.hero && MEDIA.routes['mallorca-5-days']) {
-        MEDIA.routes['mallorca-5-days'].cardPhoto = p.hero;
+      if (urlOf('hero') && MEDIA.routes['mallorca-5-days']) {
+        MEDIA.routes['mallorca-5-days'].cardPhoto = urlOf('hero');
         renderRoutes();
       }
 
-      if (p.palma_cathedral) DAY1_STOPS[0].photo = p.palma_cathedral;
-      if (p.restaurant_illeta) DAY1_STOPS[1].photo = p.restaurant_illeta;
-      if (p.valldemossa) DAY2_STOPS[0].photo = p.valldemossa;
-      if (p.deia) DAY5_STOPS[1].photo = p.deia;
+      if (urlOf('palma_cathedral')) DAY1_STOPS[0].photo = urlOf('palma_cathedral');
+      if (urlOf('restaurant_illeta')) DAY1_STOPS[1].photo = urlOf('restaurant_illeta');
+      if (urlOf('valldemossa')) DAY2_STOPS[0].photo = urlOf('valldemossa');
+      if (urlOf('deia')) DAY5_STOPS[1].photo = urlOf('deia');
 
       const beachPhotoKeys = ['beach_calo_del_moro', 'beach_salmunia', 'beach_cala_llombards', 'beach_platja_santanyi'];
       BEACH_STOPS.forEach((stop, i) => {
         const key = beachPhotoKeys[i];
-        if (key && p[key]) stop.photo = p[key];
+        if (key && urlOf(key)) stop.photo = urlOf(key);
       });
 
       // The two demo hotel cards use static placeholder divs (not a JS
       // array), so swap their backgrounds directly.
       const hotel1El = document.getElementById('mallorca-hotel1-photo');
-      if (hotel1El && p.hotel) {
-        hotel1El.style.background = `url('${p.hotel}') center/cover`;
+      if (hotel1El && urlOf('hotel')) {
+        hotel1El.style.background = `url('${urlOf('hotel')}') center/cover`;
         hotel1El.classList.remove('media-placeholder');
         hotel1El.innerHTML = '';
       }
       const hotel2El = document.getElementById('mallorca-hotel2-photo');
-      if (hotel2El && p.hotel2) {
-        hotel2El.style.background = `url('${p.hotel2}') center/cover`;
+      if (hotel2El && urlOf('hotel2')) {
+        hotel2El.style.background = `url('${urlOf('hotel2')}') center/cover`;
         hotel2El.classList.remove('media-placeholder');
         hotel2El.innerHTML = '';
       }

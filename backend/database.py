@@ -47,6 +47,21 @@ def init_db() -> None:
                 checked_at  TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS reviews (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                video_id    TEXT NOT NULL,       -- itinerary video_id, or a
+                                                  -- fixed key for static demo
+                                                  -- routes (e.g. "mallorca-demo-route")
+                name        TEXT NOT NULL,
+                title       TEXT NOT NULL,
+                rating      INTEGER NOT NULL,
+                text        TEXT NOT NULL,
+                created_at  TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_reviews_video_id
+                ON reviews (video_id);
+
             CREATE INDEX IF NOT EXISTS idx_itineraries_destination
                 ON itineraries (destination);
         """)
@@ -60,6 +75,8 @@ def init_db() -> None:
             conn.execute("ALTER TABLE itineraries ADD COLUMN hero_photo_url TEXT DEFAULT ''")
         if "gallery_photo_urls_json" not in existing_cols:
             conn.execute("ALTER TABLE itineraries ADD COLUMN gallery_photo_urls_json TEXT DEFAULT '[]'")
+        if "comments_json" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN comments_json TEXT DEFAULT '[]'")
 
     print(f"[DB] Initialised at {DB_PATH}")
 
@@ -76,12 +93,14 @@ def get_itinerary(video_id: str) -> Itinerary | None:
         return None
     days = json.loads(row["days_json"])
     gallery_urls = json.loads(row["gallery_photo_urls_json"] or "[]")
+    comments = json.loads(row["comments_json"] or "[]")
     return Itinerary(
         destination=row["destination"],
         duration=row["duration"],
         days=days,
         hero_photo_url=row["hero_photo_url"] or "",
         gallery_photo_urls=gallery_urls,
+        comments=comments,
     )
 
 
@@ -91,8 +110,8 @@ def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
         conn.execute(
             """INSERT OR REPLACE INTO itineraries
                (video_id, url, destination, duration, days_json, created_at,
-                hero_photo_url, gallery_photo_urls_json)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                hero_photo_url, gallery_photo_urls_json, comments_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 video_id,
                 url,
@@ -102,6 +121,7 @@ def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
                 datetime.utcnow().isoformat(),
                 itinerary.hero_photo_url,
                 json.dumps(itinerary.gallery_photo_urls),
+                json.dumps([c.model_dump() for c in itinerary.comments]),
             ),
         )
     print(f"[DB] Saved itinerary for {video_id} ({itinerary.destination})")
@@ -115,6 +135,20 @@ def list_itineraries() -> list[dict]:
             "FROM itineraries ORDER BY created_at DESC"
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def clear_all_itineraries() -> int:
+    """
+    Deletes every cached itinerary. Used by the admin 'Clear Cache' button
+    so previously-generated routes regenerate fresh (e.g. after a link
+    format or pricing change) instead of serving stale cached data.
+    Returns the number of rows deleted.
+    """
+    with _conn() as conn:
+        cur = conn.execute("DELETE FROM itineraries")
+        count = cur.rowcount
+    print(f"[DB] Cleared {count} cached itineraries")
+    return count
 
 
 # ── Troll filter cache ────────────────────────────────────────────────────────
@@ -144,3 +178,37 @@ def save_troll_decision(video_id: str, is_travel: bool, reason: str) -> None:
                VALUES (?, ?, ?, ?)""",
             (video_id, int(is_travel), reason, datetime.utcnow().isoformat()),
         )
+
+
+# ── Reviews ────────────────────────────────────────────────────────────────
+
+def save_review(video_id: str, name: str, title: str, rating: int, text: str) -> dict:
+    """Saves a new review and returns it as a dict (ready for Review(**dict))."""
+    created_at = datetime.utcnow().isoformat()
+    with _conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO reviews (video_id, name, title, rating, text, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (video_id, name, title, rating, text, created_at),
+        )
+        new_id = cur.lastrowid
+    print(f"[DB] Saved review #{new_id} for {video_id} ({rating}★)")
+    return {
+        "id": new_id,
+        "video_id": video_id,
+        "name": name,
+        "title": title,
+        "rating": rating,
+        "text": text,
+        "created_at": created_at,
+    }
+
+
+def get_reviews(video_id: str) -> list[dict]:
+    """Returns all reviews for a video_id, most recent first."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM reviews WHERE video_id = ? ORDER BY created_at DESC",
+            (video_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]

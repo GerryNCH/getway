@@ -27,11 +27,12 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from models import ExtractRequest, ExtractResponse, Itinerary
+from models import ExtractRequest, ExtractResponse, Itinerary, Comment, ReviewCreate, Review, ReviewsResponse
 import database
 from extractor import (
     extract_video_id, fetch_metadata, download_video, extract_frames,
     is_slideshow, fetch_slideshow_post, download_slideshow_images,
+    fetch_top_comments,
 )
 from troll_filter import check_is_travel
 from ai_analyzer import analyse_frames
@@ -159,6 +160,14 @@ async def extract(req: ExtractRequest):
         except Exception as e:
             print(f"[Places] Enrichment failed (non-fatal): {e}")
 
+        # ── Layer 7c: fetch real TikTok comments (non-fatal) ──────────────────
+        try:
+            raw_comments = fetch_top_comments(url, max_comments=15)
+            itinerary.comments = [Comment(**c) for c in raw_comments]
+            print(f"[Comments] Fetched {len(itinerary.comments)} real TikTok comments")
+        except Exception as e:
+            print(f"[Comments] Fetch failed (non-fatal): {e}")
+
     # ── Layer 8: save to database ─────────────────────────────────────────────
     database.save_itinerary(video_id, url, itinerary)
 
@@ -170,7 +179,56 @@ async def extract(req: ExtractRequest):
     )
 
 
+# ── Reviews ────────────────────────────────────────────────────────────────
+
+@app.post("/reviews", response_model=Review)
+def create_review(review: ReviewCreate):
+    """Saves a review left by a traveler for a specific route (video_id)."""
+    name = review.name.strip()
+    title = review.title.strip()
+    text = review.text.strip()
+    video_id = review.video_id.strip()
+
+    if not video_id:
+        raise HTTPException(400, "Missing video_id")
+    if not name or not title or not text:
+        raise HTTPException(400, "Name, title, and review text are required")
+    if not (1 <= review.rating <= 5):
+        raise HTTPException(400, "Rating must be between 1 and 5")
+    if len(text) > 2000:
+        raise HTTPException(400, "Review text is too long (max 2000 characters)")
+
+    saved = database.save_review(video_id, name[:100], title[:150], review.rating, text)
+    return Review(**saved)
+
+
+@app.get("/reviews/{video_id}", response_model=ReviewsResponse)
+def list_reviews(video_id: str):
+    """Returns all reviews for a route, plus the average rating and count."""
+    rows = database.get_reviews(video_id)
+    reviews = [Review(**r) for r in rows]
+    count = len(reviews)
+    average = round(sum(r.rating for r in reviews) / count, 1) if count else 0.0
+    return ReviewsResponse(reviews=reviews, average_rating=average, count=count)
+
+
 # ── Admin endpoints (basic — full panel comes later) ─────────────────────────
+
+ADMIN_SECRET = os.getenv("ADMIN_SECRET", "getway-admin-2026")
+
+
+@app.post("/admin/clear-cache")
+def clear_cache(secret: str):
+    """
+    Deletes all cached itineraries so old TikTok links regenerate fresh.
+    Protected by ADMIN_SECRET — set this in Railway's environment variables
+    to something private; it falls back to a default if unset.
+    """
+    if secret != ADMIN_SECRET:
+        raise HTTPException(403, "Invalid admin secret")
+    count = database.clear_all_itineraries()
+    return {"status": "ok", "cleared": count}
+
 
 @app.get("/itinerary/{video_id}", response_model=ExtractResponse)
 def get_itinerary(video_id: str):

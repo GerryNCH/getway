@@ -690,7 +690,7 @@
     const bookingHref = bookingAffiliateSearchUrl(city);
     const expediaHref = expediaAffiliateSearchUrl(city);
     const photo = (galleryPhotos && galleryPhotos.length) ? galleryPhotos[galleryPhotos.length - 1] : '';
-    const seed = 'hotels-banner-' + city.replace(/\s+/g, '-').toLowerCase();
+    const seed = 'hotels-banner-' + slugify(city);
 
     container.innerHTML = `
       <div class="ai-stop-card md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
@@ -960,6 +960,20 @@
     const div = document.createElement('div');
     div.textContent = str == null ? '' : String(str);
     return div.innerHTML;
+  }
+
+  // Turns a name into a safe id/seed for use inside inline onclick="..."
+  // handlers and as an HTML id. Whitespace-only replacement (the old
+  // approach) left apostrophes intact — a hotel like "S'Almunia Resort"
+  // produced a seed containing an unescaped ' that broke the surrounding
+  // single-quoted onclick string. Stripping everything but letters/numbers
+  // down to hyphens closes that off for apostrophes and any other
+  // punctuation (parentheses, commas, etc.) at once.
+  function slugify(str) {
+    return (str || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'item';
   }
 
   // Required by Unsplash's API guidelines whenever a photo they returned
@@ -1324,7 +1338,7 @@
 
   function renderAiStopCard(stop, destination) {
     const cfg = CAT_CONFIG[stop.category] || { icon: 'map-pin', color: '#8B5CF6', label: stop.category };
-    const seed = stop.name.replace(/\s+/g, '-').toLowerCase();
+    const seed = slugify(stop.name);
     // Multi-city destinations (e.g. "Cairo & Luxor") need to be split down
     // to a single primary city — searching Maps for the full compound
     // string biases every stop toward the wrong half of the trip.

@@ -120,6 +120,7 @@ Schema:
 {
   "destination": "City, Country",
   "duration": "X days",
+  "summary": "2-3 sentence intro: what makes this destination special, and what this specific route covers (e.g. its vibe, standout stops, or theme)",
   "days": [
     {
       "day": 1,
@@ -169,11 +170,38 @@ Only fall back to a generic description ("is_specific_name": false) after
 genuinely checking for these — don't default to giving up early.
 
 Rules:
+- Always write "summary": 2-3 sentences, no more — first sentence about
+  what makes the destination itself appealing, second (and optionally
+  third) about what this specific route covers or its vibe. Plain,
+  engaging prose — not a bullet list, not marketing hype.
 - Extract EVERY named location — do not summarise or skip stops
 - If a place has no visible name after checking the clues above, describe it
   precisely and set "is_specific_name": false — e.g. "Cliffside restaurant
   with blue umbrellas, Positano"
-- Group logically by day; if days unclear, distribute across Day 1
+- Group by day using this priority:
+  1. If the video itself states day-by-day structure (e.g. "Day 1", "Day 2"
+     captions or narration), use that structure exactly.
+  2. Otherwise (e.g. a "Top 10 hidden gems in X" or "best places to visit"
+     compilation with no day structure) — reason about how long each place
+     actually takes to visit, using your knowledge of the destination, then
+     group accordingly:
+       - A major full-day attraction (theme park, day-trip island, large
+         museum complex, multi-hour hike, safari, ski resort) gets its OWN
+         day — don't pack anything else alongside it.
+       - Quick stops (viewpoint, small church, photo spot, café, short
+         walk) can be combined — several in one day IF they're also close
+         to each other geographically.
+       - A half-day attraction (large landmark, big market, boat tour)
+         pairs with at most one or two quick stops, not several.
+     There's no fixed number of stops per day — a day can have 1 stop if
+     that's what its size warrants, or 4-5 if they're all quick and nearby.
+     Label each day after its area or theme (e.g. "Old Town & Harbour",
+     "West Coast Beaches") rather than leaving it generic.
+  3. Only fall back to putting everything in Day 1 if there are 3 or fewer
+     stops total, or if you cannot confidently place them geographically
+     or judge their typical visit length.
+- If a hotel/accommodation is identified, put it in Day 1 (it's the base
+  the traveler returns to) even if the video mentions it later
 - If you see fewer than 3 identifiable locations, mention it in Day 1 label
 - NEVER invent places you cannot see or read in the frames
 - Return only the JSON object"""

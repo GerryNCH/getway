@@ -94,6 +94,8 @@ def init_db() -> None:
             conn.execute("ALTER TABLE itineraries ADD COLUMN tags_json TEXT DEFAULT '[]'")
         if "creator_handle" not in existing_cols:
             conn.execute("ALTER TABLE itineraries ADD COLUMN creator_handle TEXT DEFAULT ''")
+        if "summary" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN summary TEXT DEFAULT ''")
 
     print(f"[DB] Initialised at {DB_PATH}")
 
@@ -117,6 +119,7 @@ def get_itinerary(video_id: str) -> Itinerary | None:
         destination=row["destination"],
         duration=row["duration"],
         days=days,
+        summary=row["summary"] or "",
         hero_photo_url=row["hero_photo_url"] or "",
         hero_attribution=hero_attribution,
         gallery_photo_urls=gallery_urls,
@@ -145,8 +148,8 @@ def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
             """INSERT OR REPLACE INTO itineraries
                (video_id, url, destination, duration, days_json, created_at,
                 hero_photo_url, gallery_photo_urls_json, comments_json,
-                hero_attribution_json, gallery_attributions_json)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                hero_attribution_json, gallery_attributions_json, summary)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 video_id,
                 url,
@@ -159,6 +162,7 @@ def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
                 json.dumps([c.model_dump() for c in itinerary.comments]),
                 json.dumps(_attr_to_dict(itinerary.hero_attribution)),
                 json.dumps([_attr_to_dict(a) for a in itinerary.gallery_attributions]),
+                itinerary.summary,
             ),
         )
     print(f"[DB] Saved itinerary for {video_id} ({itinerary.destination})")
@@ -186,6 +190,7 @@ def _row_to_admin_dict(row: sqlite3.Row) -> dict:
         "destination": row["destination"],
         "duration": row["duration"],
         "days": json.loads(row["days_json"]),
+        "summary": row["summary"] or "",
         "hero_photo_url": row["hero_photo_url"] or "",
         "gallery_photo_urls": json.loads(row["gallery_photo_urls_json"] or "[]"),
         "status": row["status"] or "pending",
@@ -220,7 +225,7 @@ def list_public_approved() -> list[dict]:
     with _conn() as conn:
         rows = conn.execute(
             """SELECT video_id, destination, duration, days_json, hero_photo_url,
-                      price_category, tags_json, creator_handle
+                      price_category, tags_json, creator_handle, summary
                FROM itineraries WHERE status = 'approved' ORDER BY created_at DESC"""
         ).fetchall()
     result = []
@@ -237,6 +242,7 @@ def list_public_approved() -> list[dict]:
             "price_category": r["price_category"] or "€€",
             "tags": json.loads(r["tags_json"] or "[]"),
             "creator_handle": r["creator_handle"] or "",
+            "summary": r["summary"] or "",
         })
     return result
 
@@ -279,7 +285,7 @@ def update_itinerary_content(video_id: str, itinerary: Itinerary) -> bool:
         cur = conn.execute(
             """UPDATE itineraries
                SET destination = ?, duration = ?, days_json = ?,
-                   hero_photo_url = ?, gallery_photo_urls_json = ?
+                   hero_photo_url = ?, gallery_photo_urls_json = ?, summary = ?
                WHERE video_id = ?""",
             (
                 itinerary.destination,
@@ -287,6 +293,7 @@ def update_itinerary_content(video_id: str, itinerary: Itinerary) -> bool:
                 json.dumps([d.model_dump() for d in itinerary.days]),
                 itinerary.hero_photo_url,
                 json.dumps(itinerary.gallery_photo_urls),
+                itinerary.summary,
                 video_id,
             ),
         )

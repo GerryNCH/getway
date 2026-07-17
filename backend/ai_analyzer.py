@@ -36,6 +36,32 @@ def _booking_affiliate_url(search_query: str) -> str:
     return f"{_CJ_BASE_URL}?url={urllib.parse.quote(target, safe='')}"
 
 
+# Expedia Group Travel Creator Program — approved July 2026. camref/
+# creativeref/adref are the fixed identifiers tied to Gerry's account and
+# this generated link (confirmed via their Link Builder tool, not guessed);
+# only `landingPage` changes per hotel/destination search.
+_EXPEDIA_CAMREF = "1110lK3nQ"
+_EXPEDIA_CREATIVEREF = "1100l68075"
+_EXPEDIA_ADREF = "PZTaSwOiKr"
+
+
+def _expedia_affiliate_url(search_query: str) -> str:
+    """
+    Expedia Hotel-Search URL, wrapped in Gerry's Expedia Group affiliate
+    link (via their Travel Creator Program) so hotel clicks are attributed
+    to his account.
+    """
+    target = f"https://www.expedia.com/Hotel-Search?destination={urllib.parse.quote_plus(search_query)}"
+    params = {
+        "siteid": "1",
+        "landingPage": target,
+        "camref": _EXPEDIA_CAMREF,
+        "creativeref": _EXPEDIA_CREATIVEREF,
+        "adref": _EXPEDIA_ADREF,
+    }
+    return f"https://expedia.com/affiliate?{urllib.parse.urlencode(params)}"
+
+
 def _google_maps_search_url(search_query: str) -> str:
     """
     Temporary restaurant link until the TheFork affiliate application is
@@ -46,12 +72,14 @@ def _google_maps_search_url(search_query: str) -> str:
 
 def _attach_booking_urls(data: dict) -> dict:
     """
-    Fills in `booking_url` for every hotel/food stop, in place, before the
-    JSON is turned into an Itinerary:
-      - hotel → Booking.com search wrapped in the CJ affiliate link. Uses
-        the exact stop name when the AI confirmed it (`is_specific_name`),
-        otherwise falls back to just the destination city — same rule the
-        frontend already applies for its own "unconfirmed hotel" fallback.
+    Fills in `booking_url` (Booking.com or Maps) and `expedia_url` (hotels
+    only) for every hotel/food stop, in place, before the JSON is turned
+    into an Itinerary:
+      - hotel → Booking.com search wrapped in the CJ affiliate link, PLUS
+        an Expedia affiliate search as a second option. Uses the exact stop
+        name when the AI confirmed it (`is_specific_name`), otherwise falls
+        back to just the destination city — same rule the frontend already
+        applies for its own "unconfirmed hotel" fallback.
       - food  → Google Maps search (name + city) as a stand-in until
         TheFork affiliate is live.
     Any other category is left untouched.
@@ -68,6 +96,7 @@ def _attach_booking_urls(data: dict) -> dict:
             if category == "hotel":
                 query = f"{name} {city}".strip() if is_specific else city
                 stop["booking_url"] = _booking_affiliate_url(query)
+                stop["expedia_url"] = _expedia_affiliate_url(query)
             elif category == "food":
                 query = f"{name} {city}".strip()
                 stop["booking_url"] = _google_maps_search_url(query)

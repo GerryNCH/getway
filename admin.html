@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GetWay — Admin</title>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" crossorigin="anonymous"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  body {
+    font-family: 'Inter', sans-serif;
+    background:
+      radial-gradient(at 15% 15%, rgba(250,240,222,0.95) 0px, transparent 55%),
+      radial-gradient(at 85% 10%, rgba(222,231,240,0.85) 0px, transparent 55%),
+      radial-gradient(at 50% 85%, rgba(241,232,214,0.75) 0px, transparent 55%),
+      radial-gradient(at 90% 90%, rgba(216,226,236,0.85) 0px, transparent 55%),
+      #fdfbf7;
+    background-attachment: fixed;
+    color: #111827;
+  }
+  .font-serif-display { font-family: 'Playfair Display', serif; }
+  ::-webkit-scrollbar { width: 0; height: 0; }
+
+  .glass-card {
+    background: rgba(255,255,255,0.65);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid rgba(255,255,255,0.5);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.10);
+  }
+  .bento-card { background:#fff; box-shadow: 0 2px 14px rgba(20,20,30,0.06); border-radius: 20px; }
+
+  .btn-interactive { transition: all 0.22s ease; }
+  .btn-interactive:hover { filter: brightness(1.08); transform: translateY(-1px); }
+  .btn-interactive:active { transform: translateY(0) scale(0.97); filter: brightness(0.96); }
+
+  .tab-chip { transition: all 0.25s ease; cursor: pointer; }
+  .tab-chip.is-active { background: #8B5CF6; color: #fff; border-color: #8B5CF6; }
+  .tab-chip:not(.is-active):hover { border-color: #8B5CF6; background: #F8F6FF; color: #6D28D9; }
+
+  input, select, textarea {
+    border: 1px solid #E5E7EB; border-radius: 10px; padding: 8px 12px;
+    font-size: 13.5px; width: 100%; background: #fff; outline: none;
+    transition: border-color .2s ease;
+  }
+  input:focus, select:focus, textarea:focus { border-color: #8B5CF6; }
+  textarea { resize: vertical; min-height: 52px; }
+  label.field-label { font-size: 11px; font-weight: 600; color: #9CA3AF; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; display: block; }
+
+  .stop-row { border: 1px solid #EEF0F3; border-radius: 14px; padding: 14px; margin-bottom: 10px; background: #FAFAFB; }
+  .day-block { border-left: 3px solid #E9E3FB; padding-left: 16px; margin-bottom: 20px; }
+
+  .pill-btn { border-radius: 999px; font-size: 13px; font-weight: 600; padding: 8px 18px; border: none; cursor: pointer; display:inline-flex; align-items:center; gap:6px; }
+  .pill-btn:disabled { opacity: .5; cursor: not-allowed; }
+  .pill-purple { background: #8B5CF6; color: #fff; }
+  .pill-green  { background: #16A34A; color: #fff; }
+  .pill-red    { background: #FEE2E2; color: #B91C1C; }
+  .pill-red.solid { background: #DC2626; color: #fff; }
+  .pill-gray   { background: #F3F4F6; color: #374151; }
+
+  .icon { width: 15px; height: 15px; stroke-width: 2.1; }
+</style>
+</head>
+<body class="antialiased min-h-screen">
+
+<!-- ── LOGIN ─────────────────────────────────────────────────────────── -->
+<div id="login-screen" class="min-h-screen flex items-center justify-center px-6">
+  <div class="glass-card w-full max-w-sm rounded-[28px] px-8 py-10 text-center">
+    <div class="font-serif-display text-2xl mb-1">GetWay<span class="text-[#8B5CF6]">.</span></div>
+    <div class="text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-6">Admin Panel</div>
+    <div class="flex items-center gap-2.5 h-[48px] px-4 bg-white/80 border border-gray-200 rounded-2xl mb-3">
+      <svg class="icon text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      <input id="login-password" type="password" placeholder="Password" class="flex-1 border-none p-0 text-sm bg-transparent">
+    </div>
+    <button id="login-btn" class="btn-interactive pill-btn pill-purple w-full justify-center h-[46px]">Sign in</button>
+    <p id="login-error" class="text-red-600 text-xs mt-3 hidden">Incorrect password — try again.</p>
+  </div>
+</div>
+
+<!-- ── APP ───────────────────────────────────────────────────────────── -->
+<div id="app-screen" class="hidden">
+
+  <div class="sticky top-0 z-20 bg-[#fdfbf7]/90 backdrop-blur-md border-b border-gray-200/70">
+    <div class="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
+      <div class="font-serif-display text-xl">GetWay<span class="text-[#8B5CF6]">.</span> <span class="text-gray-400 text-sm font-sans">Admin</span></div>
+      <button id="logout-btn" class="pill-btn pill-gray btn-interactive text-xs">Sign out</button>
+    </div>
+    <div class="max-w-5xl mx-auto px-6 pb-4 flex gap-2">
+      <button class="tab-chip is-active pill-btn pill-gray border border-gray-200" data-tab="pending">Pending review</button>
+      <button class="tab-chip pill-btn pill-gray border border-gray-200" data-tab="approved">Published</button>
+      <button class="tab-chip pill-btn pill-gray border border-gray-200" data-tab="stats">Statistics</button>
+    </div>
+  </div>
+
+  <div id="tab-content" class="max-w-5xl mx-auto px-6 py-8"></div>
+</div>
+
+<script>
+const API_BASE = "https://getway-production.up.railway.app";
+let SECRET = sessionStorage.getItem("getway_admin_secret") || "";
+let DATA = {};
+let ACTIVE_TAB = "pending";
+const CATEGORIES = ["hotel", "sight", "food", "activity", "beach", "village"];
+
+// ── Auth ──────────────────────────────────────────────────────────────
+async function tryLogin(pw) {
+  SECRET = pw;
+  try {
+    const res = await fetch(`${API_BASE}/admin/stats?secret=${encodeURIComponent(SECRET)}`);
+    if (!res.ok) throw new Error("bad secret");
+    sessionStorage.setItem("getway_admin_secret", SECRET);
+    document.getElementById("login-screen").classList.add("hidden");
+    document.getElementById("app-screen").classList.remove("hidden");
+    loadTab("pending");
+  } catch (e) {
+    document.getElementById("login-error").classList.remove("hidden");
+  }
+}
+document.getElementById("login-btn").addEventListener("click", () => tryLogin(document.getElementById("login-password").value.trim()));
+document.getElementById("login-password").addEventListener("keydown", (e) => { if (e.key === "Enter") tryLogin(e.target.value.trim()); });
+document.getElementById("logout-btn").addEventListener("click", () => { sessionStorage.removeItem("getway_admin_secret"); location.reload(); });
+if (SECRET) tryLogin(SECRET);
+
+// ── API helpers ───────────────────────────────────────────────────────
+function withSecret(path) {
+  const sep = path.includes("?") ? "&" : "?";
+  return `${API_BASE}${path}${sep}secret=${encodeURIComponent(SECRET)}`;
+}
+async function apiGet(path) { const r = await fetch(withSecret(path)); if (!r.ok) throw new Error(await r.text()); return r.json(); }
+async function apiPost(path) { const r = await fetch(withSecret(path), { method: "POST" }); if (!r.ok) throw new Error(await r.text()); return r.json(); }
+async function apiPut(path, body) {
+  const r = await fetch(withSecret(path), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function apiDelete(path) { const r = await fetch(withSecret(path), { method: "DELETE" }); if (!r.ok) throw new Error(await r.text()); return r.json(); }
+
+// ── Tabs ──────────────────────────────────────────────────────────────
+document.querySelectorAll(".tab-chip").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-chip").forEach((b) => b.classList.remove("is-active"));
+    btn.classList.add("is-active");
+    loadTab(btn.dataset.tab);
+  });
+});
+
+async function loadTab(tab) {
+  ACTIVE_TAB = tab;
+  const content = document.getElementById("tab-content");
+  content.innerHTML = `<p class="text-gray-400 text-sm">Loading…</p>`;
+  try {
+    if (tab === "pending") renderRouteList(await apiGet("/admin/pending"), "pending");
+    else if (tab === "approved") renderRouteList(await apiGet("/admin/approved"), "approved");
+    else if (tab === "stats") renderStats(await apiGet("/admin/stats"));
+  } catch (e) {
+    content.innerHTML = `<p class="text-red-600 text-sm">Failed to load: ${escapeHtml(String(e.message || e))}</p>`;
+  }
+}
+
+function escapeHtml(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+// ── Statistics tab ──────────────────────────────────────────────────
+function renderStats(stats) {
+  const content = document.getElementById("tab-content");
+  const topRows = stats.top_destinations
+    .map((d) => `<li class="flex justify-between py-2.5 border-b border-gray-100 text-sm"><span>${escapeHtml(d.destination)}</span><span class="font-semibold">${d.count}</span></li>`)
+    .join("");
+  content.innerHTML = `
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div class="bento-card p-6 text-center"><div class="font-serif-display text-4xl">${stats.total}</div><div class="text-gray-400 text-xs mt-1 uppercase tracking-wide">Total routes</div></div>
+      <div class="bento-card p-6 text-center"><div class="font-serif-display text-4xl text-[#B45309]">${stats.pending}</div><div class="text-gray-400 text-xs mt-1 uppercase tracking-wide">Pending</div></div>
+      <div class="bento-card p-6 text-center"><div class="font-serif-display text-4xl text-[#16A34A]">${stats.approved}</div><div class="text-gray-400 text-xs mt-1 uppercase tracking-wide">Approved</div></div>
+      <div class="bento-card p-6 text-center"><div class="font-serif-display text-4xl text-[#DC2626]">${stats.rejected}</div><div class="text-gray-400 text-xs mt-1 uppercase tracking-wide">Rejected</div></div>
+    </div>
+    <div class="bento-card p-6">
+      <div class="font-serif-display text-lg mb-3">Top destinations</div>
+      <ul>${topRows || '<li class="text-gray-400 text-sm">No data yet</li>'}</ul>
+    </div>
+  `;
+}
+
+// ── Pending / Approved list ───────────────────────────────────────────
+function renderRouteList(items, listType) {
+  const content = document.getElementById("tab-content");
+  DATA = {};
+  if (!items.length) {
+    content.innerHTML = `<div class="bento-card p-10 text-center text-gray-400 text-sm">Nothing here yet.</div>`;
+    return;
+  }
+  content.innerHTML = "";
+  items.forEach((item) => {
+    DATA[item.video_id] = item;
+    content.appendChild(buildCard(item, listType));
+  });
+}
+
+function buildCard(item, listType) {
+  const card = document.createElement("div");
+  card.className = "bento-card p-6 mb-5";
+  card.dataset.video = item.video_id;
+
+  const header = document.createElement("div");
+  header.className = "flex items-start justify-between gap-4 mb-1 flex-wrap";
+  header.innerHTML = `
+    <div>
+      <div class="font-serif-display text-xl">${escapeHtml(item.destination)} <span class="text-gray-400 font-sans text-sm font-normal">· ${escapeHtml(item.duration)}</span></div>
+      <div class="text-[11px] text-gray-400 mt-0.5">${escapeHtml(item.video_id)} &nbsp;·&nbsp; ${escapeHtml((item.created_at || "").slice(0, 10))}</div>
+    </div>
+    <div class="flex gap-2 action-buttons flex-wrap"></div>
+  `;
+  card.appendChild(header);
+
+  const actions = header.querySelector(".action-buttons");
+  actions.appendChild(makePillBtn("Edit", "pill-gray", () => toggleEditor(card), editIconSvg()));
+
+  if (listType === "pending") {
+    actions.appendChild(makePillBtn("Approve", "pill-green", () => doApprove(item.video_id), checkIconSvg()));
+    actions.appendChild(makePillBtn("Reject", "pill-red", () => doReject(item.video_id), xIconSvg()));
+  } else {
+    actions.appendChild(makePillBtn("Hide", "pill-gray", () => doHide(item.video_id), eyeOffIconSvg()));
+    actions.appendChild(makePillBtn("Delete", "pill-red solid", () => doDeletePermanently(item.video_id), trashIconSvg()));
+  }
+
+  const editor = document.createElement("div");
+  editor.className = "editor hidden mt-5 pt-5 border-t border-gray-100";
+  editor.appendChild(buildEditorBody(item));
+  card.appendChild(editor);
+
+  return card;
+}
+
+function makePillBtn(label, cls, onClick, iconSvg) {
+  const b = document.createElement("button");
+  b.className = `pill-btn ${cls} btn-interactive`;
+  b.innerHTML = `${iconSvg || ""}<span>${label}</span>`;
+  b.addEventListener("click", onClick);
+  return b;
+}
+function checkIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 6 9 17l-5-5"/></svg>`; }
+function xIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6 6 18M6 6l12 12"/></svg>`; }
+function editIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`; }
+function eyeOffIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c7 0 10 8 10 8a13.2 13.2 0 0 1-1.67 2.68M6.6 6.6C3.3 8.8 2 12 2 12s3 8 10 8a9.4 9.4 0 0 0 5-1.4M3 3l18 18"/><path d="M9.5 9.5a3 3 0 0 0 4.2 4.2"/></svg>`; }
+function trashIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>`; }
+function saveIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>`; }
+function plusIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>`; }
+
+function toggleEditor(card) { card.querySelector(".editor").classList.toggle("hidden"); }
+
+// ── Inline editor ──────────────────────────────────────────────────────
+function buildEditorBody(item) {
+  const wrap = document.createElement("div");
+
+  const topRow = document.createElement("div");
+  topRow.className = "grid grid-cols-1 md:grid-cols-3 gap-3 mb-5";
+  topRow.innerHTML = `
+    <div><label class="field-label">Destination</label><input class="itin-field" data-field="destination" value="${escapeHtml(item.destination)}"></div>
+    <div><label class="field-label">Duration</label><input class="itin-field" data-field="duration" value="${escapeHtml(item.duration)}"></div>
+    <div><label class="field-label">Hero photo URL</label><input class="itin-field" data-field="hero_photo_url" value="${escapeHtml(item.hero_photo_url || "")}"></div>
+  `;
+  topRow.querySelectorAll(".itin-field").forEach((el) => {
+    el.addEventListener("input", (e) => { DATA[item.video_id][e.target.dataset.field] = e.target.value; });
+  });
+  wrap.appendChild(topRow);
+
+  item.days.forEach((day, dayIdx) => wrap.appendChild(buildDayBlock(item.video_id, dayIdx)));
+
+  const saveBtn = makePillBtn("Save changes", "pill-purple", () => doSave(item.video_id, wrap), saveIconSvg());
+  saveBtn.classList.add("mt-1");
+  wrap.appendChild(saveBtn);
+
+  return wrap;
+}
+
+function buildDayBlock(videoId, dayIdx) {
+  const day = DATA[videoId].days[dayIdx];
+  const block = document.createElement("div");
+  block.className = "day-block";
+  block.dataset.day = dayIdx;
+
+  const labelRow = document.createElement("div");
+  labelRow.className = "mb-3";
+  labelRow.innerHTML = `<label class="field-label">Day ${day.day} — title</label><input class="day-label" value="${escapeHtml(day.label)}">`;
+  labelRow.querySelector(".day-label").addEventListener("input", (e) => { DATA[videoId].days[dayIdx].label = e.target.value; });
+  block.appendChild(labelRow);
+
+  const stopsWrap = document.createElement("div");
+  stopsWrap.className = "stops-wrap";
+  day.stops.forEach((stop, stopIdx) => stopsWrap.appendChild(buildStopRow(videoId, dayIdx, stopIdx)));
+  block.appendChild(stopsWrap);
+
+  const addBtn = makePillBtn("Add stop", "pill-gray", () => {
+    DATA[videoId].days[dayIdx].stops.push({ name: "", category: "sight", description: "", tip: "", photo_url: "", is_specific_name: true, booking_url: "", expedia_url: "" });
+    stopsWrap.appendChild(buildStopRow(videoId, dayIdx, DATA[videoId].days[dayIdx].stops.length - 1));
+  }, plusIconSvg());
+  addBtn.classList.add("text-xs");
+  block.appendChild(addBtn);
+
+  return block;
+}
+
+function buildStopRow(videoId, dayIdx, stopIdx) {
+  const stop = DATA[videoId].days[dayIdx].stops[stopIdx];
+  const row = document.createElement("div");
+  row.className = "stop-row";
+  row.dataset.stop = stopIdx;
+
+  const catOptions = CATEGORIES.map((c) => `<option value="${c}" ${c === stop.category ? "selected" : ""}>${c}</option>`).join("");
+
+  row.innerHTML = `
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+      <div class="md:col-span-2"><label class="field-label">Name</label><input class="stop-name" value="${escapeHtml(stop.name)}"></div>
+      <div><label class="field-label">Category</label><select class="stop-category">${catOptions}</select></div>
+      <div><label class="field-label">Photo URL</label><input class="stop-photo" value="${escapeHtml(stop.photo_url || "")}"></div>
+    </div>
+    <div class="mb-3"><label class="field-label">Description</label><textarea class="stop-desc">${escapeHtml(stop.description)}</textarea></div>
+    <div class="flex gap-3 items-end">
+      <div class="flex-1"><label class="field-label">Tip</label><input class="stop-tip" value="${escapeHtml(stop.tip || "")}"></div>
+      <button class="pill-btn pill-red btn-interactive delete-stop-btn text-xs">${xIconSvg()}<span>Remove</span></button>
+    </div>
+  `;
+
+  row.querySelector(".stop-name").addEventListener("input", (e) => { stop.name = e.target.value; });
+  row.querySelector(".stop-category").addEventListener("change", (e) => { stop.category = e.target.value; });
+  row.querySelector(".stop-photo").addEventListener("input", (e) => { stop.photo_url = e.target.value; });
+  row.querySelector(".stop-desc").addEventListener("input", (e) => { stop.description = e.target.value; });
+  row.querySelector(".stop-tip").addEventListener("input", (e) => { stop.tip = e.target.value; });
+  row.querySelector(".delete-stop-btn").addEventListener("click", () => {
+    const stops = DATA[videoId].days[dayIdx].stops;
+    const pos = stops.indexOf(stop);
+    if (pos > -1) stops.splice(pos, 1);
+    row.remove();
+  });
+
+  return row;
+}
+
+// ── Actions ───────────────────────────────────────────────────────────
+async function doSave(videoId, editorWrap) {
+  const btn = editorWrap.querySelector(".pill-purple");
+  btn.disabled = true;
+  btn.querySelector("span").textContent = "Saving…";
+  try {
+    const item = DATA[videoId];
+    await apiPut(`/admin/route/${encodeURIComponent(videoId)}`, {
+      destination: item.destination,
+      duration: item.duration,
+      days: item.days,
+      hero_photo_url: item.hero_photo_url,
+      gallery_photo_urls: item.gallery_photo_urls || [],
+    });
+    btn.querySelector("span").textContent = "Saved ✓";
+    setTimeout(() => loadTab(ACTIVE_TAB), 600);
+  } catch (e) {
+    alert("Save failed: " + e.message);
+    btn.disabled = false;
+    btn.querySelector("span").textContent = "Save changes";
+  }
+}
+async function doApprove(videoId) { try { await apiPost(`/admin/approve/${encodeURIComponent(videoId)}`); loadTab(ACTIVE_TAB); } catch (e) { alert("Error: " + e.message); } }
+async function doReject(videoId) { if (!confirm("Reject this route?")) return; try { await apiPost(`/admin/reject/${encodeURIComponent(videoId)}`); loadTab(ACTIVE_TAB); } catch (e) { alert("Error: " + e.message); } }
+async function doHide(videoId) { try { await apiPost(`/admin/hide/${encodeURIComponent(videoId)}`); loadTab(ACTIVE_TAB); } catch (e) { alert("Error: " + e.message); } }
+async function doDeletePermanently(videoId) { if (!confirm("This permanently deletes the route. Are you sure?")) return; try { await apiDelete(`/admin/route/${encodeURIComponent(videoId)}`); loadTab(ACTIVE_TAB); } catch (e) { alert("Error: " + e.message); } }
+</script>
+</body>
+</html>

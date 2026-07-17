@@ -256,12 +256,32 @@ function buildEditorBody(item) {
   topRow.innerHTML = `
     <div><label class="field-label">Destination</label><input class="itin-field" data-field="destination" value="${escapeHtml(item.destination)}"></div>
     <div><label class="field-label">Duration</label><input class="itin-field" data-field="duration" value="${escapeHtml(item.duration)}"></div>
-    <div><label class="field-label">Hero photo URL</label><input class="itin-field" data-field="hero_photo_url" value="${escapeHtml(item.hero_photo_url || "")}"></div>
+    <div>
+      <label class="field-label">Hero photo URL</label>
+      <div class="flex items-center gap-2">
+        <img class="hero-photo-preview w-11 h-11 rounded-lg object-cover bg-gray-100 flex-shrink-0 border border-gray-200" src="${escapeHtml(item.hero_photo_url || "")}" onerror="this.style.visibility='hidden'" onload="this.style.visibility='visible'">
+        <input class="itin-field flex-1" data-field="hero_photo_url" value="${escapeHtml(item.hero_photo_url || "")}">
+      </div>
+    </div>
   `;
   topRow.querySelectorAll(".itin-field").forEach((el) => {
-    el.addEventListener("input", (e) => { DATA[item.video_id][e.target.dataset.field] = e.target.value; });
+    el.addEventListener("input", (e) => {
+      DATA[item.video_id][e.target.dataset.field] = e.target.value;
+      if (e.target.dataset.field === "hero_photo_url") {
+        const img = topRow.querySelector(".hero-photo-preview");
+        if (img) { img.style.visibility = "visible"; img.src = e.target.value; }
+      }
+    });
   });
   wrap.appendChild(topRow);
+
+  const summaryWrap = document.createElement("div");
+  summaryWrap.className = "mb-4";
+  summaryWrap.innerHTML = `<label class="field-label">Destination + route summary</label><textarea class="itin-summary">${escapeHtml(item.summary || "")}</textarea>`;
+  summaryWrap.querySelector(".itin-summary").addEventListener("input", (e) => { item.summary = e.target.value; });
+  wrap.appendChild(summaryWrap);
+
+  wrap.appendChild(buildGalleryEditor(item));
 
   wrap.appendChild(buildMetaRow(item));
 
@@ -272,6 +292,51 @@ function buildEditorBody(item) {
   wrap.appendChild(saveBtn);
 
   return wrap;
+}
+
+function buildGalleryEditor(item) {
+  if (!item.gallery_photo_urls) item.gallery_photo_urls = [];
+  const box = document.createElement("div");
+  box.className = "mb-5";
+  box.innerHTML = `<label class="field-label mb-2">Gallery photos</label>`;
+
+  const thumbsRow = document.createElement("div");
+  thumbsRow.className = "flex flex-wrap gap-2 mb-2";
+
+  function renderThumbs() {
+    thumbsRow.innerHTML = "";
+    item.gallery_photo_urls.forEach((url, i) => {
+      const cell = document.createElement("div");
+      cell.className = "relative";
+      cell.innerHTML = `
+        <img src="${escapeHtml(url)}" class="w-16 h-16 rounded-lg object-cover bg-gray-100 border border-gray-200" onerror="this.style.opacity=0.15">
+        <button type="button" class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-white shadow flex items-center justify-center text-red-600 remove-gallery-btn">${xIconSvg()}</button>
+      `;
+      cell.querySelector(".remove-gallery-btn").addEventListener("click", () => {
+        item.gallery_photo_urls.splice(i, 1);
+        renderThumbs();
+      });
+      thumbsRow.appendChild(cell);
+    });
+  }
+  renderThumbs();
+  box.appendChild(thumbsRow);
+
+  const addRow = document.createElement("div");
+  addRow.className = "flex gap-2";
+  addRow.innerHTML = `<input class="gallery-add-input flex-1" placeholder="Paste a photo URL and press Add">`;
+  const addBtn = makePillBtn("Add", "pill-gray", () => {
+    const input = addRow.querySelector(".gallery-add-input");
+    const url = input.value.trim();
+    if (!url) return;
+    item.gallery_photo_urls.push(url);
+    input.value = "";
+    renderThumbs();
+  }, plusIconSvg());
+  addRow.appendChild(addBtn);
+  box.appendChild(addRow);
+
+  return box;
 }
 
 const TAG_OPTIONS = ["most_popular", "luxury", "budget_friendly", "exotic", "mountain", "city", "beach"];
@@ -371,7 +436,13 @@ function buildStopRow(videoId, dayIdx, stopIdx) {
     <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
       <div class="md:col-span-2"><label class="field-label">Name</label><input class="stop-name" value="${escapeHtml(stop.name)}"></div>
       <div><label class="field-label">Category</label><select class="stop-category">${catOptions}</select></div>
-      <div><label class="field-label">Photo URL</label><input class="stop-photo" value="${escapeHtml(stop.photo_url || "")}"></div>
+      <div>
+        <label class="field-label">Photo URL</label>
+        <div class="flex items-center gap-2">
+          <img class="stop-photo-preview w-9 h-9 rounded-md object-cover bg-gray-100 flex-shrink-0 border border-gray-200" src="${escapeHtml(stop.photo_url || "")}" onerror="this.style.visibility='hidden'" onload="this.style.visibility='visible'">
+          <input class="stop-photo flex-1" value="${escapeHtml(stop.photo_url || "")}">
+        </div>
+      </div>
     </div>
     <div class="mb-3"><label class="field-label">Description</label><textarea class="stop-desc">${escapeHtml(stop.description)}</textarea></div>
     <div class="flex gap-3 items-end">
@@ -382,7 +453,11 @@ function buildStopRow(videoId, dayIdx, stopIdx) {
 
   row.querySelector(".stop-name").addEventListener("input", (e) => { stop.name = e.target.value; });
   row.querySelector(".stop-category").addEventListener("change", (e) => { stop.category = e.target.value; });
-  row.querySelector(".stop-photo").addEventListener("input", (e) => { stop.photo_url = e.target.value; });
+  row.querySelector(".stop-photo").addEventListener("input", (e) => {
+    stop.photo_url = e.target.value;
+    const img = row.querySelector(".stop-photo-preview");
+    if (img) { img.style.visibility = "visible"; img.src = e.target.value; }
+  });
   row.querySelector(".stop-desc").addEventListener("input", (e) => { stop.description = e.target.value; });
   row.querySelector(".stop-tip").addEventListener("input", (e) => { stop.tip = e.target.value; });
   row.querySelector(".delete-stop-btn").addEventListener("click", () => {
@@ -406,6 +481,7 @@ async function doSave(videoId, editorWrap) {
       destination: item.destination,
       duration: item.duration,
       days: item.days,
+      summary: item.summary || "",
       hero_photo_url: item.hero_photo_url,
       gallery_photo_urls: item.gallery_photo_urls || [],
     });

@@ -50,7 +50,7 @@ app.add_middleware(
         "http://127.0.0.1:5500",
         "*",            # tighten this before production launch
     ],
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -214,7 +214,7 @@ def list_reviews(video_id: str):
 
 # ── Admin endpoints (basic — full panel comes later) ─────────────────────────
 
-ADMIN_SECRET = os.getenv("ADMIN_SECRET", "getway-admin-2026")
+ADMIN_SECRET = os.getenv("ADMIN_SECRET", "getway2026")
 
 
 @app.post("/admin/clear-cache")
@@ -252,6 +252,85 @@ def get_itinerary(video_id: str):
 def list_itineraries():
     """Lists all cached itineraries — useful for building the admin panel."""
     return database.list_itineraries()
+
+
+def _check_admin_secret(secret: str) -> None:
+    if secret != ADMIN_SECRET:
+        raise HTTPException(403, "Invalid admin secret")
+
+
+@app.get("/admin/pending")
+def admin_list_pending(secret: str):
+    """Full content of every route awaiting review — for the admin panel's Pending tab."""
+    _check_admin_secret(secret)
+    return database.list_by_status("pending")
+
+
+@app.get("/admin/approved")
+def admin_list_approved(secret: str):
+    """Full content of every published route — for the admin panel's Published tab."""
+    _check_admin_secret(secret)
+    return database.list_by_status("approved")
+
+
+@app.get("/admin/stats")
+def admin_stats(secret: str):
+    """Counts for the admin panel's Statistics tab."""
+    _check_admin_secret(secret)
+    return database.get_stats()
+
+
+@app.post("/admin/approve/{video_id}")
+def admin_approve(video_id: str, secret: str):
+    """Marks a route as approved — makes it eligible for public display."""
+    _check_admin_secret(secret)
+    if not database.set_status(video_id, "approved"):
+        raise HTTPException(404, "Route not found")
+    return {"status": "ok", "video_id": video_id, "new_status": "approved"}
+
+
+@app.post("/admin/reject/{video_id}")
+def admin_reject(video_id: str, secret: str):
+    """
+    Marks a route as rejected (soft delete — kept in the DB so the
+    Statistics tab can show a rejected count, and so a reject can be
+    undone). Use DELETE /admin/route/{video_id} to permanently remove it.
+    """
+    _check_admin_secret(secret)
+    if not database.set_status(video_id, "rejected"):
+        raise HTTPException(404, "Route not found")
+    return {"status": "ok", "video_id": video_id, "new_status": "rejected"}
+
+
+@app.post("/admin/hide/{video_id}")
+def admin_hide(video_id: str, secret: str):
+    """Un-publishes an approved route back to pending (the panel's 'Скрий' button)."""
+    _check_admin_secret(secret)
+    if not database.set_status(video_id, "pending"):
+        raise HTTPException(404, "Route not found")
+    return {"status": "ok", "video_id": video_id, "new_status": "pending"}
+
+
+@app.put("/admin/route/{video_id}")
+def admin_update_route(video_id: str, itinerary: Itinerary, secret: str):
+    """
+    Overwrites a route's content (stops, hero/gallery photos, destination,
+    duration) from the admin panel's inline editor. Status is untouched —
+    use /admin/approve, /admin/reject, or /admin/hide for that.
+    """
+    _check_admin_secret(secret)
+    if not database.update_itinerary_content(video_id, itinerary):
+        raise HTTPException(404, "Route not found")
+    return {"status": "ok", "video_id": video_id}
+
+
+@app.delete("/admin/route/{video_id}")
+def admin_delete_route(video_id: str, secret: str):
+    """Permanently deletes a route (the panel's 'Изтрий' button)."""
+    _check_admin_secret(secret)
+    if not database.delete_itinerary_permanently(video_id):
+        raise HTTPException(404, "Route not found")
+    return {"status": "ok", "video_id": video_id, "deleted": True}
 
 
 @app.get("/health")

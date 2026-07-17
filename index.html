@@ -852,12 +852,14 @@
     if (typeof AOS !== 'undefined') { AOS.refreshHard(); }
   }
 
+  const STATIC_ROUTE_SLUGS = new Set(["mallorca-5-days"]);
+
   function renderRoutes() {
     const grid = document.getElementById('route-grid');
     grid.innerHTML = ROUTES.map((r, i) => {
       const photo = MEDIA.routes[r.slug] ? MEDIA.routes[r.slug].cardPhoto : "";
       return `
-      <a href="#" onclick="showScreen('route'); return false;" data-search="${(r.destination + ' ' + r.creatorHandle).toLowerCase()}" data-days="${r.dayCount}" data-tags="${r.tags.join(',')}" data-aos="fade-up" data-aos-delay="${i * 80}" class="route-card group block bg-white rounded-[28px] overflow-hidden bento-card">
+      <a href="#" data-slug="${r.slug}" data-search="${(r.destination + ' ' + r.creatorHandle).toLowerCase()}" data-days="${r.dayCount}" data-tags="${r.tags.join(',')}" data-aos="fade-up" data-aos-delay="${i * 80}" class="route-card group block bg-white rounded-[28px] overflow-hidden bento-card">
         <div class="h-52 md:h-60 relative overflow-hidden rounded-t-[28px]" style="background:${r.fallbackColor}">
           <img src="${photo}" alt="" class="route-card-image absolute inset-0 w-full h-full object-cover" onerror="imgFallback(this,'map-pin','${r.slug}')">
           <div class="absolute top-3 right-3 bg-white/90 text-[10px] font-medium px-2.5 py-1 rounded-full">${r.priceCategory}</div>
@@ -871,6 +873,58 @@
         </div>
       </a>`;
     }).join('');
+
+    // Attach click handlers after the fact (never inline onclick with
+    // dynamic text) — destination/creator names can contain apostrophes
+    // that would otherwise break an inline onclick string.
+    grid.querySelectorAll('.route-card').forEach((card) => {
+      card.addEventListener('click', (e) => {
+        e.preventDefault();
+        openRouteCard(card.dataset.slug);
+      });
+    });
+  }
+
+  function openRouteCard(slug) {
+    if (STATIC_ROUTE_SLUGS.has(slug)) {
+      showScreen('route');
+      return;
+    }
+    fetch(`${BACKEND_URL}/itinerary/${encodeURIComponent(slug)}`)
+      .then(res => { if (!res.ok) throw new Error('Route not found: ' + res.status); return res.json(); })
+      .then(data => { renderAiRoute(data.itinerary, data.video_id, ''); showScreen('ai-route'); })
+      .catch(err => { console.error('Could not open route "' + slug + '":', err); alert('Sorry, this route could not be loaded.'); });
+  }
+
+  // Fetches every approved AI-generated route from the backend and merges
+  // it into the (otherwise hardcoded) ROUTES array so it shows up as a
+  // real, clickable card on the homepage grid — this is what the admin
+  // panel's "Approve" button ultimately makes public.
+  async function loadRealRoutes() {
+    try {
+      const res = await fetch(`${BACKEND_URL}/routes`);
+      if (!res.ok) return;
+      const routes = await res.json();
+      routes.forEach((r) => {
+        if (ROUTES.some(existing => existing.slug === r.video_id)) return; // avoid dupes on re-run
+        ROUTES.push({
+          slug: r.video_id,
+          destination: r.destination,
+          duration: r.duration,
+          dayCount: r.day_count,
+          priceCategory: r.price_category || "€€",
+          creatorHandle: r.creator_handle || "",
+          stopCount: r.stop_count,
+          fallbackColor: gradientFor(r.video_id),
+          tags: r.tags || [],
+        });
+        MEDIA.routes[r.video_id] = { cardPhoto: r.hero_photo_url || "" };
+      });
+      renderRoutes();
+      if (typeof AOS !== 'undefined') AOS.refreshHard();
+    } catch (err) {
+      console.error('loadRealRoutes failed (non-fatal, homepage keeps static routes):', err);
+    }
   }
 
   function renderMallorcaHero() {
@@ -1662,8 +1716,7 @@
     const routeParam = params.get('route');
     if (!routeParam) return;
 
-    const staticRoute = ROUTES.find(r => r.slug === routeParam);
-    if (staticRoute) {
+    if (STATIC_ROUTE_SLUGS.has(routeParam)) {
       showScreen('route');
       return;
     }
@@ -1805,6 +1858,7 @@
     safeRun('handleSharedRouteParam', handleSharedRouteParam);
     safeRun('wireMallorcaDemoHotelLinks', wireMallorcaDemoHotelLinks);
     loadMallorcaRealPhotos();
+    loadRealRoutes();
   });
 
   // Last-resort diagnostic: log the real error instead of letting it

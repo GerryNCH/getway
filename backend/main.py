@@ -147,7 +147,7 @@ async def extract(req: ExtractRequest):
 
         # Claude multimodal analysis
         try:
-            itinerary: Itinerary = analyse_frames(frames)
+            itinerary, ai_price_category, ai_tags = analyse_frames(frames)
             print(f"[AI] Destination: {itinerary.destination} — "
                   f"{sum(len(d.stops) for d in itinerary.days)} stops across "
                   f"{len(itinerary.days)} days")
@@ -170,6 +170,15 @@ async def extract(req: ExtractRequest):
 
     # ── Layer 8: save to database ─────────────────────────────────────────────
     database.save_itinerary(video_id, url, itinerary)
+
+    # Homepage-grid curation fields: price/tags come from the AI's own
+    # estimate above; creator_handle comes from yt-dlp's "uploader" field
+    # (regular videos only — the Apify slideshow path doesn't return a
+    # confirmed author field, so it's left blank for admins to fill in).
+    creator_handle = meta.get("uploader", "")
+    if creator_handle and not creator_handle.startswith("@"):
+        creator_handle = f"@{creator_handle}"
+    database.set_route_meta(video_id, ai_price_category, ai_tags, creator_handle)
 
     return ExtractResponse(
         itinerary=itinerary,

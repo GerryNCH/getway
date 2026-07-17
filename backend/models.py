@@ -73,6 +73,13 @@ class Itinerary(BaseModel):
                                    # (non-fatal — see extractor.py).
 
 
+class RouteMeta(BaseModel):
+    price_category: str = "€€"   # "€" | "€€" | "€€€"
+    tags: list[str] = []          # most_popular | luxury | budget_friendly |
+                                   # exotic | mountain | city | beach
+    creator_handle: str = ""      # e.g. "@username"
+
+
 class ExtractRequest(BaseModel):
     url: str
     max_frames: int = 8

@@ -121,6 +121,8 @@ Schema:
   "destination": "City, Country",
   "duration": "X days",
   "summary": "2-3 sentence intro: what makes this destination special, and what this specific route covers (e.g. its vibe, standout stops, or theme)",
+  "price_category": "€ | €€ | €€€",
+  "tags": ["0-3 of: most_popular, luxury, budget_friendly, exotic, mountain, city, beach"],
   "days": [
     {
       "day": 1,
@@ -137,6 +139,22 @@ Schema:
     }
   ]
 }
+
+"price_category" — your best estimate of the overall trip's price level based
+on what's actually visible: budget hostel/guesthouse, street food, public
+transport → "€". Mid-range hotel, casual sit-down restaurants → "€€".
+Luxury resort/5-star hotel, fine dining, private tours/boats → "€€€".
+Default to "€€" only if there's genuinely no visible signal either way.
+
+"tags" — pick only tags that clearly and honestly fit; it's fine to return
+an empty array if none clearly apply. Don't force a fit:
+  most_popular    → an iconic, extremely well-known destination/route
+  luxury          → high-end hotel/dining visible, or price_category is €€€
+  budget_friendly → hostels, street food, or price_category is €
+  exotic          → tropical, remote, or culturally distinct from Western Europe/US
+  mountain        → mountains, hiking, ski, or alpine village setting
+  city            → primarily an urban destination
+  beach           → primarily a coastal/beach destination
 
 "is_specific_name" must be:
   true  — "name" is a real, searchable property/place name (e.g. "Hotel
@@ -207,10 +225,15 @@ Rules:
 - Return only the JSON object"""
 
 
-def analyse_frames(frame_paths: list[str]) -> Itinerary:
+def analyse_frames(frame_paths: list[str]) -> tuple[Itinerary, str, list[str]]:
     """
     Sends all frames to Claude Sonnet and parses the JSON itinerary response.
     Raises ValueError if the response cannot be parsed.
+
+    Returns (itinerary, price_category, tags) — price_category and tags
+    aren't part of the Itinerary content model (they're admin-curation
+    fields stored separately via database.set_route_meta), so they're
+    popped out of the raw response here rather than silently dropped.
     """
     # Build multimodal content: intro text + all JPEG frames
     content: list[dict] = [
@@ -262,4 +285,7 @@ def analyse_frames(frame_paths: list[str]) -> Itinerary:
 
     data = _attach_booking_urls(data)
 
-    return Itinerary(**data)
+    price_category = data.pop("price_category", "") or "€€"
+    tags = data.pop("tags", None) or []
+
+    return Itinerary(**data), price_category, tags

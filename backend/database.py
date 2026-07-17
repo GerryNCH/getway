@@ -81,6 +81,13 @@ def init_db() -> None:
             conn.execute("ALTER TABLE itineraries ADD COLUMN hero_attribution_json TEXT DEFAULT NULL")
         if "gallery_attributions_json" not in existing_cols:
             conn.execute("ALTER TABLE itineraries ADD COLUMN gallery_attributions_json TEXT DEFAULT '[]'")
+        if "status" not in existing_cols:
+            # 'pending' | 'approved' | 'rejected'. Existing rows (generated
+            # before the admin panel existed) default to 'approved' so they
+            # keep working exactly as before — only newly-generated routes
+            # start out pending review.
+            conn.execute("ALTER TABLE itineraries ADD COLUMN status TEXT DEFAULT 'pending'")
+            conn.execute("UPDATE itineraries SET status = 'approved' WHERE status IS NULL OR status = 'pending'")
 
     print(f"[DB] Initialised at {DB_PATH}")
 
@@ -159,6 +166,103 @@ def list_itineraries() -> list[dict]:
             "FROM itineraries ORDER BY created_at DESC"
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def _row_to_admin_dict(row: sqlite3.Row) -> dict:
+    """
+    Full itinerary content + admin metadata (status, video_id, url,
+    created_at) — everything the admin panel needs to render a preview
+    and inline editor without a second request.
+    """
+    return {
+        "video_id": row["video_id"],
+        "url": row["url"],
+        "destination": row["destination"],
+        "duration": row["duration"],
+        "days": json.loads(row["days_json"]),
+        "hero_photo_url": row["hero_photo_url"] or "",
+        "gallery_photo_urls": json.loads(row["gallery_photo_urls_json"] or "[]"),
+        "status": row["status"] or "pending",
+        "created_at": row["created_at"],
+    }
+
+
+def list_by_status(status: str) -> list[dict]:
+    """Returns full itinerary content for every route with the given status."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM itineraries WHERE status = ? ORDER BY created_at DESC",
+            (status,),
+        ).fetchall()
+    return [_row_to_admin_dict(r) for r in rows]
+
+
+def set_status(video_id: str, status: str) -> bool:
+    """Updates just the status column. Returns False if video_id doesn't exist."""
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE itineraries SET status = ? WHERE video_id = ?", (status, video_id)
+        )
+    return cur.rowcount > 0
+
+
+def delete_itinerary_permanently(video_id: str) -> bool:
+    """Hard-deletes a route. Used by the admin 'Изтрий' button (not 'Отхвърли')."""
+    with _conn() as conn:
+        cur = conn.execute("DELETE FROM itineraries WHERE video_id = ?", (video_id,))
+    return cur.rowcount > 0
+
+
+def update_itinerary_content(video_id: str, itinerary: Itinerary) -> bool:
+    """
+    Overwrites the editable content of a route (days/stops, hero photo,
+    gallery, destination, duration) from the admin inline editor.
+    Deliberately does NOT touch status/url/created_at/comments — those
+    aren't part of what the admin editor edits.
+    Returns False if video_id doesn't exist.
+    """
+    with _conn() as conn:
+        cur = conn.execute(
+            """UPDATE itineraries
+               SET destination = ?, duration = ?, days_json = ?,
+                   hero_photo_url = ?, gallery_photo_urls_json = ?
+               WHERE video_id = ?""",
+            (
+                itinerary.destination,
+                itinerary.duration,
+                json.dumps([d.model_dump() for d in itinerary.days]),
+                itinerary.hero_photo_url,
+                json.dumps(itinerary.gallery_photo_urls),
+                video_id,
+            ),
+        )
+    return cur.rowcount > 0
+
+
+def get_stats() -> dict:
+    """Counts for the admin Statistics tab: totals by status + top destinations."""
+    with _conn() as conn:
+        total = conn.execute("SELECT COUNT(*) c FROM itineraries").fetchone()["c"]
+        pending = conn.execute(
+            "SELECT COUNT(*) c FROM itineraries WHERE status = 'pending'"
+        ).fetchone()["c"]
+        approved = conn.execute(
+            "SELECT COUNT(*) c FROM itineraries WHERE status = 'approved'"
+        ).fetchone()["c"]
+        rejected = conn.execute(
+            "SELECT COUNT(*) c FROM itineraries WHERE status = 'rejected'"
+        ).fetchone()["c"]
+        top_rows = conn.execute(
+            """SELECT destination, COUNT(*) c FROM itineraries
+               GROUP BY destination ORDER BY c DESC LIMIT 5"""
+        ).fetchall()
+    return {
+        "total": total,
+        "pending": pending,
+        "approved": approved,
+        "rejected": rejected,
+        "top_destinations": [{"destination": r["destination"], "count": r["c"]} for r in top_rows],
+    }
 
 
 def clear_all_itineraries() -> int:

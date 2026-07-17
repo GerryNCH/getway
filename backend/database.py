@@ -88,6 +88,12 @@ def init_db() -> None:
             # start out pending review.
             conn.execute("ALTER TABLE itineraries ADD COLUMN status TEXT DEFAULT 'pending'")
             conn.execute("UPDATE itineraries SET status = 'approved' WHERE status IS NULL OR status = 'pending'")
+        if "price_category" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN price_category TEXT DEFAULT ''")
+        if "tags_json" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN tags_json TEXT DEFAULT '[]'")
+        if "creator_handle" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN creator_handle TEXT DEFAULT ''")
 
     print(f"[DB] Initialised at {DB_PATH}")
 
@@ -184,7 +190,55 @@ def _row_to_admin_dict(row: sqlite3.Row) -> dict:
         "gallery_photo_urls": json.loads(row["gallery_photo_urls_json"] or "[]"),
         "status": row["status"] or "pending",
         "created_at": row["created_at"],
+        "price_category": row["price_category"] or "",
+        "tags": json.loads(row["tags_json"] or "[]"),
+        "creator_handle": row["creator_handle"] or "",
     }
+
+
+def set_route_meta(video_id: str, price_category: str, tags: list[str], creator_handle: str) -> bool:
+    """
+    Saves the homepage-grid curation fields an admin sets when approving a
+    route (price category, filter tags, creator handle) — separate from
+    update_itinerary_content since these aren't part of the Itinerary
+    content model itself. Returns False if video_id doesn't exist.
+    """
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE itineraries SET price_category = ?, tags_json = ?, creator_handle = ? WHERE video_id = ?",
+            (price_category, json.dumps(tags), creator_handle, video_id),
+        )
+    return cur.rowcount > 0
+
+
+def list_public_approved() -> list[dict]:
+    """
+    Lightweight summary of every approved route — everything the homepage
+    route grid needs to render a card, and nothing more (no full stop
+    content, no admin-only fields). Used by the public GET /routes endpoint.
+    """
+    with _conn() as conn:
+        rows = conn.execute(
+            """SELECT video_id, destination, duration, days_json, hero_photo_url,
+                      price_category, tags_json, creator_handle
+               FROM itineraries WHERE status = 'approved' ORDER BY created_at DESC"""
+        ).fetchall()
+    result = []
+    for r in rows:
+        days = json.loads(r["days_json"])
+        stop_count = sum(len(d.get("stops", [])) for d in days)
+        result.append({
+            "video_id": r["video_id"],
+            "destination": r["destination"],
+            "duration": r["duration"],
+            "day_count": len(days),
+            "stop_count": stop_count,
+            "hero_photo_url": r["hero_photo_url"] or "",
+            "price_category": r["price_category"] or "€€",
+            "tags": json.loads(r["tags_json"] or "[]"),
+            "creator_handle": r["creator_handle"] or "",
+        })
+    return result
 
 
 def list_by_status(status: str) -> list[dict]:

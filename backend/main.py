@@ -27,7 +27,7 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from models import ExtractRequest, ExtractResponse, Itinerary, Comment, ReviewCreate, Review, ReviewsResponse
+from models import ExtractRequest, ExtractResponse, Itinerary, Comment, ReviewCreate, Review, ReviewsResponse, RouteMeta
 import database
 from extractor import (
     extract_video_id, fetch_metadata, download_video, extract_frames,
@@ -230,6 +230,17 @@ def clear_cache(secret: str):
     return {"status": "ok", "cleared": count}
 
 
+@app.get("/routes")
+def list_public_routes():
+    """
+    Public, unauthenticated summary of every approved route — everything
+    the homepage route grid needs (destination, duration, price category,
+    tags, creator handle, stop count, hero photo) without exposing admin
+    fields or requiring the admin secret. No pending/rejected routes here.
+    """
+    return database.list_public_approved()
+
+
 @app.get("/itinerary/{video_id}", response_model=ExtractResponse)
 def get_itinerary(video_id: str):
     """
@@ -309,6 +320,19 @@ def admin_hide(video_id: str, secret: str):
     if not database.set_status(video_id, "pending"):
         raise HTTPException(404, "Route not found")
     return {"status": "ok", "video_id": video_id, "new_status": "pending"}
+
+
+@app.put("/admin/meta/{video_id}")
+def admin_update_meta(video_id: str, meta: RouteMeta, secret: str):
+    """
+    Sets the homepage-grid curation fields (price category, filter tags,
+    creator handle) an admin picks when curating a route — separate from
+    the content editor since these don't come from the AI extraction.
+    """
+    _check_admin_secret(secret)
+    if not database.set_route_meta(video_id, meta.price_category, meta.tags, meta.creator_handle):
+        raise HTTPException(404, "Route not found")
+    return {"status": "ok", "video_id": video_id}
 
 
 @app.put("/admin/route/{video_id}")

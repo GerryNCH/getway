@@ -478,6 +478,11 @@
     <div class="flex items-center gap-1.5 px-5 md:px-10"><i data-lucide="sparkles" class="w-3.5 h-3.5 text-gray-400"></i><div class="text-[10px] md:text-xs text-gray-500">AI generated</div></div>
   </div>
 
+  <!-- Destination + route summary -->
+  <div id="ai-route-summary-wrap" class="hidden px-6 md:px-14 lg:px-24 pt-6 md:pt-8">
+    <p id="ai-route-summary" class="max-w-2xl md:mx-auto text-center text-sm md:text-base text-gray-600 leading-relaxed"></p>
+  </div>
+
   <!-- Photo gallery thumbnails -->
   <div id="ai-route-gallery" class="flex justify-center gap-1.5 md:gap-3 px-4 pt-6 pb-2 md:pt-8"></div>
   <div id="ai-route-gallery-hint" class="hidden text-center px-4 pb-8 md:pb-10 text-[10px] md:text-xs text-gray-400">Tap a thumbnail to preview</div>
@@ -1546,6 +1551,16 @@
     // duration from API is e.g. "1 day" — strip the leading number to avoid "1 1 day"
     const durText = itinerary.duration || (totalDays === 1 ? 'day' : 'days');
     document.getElementById('ai-route-duration-label').textContent = durText.replace(/^\d+\s*/, '');
+
+    // Destination + route summary (hidden entirely for older cached
+    // itineraries generated before this field existed)
+    const summaryWrap = document.getElementById('ai-route-summary-wrap');
+    if (itinerary.summary && itinerary.summary.trim()) {
+      document.getElementById('ai-route-summary').textContent = itinerary.summary.trim();
+      summaryWrap.classList.remove('hidden');
+    } else {
+      summaryWrap.classList.add('hidden');
+    }
 
     // Dynamic hero bg — use the backend's curated Unsplash gallery when
     // available. If it's empty (no Unsplash key set, or every query

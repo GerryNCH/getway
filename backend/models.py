@@ -62,6 +62,10 @@ class Itinerary(BaseModel):
     destination: str
     duration: str
     days: list[DayPlan]
+    summary: str = ""  # 2-3 sentence intro: what makes the destination
+                        # special + what this particular route covers.
+                        # Empty for itineraries cached before this field
+                        # existed.
     hero_photo_url: str = ""  # Best single photo for the destination
     hero_attribution: Optional[UnsplashAttribution] = None
     gallery_photo_urls: list[str] = []  # 4-5 photos for the hero gallery

@@ -1464,9 +1464,12 @@
       // not /search.html — the latter 404s even with a perfectly valid query.
       const bookingHref = stop.booking_url || bookingAffiliateSearchUrl(searchQuery);
       const expediaHref = stop.expedia_url || expediaAffiliateSearchUrl(searchQuery);
-      // "Similar hotels" searches the whole destination on Booking.com,
-      // affiliate-tracked, rather than a name/keyword-based query.
-      const similarHref = bookingAffiliateSearchUrl(cityForSearch || locationForSearch);
+      // "Similar hotels" — for unconfirmed hotels, this uses similarQuery
+      // (city + a couple of descriptive keywords from the AI's own
+      // description, e.g. "caldera view boutique") so it surfaces hotels
+      // that actually resemble the one in the clip, not just anything in
+      // the destination. For confirmed hotels it searches "name similar".
+      const similarHref = bookingAffiliateSearchUrl(similarQuery);
 
       // Same dropdown UI either way — Booking.com and Expedia are both
       // legitimate options and the person should get to pick, whether we
@@ -1598,7 +1601,17 @@
 
     // Store for sharing
     window._aiRouteVideoId = videoId;
-    renderHotelsBanner(itinerary.destination, itinerary.gallery_photo_urls);
+    // Only show the generic "browse hotels in [city]" banner when the
+    // video itself didn't feature an actual hotel stop — otherwise this
+    // was stacking a second, unrelated hotel card right below the real
+    // one the creator recommended.
+    const hasRealHotelStop = itinerary.days.some(d => d.stops.some(s => s.category === 'hotel'));
+    const hotelsBannerEl = document.getElementById('ai-route-hotels-banner');
+    if (hasRealHotelStop) {
+      if (hotelsBannerEl) hotelsBannerEl.innerHTML = '';
+    } else {
+      renderHotelsBanner(itinerary.destination, itinerary.gallery_photo_urls);
+    }
     renderAiRouteComments(itinerary.comments);
     initReviewsSection('ai-route', videoId);
 

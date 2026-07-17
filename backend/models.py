@@ -38,6 +38,9 @@ class Stop(BaseModel):
                             # stops. Empty string for itineraries cached
                             # before this field existed — frontend falls
                             # back to building its own (non-affiliate) link.
+    expedia_url: str = ""  # Expedia affiliate link (Travel Creator Program),
+                            # hotel stops only. Empty for non-hotel stops and
+                            # for itineraries cached before this field existed.
 
 
 class DayPlan(BaseModel):

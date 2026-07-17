@@ -252,7 +252,7 @@ function buildEditorBody(item) {
   const wrap = document.createElement("div");
 
   const topRow = document.createElement("div");
-  topRow.className = "grid grid-cols-1 md:grid-cols-3 gap-3 mb-5";
+  topRow.className = "grid grid-cols-1 md:grid-cols-3 gap-3 mb-4";
   topRow.innerHTML = `
     <div><label class="field-label">Destination</label><input class="itin-field" data-field="destination" value="${escapeHtml(item.destination)}"></div>
     <div><label class="field-label">Duration</label><input class="itin-field" data-field="duration" value="${escapeHtml(item.duration)}"></div>
@@ -263,6 +263,8 @@ function buildEditorBody(item) {
   });
   wrap.appendChild(topRow);
 
+  wrap.appendChild(buildMetaRow(item));
+
   item.days.forEach((day, dayIdx) => wrap.appendChild(buildDayBlock(item.video_id, dayIdx)));
 
   const saveBtn = makePillBtn("Save changes", "pill-purple", () => doSave(item.video_id, wrap), saveIconSvg());
@@ -270,6 +272,64 @@ function buildEditorBody(item) {
   wrap.appendChild(saveBtn);
 
   return wrap;
+}
+
+const TAG_OPTIONS = ["most_popular", "luxury", "budget_friendly", "exotic", "mountain", "city", "beach"];
+const PRICE_OPTIONS = ["€", "€€", "€€€"];
+
+function buildMetaRow(item) {
+  const box = document.createElement("div");
+  box.className = "bg-[#FAF8FF] border border-[#EDE8FC] rounded-2xl p-4 mb-5";
+  box.innerHTML = `<div class="field-label mb-2">Homepage curation (shown on the public route grid)</div>`;
+
+  const grid = document.createElement("div");
+  grid.className = "grid grid-cols-1 md:grid-cols-2 gap-3 mb-3";
+
+  const priceWrap = document.createElement("div");
+  priceWrap.innerHTML = `<label class="field-label">Price category</label>`;
+  const priceSelect = document.createElement("select");
+  priceSelect.innerHTML = PRICE_OPTIONS.map((p) => `<option value="${p}" ${p === (item.price_category || "€€") ? "selected" : ""}>${p}</option>`).join("");
+  priceSelect.addEventListener("change", (e) => { item.price_category = e.target.value; });
+  priceWrap.appendChild(priceSelect);
+  grid.appendChild(priceWrap);
+
+  const handleWrap = document.createElement("div");
+  handleWrap.innerHTML = `<label class="field-label">Creator handle</label>`;
+  const handleInput = document.createElement("input");
+  handleInput.placeholder = "@username";
+  handleInput.value = item.creator_handle || "";
+  handleInput.addEventListener("input", (e) => { item.creator_handle = e.target.value; });
+  handleWrap.appendChild(handleInput);
+  grid.appendChild(handleWrap);
+
+  box.appendChild(grid);
+
+  const tagsWrap = document.createElement("div");
+  tagsWrap.innerHTML = `<label class="field-label mb-2">Tags (filter chips)</label>`;
+  const tagsRow = document.createElement("div");
+  tagsRow.className = "flex flex-wrap gap-2";
+  const currentTags = new Set(item.tags || []);
+  TAG_OPTIONS.forEach((tag) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.textContent = tag.replace(/_/g, " ");
+    chip.className = "tag-chip text-xs px-3 py-1.5 rounded-full border " + (currentTags.has(tag) ? "border-[#8B5CF6] bg-[#F1EEFF] text-[#6D28D9]" : "border-gray-200 bg-white text-gray-600");
+    chip.addEventListener("click", () => {
+      if (currentTags.has(tag)) {
+        currentTags.delete(tag);
+        chip.className = "tag-chip text-xs px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-600";
+      } else {
+        currentTags.add(tag);
+        chip.className = "tag-chip text-xs px-3 py-1.5 rounded-full border border-[#8B5CF6] bg-[#F1EEFF] text-[#6D28D9]";
+      }
+      item.tags = Array.from(currentTags);
+    });
+    tagsRow.appendChild(chip);
+  });
+  tagsWrap.appendChild(tagsRow);
+  box.appendChild(tagsWrap);
+
+  return box;
 }
 
 function buildDayBlock(videoId, dayIdx) {
@@ -348,6 +408,11 @@ async function doSave(videoId, editorWrap) {
       days: item.days,
       hero_photo_url: item.hero_photo_url,
       gallery_photo_urls: item.gallery_photo_urls || [],
+    });
+    await apiPut(`/admin/meta/${encodeURIComponent(videoId)}`, {
+      price_category: item.price_category || "€€",
+      tags: item.tags || [],
+      creator_handle: item.creator_handle || "",
     });
     btn.querySelector("span").textContent = "Saved ✓";
     setTimeout(() => loadTab(ACTIVE_TAB), 600);

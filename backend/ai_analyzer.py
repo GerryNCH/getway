@@ -76,18 +76,40 @@ def _google_maps_search_url(search_query: str) -> str:
     return f"https://www.google.com/maps/search/{urllib.parse.quote_plus(search_query)}"
 
 
+# GetYourGuide affiliate program — approved July 2026. partner_id and the
+# utm_medium value are confirmed from a real link generated via Partner
+# Dashboard → "Create a link" (not guessed). That tool only generates
+# links to a specific activity page (e.g. .../madeira-skywalk-...-t225105/),
+# and we can't know a specific activity's exact page slug/ID for an
+# arbitrary stop — so this uses GetYourGuide's standard search page (/s/)
+# instead, with the same confirmed affiliate params appended. Affiliate
+# tracking params work the same way on any getyourguide.com page (they set
+# a referral cookie, not a page-specific token), so this should track
+# correctly, but it's worth spot-checking once real traffic comes through.
+_GYG_PARTNER_ID = "UC97KXN"
+
+
+def _getyourguide_affiliate_url(search_query: str) -> str:
+    """GetYourGuide search-results URL with Gerry's affiliate params attached."""
+    return (
+        f"https://www.getyourguide.com/s/?q={urllib.parse.quote_plus(search_query)}"
+        f"&partner_id={_GYG_PARTNER_ID}&utm_medium=online_publisher"
+    )
+
+
 def _attach_booking_urls(data: dict) -> dict:
     """
-    Fills in `booking_url` (Booking.com or Maps) and `expedia_url` (hotels
-    only) for every hotel/food stop, in place, before the JSON is turned
-    into an Itinerary:
-      - hotel → Booking.com search wrapped in the CJ affiliate link, PLUS
-        an Expedia affiliate search as a second option. Uses the exact stop
-        name when the AI confirmed it (`is_specific_name`), otherwise falls
-        back to just the destination city — same rule the frontend already
-        applies for its own "unconfirmed hotel" fallback.
-      - food  → Google Maps search (name + city) as a stand-in until
+    Fills in `booking_url` (Booking.com, GetYourGuide, or Maps) and
+    `expedia_url` (hotels only) for every hotel/food/activity stop, in
+    place, before the JSON is turned into an Itinerary:
+      - hotel    → Booking.com search wrapped in the CJ affiliate link,
+        PLUS an Expedia affiliate search as a second option. Uses the
+        exact stop name when the AI confirmed it (`is_specific_name`),
+        otherwise falls back to just the destination city — same rule the
+        frontend already applies for its own "unconfirmed hotel" fallback.
+      - food     → Google Maps search (name + city) as a stand-in until
         TheFork affiliate is live.
+      - activity → GetYourGuide search wrapped in Gerry's affiliate params.
     Any other category is left untouched.
     """
     destination = data.get("destination", "")
@@ -106,6 +128,9 @@ def _attach_booking_urls(data: dict) -> dict:
             elif category == "food":
                 query = f"{name} {city}".strip()
                 stop["booking_url"] = _google_maps_search_url(query)
+            elif category == "activity":
+                query = f"{name} {city}".strip() if is_specific else f"{city} tours activities"
+                stop["booking_url"] = _getyourguide_affiliate_url(query)
 
     return data
 

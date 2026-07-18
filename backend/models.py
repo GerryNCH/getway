@@ -66,6 +66,16 @@ class Itinerary(BaseModel):
                         # special + what this particular route covers.
                         # Empty for itineraries cached before this field
                         # existed.
+    creator_handle: str = ""  # TikTok @handle of the video's creator, e.g.
+                               # "@username" — populated from yt-dlp's
+                               # "uploader" field right after generation
+                               # (see main.py), or set manually in the
+                               # admin panel. Shown as a profile link on
+                               # the route page so creators get credited.
+    price_category: str = ""  # "€" | "€€" | "€€€" — the AI's own estimate
+                                # (see ai_analyzer.py), shown as a pill next
+                                # to the destination title, same as the
+                                # static Mallorca demo route.
     hero_photo_url: str = ""  # Best single photo for the destination
     hero_attribution: Optional[UnsplashAttribution] = None
     gallery_photo_urls: list[str] = []  # 4-5 photos for the hero gallery

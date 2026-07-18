@@ -120,6 +120,8 @@ def get_itinerary(video_id: str) -> Itinerary | None:
         duration=row["duration"],
         days=days,
         summary=row["summary"] or "",
+        creator_handle=row["creator_handle"] or "",
+        price_category=row["price_category"] or "",
         hero_photo_url=row["hero_photo_url"] or "",
         hero_attribution=hero_attribution,
         gallery_photo_urls=gallery_urls,

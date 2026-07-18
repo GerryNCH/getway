@@ -130,6 +130,14 @@ def _unsplash_candidates(query: str, per_page: int = 6) -> list[dict]:
             headers={"Authorization": f"Client-ID {UNSPLASH_ACCESS_KEY}"},
             timeout=6,
         )
+        # Unsplash returns these on every response (even successful ones) —
+        # logging them means a rate-limit problem shows up immediately in
+        # Railway logs instead of being guessed at after the fact. Demo-tier
+        # apps get 50/hour; Production-tier gets 5000/hour.
+        limit = resp.headers.get("X-Ratelimit-Limit")
+        remaining = resp.headers.get("X-Ratelimit-Remaining")
+        if limit and remaining:
+            print(f"[Unsplash] Rate limit: {remaining}/{limit} remaining this hour")
         if resp.status_code != 200:
             print(f"[Unsplash] HTTP {resp.status_code} for '{query}': {resp.text[:200]}")
             return []
@@ -278,7 +286,7 @@ def enrich_itinerary_with_photos(itinerary) -> None:
     # the hero, not just whichever of the 5 queries happened to run first
     # (that previously meant "aerial view" always won the hero slot even
     # when "sunset" or "landmark" returned a much more striking photo).
-    gallery = _get_destination_gallery_unsplash(itinerary.destination, count=5)
+    gallery = _get_destination_gallery_unsplash(itinerary.destination, count=1)
     itinerary.gallery_photo_urls = [p["url"] for p in gallery]
     itinerary.gallery_attributions = [p["attribution"] for p in gallery]
     hero = max(gallery, key=lambda p: p["likes"]) if gallery else None

@@ -32,7 +32,8 @@ import database
 from extractor import (
     extract_video_id, fetch_metadata, download_video, extract_frames,
     is_slideshow, fetch_slideshow_post, download_slideshow_images,
-    fetch_top_comments,
+    fetch_top_comments, is_instagram_url, fetch_instagram_post,
+    download_instagram_video,
 )
 from troll_filter import check_is_travel
 from ai_analyzer import analyse_frames
@@ -91,7 +92,12 @@ async def extract(req: ExtractRequest):
     # request was closed upstream as "wontfix"). For those, one Apify call
     # gets us both the caption (for the troll filter below) and the slide
     # image URLs, so we stash the full result to reuse after the filter.
+    # Instagram Reels similarly can't go through yt-dlp reliably (Instagram
+    # aggressively blocks datacenter IPs) — one Apify call gets us the
+    # caption, the direct video URL, AND the top comments all at once, so
+    # that's stashed too and reused below (skipping a second comments call).
     slideshow_data = None
+    instagram_data = None
     if is_slideshow(url):
         try:
             slideshow_data = fetch_slideshow_post(url)
@@ -99,6 +105,17 @@ async def extract(req: ExtractRequest):
             print(f"[Meta] (slideshow) Title: {meta['title'][:60]}")
         except RuntimeError as e:
             raise HTTPException(422, f"Could not fetch slideshow info: {e}")
+    elif is_instagram_url(url):
+        try:
+            instagram_data = fetch_instagram_post(url)
+            meta = {
+                "title": instagram_data["title"],
+                "description": instagram_data["description"],
+                "uploader": instagram_data["uploader"],
+            }
+            print(f"[Meta] (Instagram) Title: {meta['title'][:60]}")
+        except RuntimeError as e:
+            raise HTTPException(422, f"Could not fetch Instagram post info: {e}")
     else:
         try:
             meta = fetch_metadata(url)
@@ -131,6 +148,19 @@ async def extract(req: ExtractRequest):
                 print(f"[Slideshow] Downloaded {len(frames)} slide images")
             except RuntimeError as e:
                 raise HTTPException(422, f"Slideshow download failed: {e}")
+        elif is_instagram_url(url):
+            # Video URL was already resolved above by the same Apify call.
+            try:
+                video_path = download_instagram_video(instagram_data["video_url"], tmp)
+                print(f"[Instagram] Downloaded video → {video_path}")
+            except RuntimeError as e:
+                raise HTTPException(422, f"Instagram video download failed: {e}")
+
+            try:
+                frames = extract_frames(video_path, tmp, req.max_frames)
+                print(f"[Frames] Extracted {len(frames)} frames")
+            except RuntimeError as e:
+                raise HTTPException(500, f"Frame extraction failed: {e}")
         else:
             # Regular video post — download then extract evenly-spaced frames
             try:
@@ -145,15 +175,21 @@ async def extract(req: ExtractRequest):
             except RuntimeError as e:
                 raise HTTPException(500, f"Frame extraction failed: {e}")
 
-        # ── Layer 7a: fetch real TikTok comments early (non-fatal) ────────────
+        # ── Layer 7a: fetch real comments early (non-fatal) ───────────────────
         # Fetched BEFORE the AI analysis (not after) so they can be used as
-        # an identification aid — see analyse_frames' docstring.
+        # an identification aid — see analyse_frames' docstring. Instagram's
+        # comments were already fetched in the same Apify call above, so
+        # reuse those instead of an unnecessary second network call.
         raw_comments: list[dict] = []
-        try:
-            raw_comments = fetch_top_comments(url, max_comments=15)
-            print(f"[Comments] Fetched {len(raw_comments)} real TikTok comments")
-        except Exception as e:
-            print(f"[Comments] Fetch failed (non-fatal): {e}")
+        if instagram_data is not None:
+            raw_comments = instagram_data.get("comments", [])
+            print(f"[Comments] Using {len(raw_comments)} Instagram comments (already fetched)")
+        else:
+            try:
+                raw_comments = fetch_top_comments(url, max_comments=15)
+                print(f"[Comments] Fetched {len(raw_comments)} real TikTok comments")
+            except Exception as e:
+                print(f"[Comments] Fetch failed (non-fatal): {e}")
 
         # Claude multimodal analysis
         try:

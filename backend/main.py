@@ -101,7 +101,11 @@ async def extract(req: ExtractRequest):
     if is_slideshow(url):
         try:
             slideshow_data = fetch_slideshow_post(url)
-            meta = {"title": slideshow_data["title"], "description": slideshow_data["description"]}
+            meta = {
+                "title": slideshow_data["title"],
+                "description": slideshow_data["description"],
+                "uploader": slideshow_data.get("uploader", ""),
+            }
             print(f"[Meta] (slideshow) Title: {meta['title'][:60]}")
         except RuntimeError as e:
             raise HTTPException(422, f"Could not fetch slideshow info: {e}")

@@ -62,6 +62,12 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_reviews_video_id
                 ON reviews (video_id);
 
+            CREATE TABLE IF NOT EXISTS site_settings (
+                id                       INTEGER PRIMARY KEY CHECK (id = 1),
+                hero_slides_json         TEXT DEFAULT '[]',
+                featured_route_ids_json  TEXT DEFAULT '[]'
+            );
+
             CREATE INDEX IF NOT EXISTS idx_itineraries_destination
                 ON itineraries (destination);
         """)
@@ -96,6 +102,27 @@ def init_db() -> None:
             conn.execute("ALTER TABLE itineraries ADD COLUMN creator_handle TEXT DEFAULT ''")
         if "summary" not in existing_cols:
             conn.execute("ALTER TABLE itineraries ADD COLUMN summary TEXT DEFAULT ''")
+        if "generation_cost_usd" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN generation_cost_usd REAL DEFAULT 0.0")
+        if "view_count" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN view_count INTEGER DEFAULT 0")
+        if "affiliate_click_count" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN affiliate_click_count INTEGER DEFAULT 0")
+
+        # Seed the singleton site_settings row once, with the hero slides
+        # that were previously hardcoded in index.html — so nothing changes
+        # visually on the homepage until an admin actually edits them.
+        row = conn.execute("SELECT id FROM site_settings WHERE id = 1").fetchone()
+        if row is None:
+            default_hero_slides = json.dumps([
+                "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=2000&auto=format&fit=crop",
+                "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=2000&auto=format&fit=crop",
+                "https://images.unsplash.com/photo-1488085061387-422e29b40080?w=2000&auto=format&fit=crop",
+            ])
+            conn.execute(
+                "INSERT INTO site_settings (id, hero_slides_json, featured_route_ids_json) VALUES (1, ?, '[]')",
+                (default_hero_slides,),
+            )
 
     print(f"[DB] Initialised at {DB_PATH}")
 
@@ -122,6 +149,9 @@ def get_itinerary(video_id: str) -> Itinerary | None:
         summary=row["summary"] or "",
         creator_handle=row["creator_handle"] or "",
         price_category=row["price_category"] or "",
+        generation_cost_usd=row["generation_cost_usd"] or 0.0,
+        view_count=row["view_count"] or 0,
+        affiliate_click_count=row["affiliate_click_count"] or 0,
         hero_photo_url=row["hero_photo_url"] or "",
         hero_attribution=hero_attribution,
         gallery_photo_urls=gallery_urls,
@@ -150,8 +180,9 @@ def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
             """INSERT OR REPLACE INTO itineraries
                (video_id, url, destination, duration, days_json, created_at,
                 hero_photo_url, gallery_photo_urls_json, comments_json,
-                hero_attribution_json, gallery_attributions_json, summary)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                hero_attribution_json, gallery_attributions_json, summary,
+                generation_cost_usd)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 video_id,
                 url,
@@ -165,6 +196,7 @@ def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
                 json.dumps(_attr_to_dict(itinerary.hero_attribution)),
                 json.dumps([_attr_to_dict(a) for a in itinerary.gallery_attributions]),
                 itinerary.summary,
+                itinerary.generation_cost_usd,
             ),
         )
     print(f"[DB] Saved itinerary for {video_id} ({itinerary.destination})")
@@ -200,6 +232,9 @@ def _row_to_admin_dict(row: sqlite3.Row) -> dict:
         "price_category": row["price_category"] or "",
         "tags": json.loads(row["tags_json"] or "[]"),
         "creator_handle": row["creator_handle"] or "",
+        "generation_cost_usd": row["generation_cost_usd"] or 0.0,
+        "view_count": row["view_count"] or 0,
+        "affiliate_click_count": row["affiliate_click_count"] or 0,
     }
 
 
@@ -303,7 +338,7 @@ def update_itinerary_content(video_id: str, itinerary: Itinerary) -> bool:
 
 
 def get_stats() -> dict:
-    """Counts for the admin Statistics tab: totals by status + top destinations."""
+    """Counts for the admin Statistics tab: totals by status, top destinations, cost, and engagement."""
     with _conn() as conn:
         total = conn.execute("SELECT COUNT(*) c FROM itineraries").fetchone()["c"]
         pending = conn.execute(
@@ -319,13 +354,90 @@ def get_stats() -> dict:
             """SELECT destination, COUNT(*) c FROM itineraries
                GROUP BY destination ORDER BY c DESC LIMIT 5"""
         ).fetchall()
+        total_cost = conn.execute(
+            "SELECT COALESCE(SUM(generation_cost_usd), 0) c FROM itineraries"
+        ).fetchone()["c"]
+        total_views = conn.execute(
+            "SELECT COALESCE(SUM(view_count), 0) c FROM itineraries"
+        ).fetchone()["c"]
+        total_affiliate_clicks = conn.execute(
+            "SELECT COALESCE(SUM(affiliate_click_count), 0) c FROM itineraries"
+        ).fetchone()["c"]
+        most_viewed_row = conn.execute(
+            """SELECT video_id, destination, view_count FROM itineraries
+               WHERE view_count > 0 ORDER BY view_count DESC LIMIT 1"""
+        ).fetchone()
+        most_clicked_row = conn.execute(
+            """SELECT video_id, destination, affiliate_click_count FROM itineraries
+               WHERE affiliate_click_count > 0 ORDER BY affiliate_click_count DESC LIMIT 1"""
+        ).fetchone()
     return {
         "total": total,
         "pending": pending,
         "approved": approved,
         "rejected": rejected,
         "top_destinations": [{"destination": r["destination"], "count": r["c"]} for r in top_rows],
+        "total_generation_cost_usd": total_cost,
+        "total_views": total_views,
+        "total_affiliate_clicks": total_affiliate_clicks,
+        "most_viewed": (
+            {"destination": most_viewed_row["destination"], "views": most_viewed_row["view_count"]}
+            if most_viewed_row else None
+        ),
+        "most_clicked": (
+            {"destination": most_clicked_row["destination"], "clicks": most_clicked_row["affiliate_click_count"]}
+            if most_clicked_row else None
+        ),
     }
+
+
+def increment_view_count(video_id: str) -> bool:
+    """Bumps a route's view counter by 1. Silently no-ops if the video_id doesn't exist."""
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE itineraries SET view_count = view_count + 1 WHERE video_id = ?", (video_id,)
+        )
+    return cur.rowcount > 0
+
+
+def increment_affiliate_click_count(video_id: str) -> bool:
+    """Bumps a route's affiliate-link-click counter by 1 (Booking/Expedia/Airbnb buttons)."""
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE itineraries SET affiliate_click_count = affiliate_click_count + 1 WHERE video_id = ?",
+            (video_id,),
+        )
+    return cur.rowcount > 0
+
+
+def get_site_settings() -> dict:
+    """
+    Returns the homepage's admin-controlled settings: hero_slides (list of
+    image URLs for the rotating homepage background) and featured_route_ids
+    (ordered list of video_ids to show on the homepage grid — empty means
+    "show all approved routes automatically", the original default behavior).
+    """
+    with _conn() as conn:
+        row = conn.execute("SELECT * FROM site_settings WHERE id = 1").fetchone()
+    if row is None:
+        return {"hero_slides": [], "featured_route_ids": []}
+    return {
+        "hero_slides": json.loads(row["hero_slides_json"] or "[]"),
+        "featured_route_ids": json.loads(row["featured_route_ids_json"] or "[]"),
+    }
+
+
+def set_site_settings(hero_slides: list[str], featured_route_ids: list[str]) -> None:
+    """Overwrites the homepage settings row (upsert — creates it if somehow missing)."""
+    with _conn() as conn:
+        conn.execute(
+            """INSERT INTO site_settings (id, hero_slides_json, featured_route_ids_json)
+               VALUES (1, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+                 hero_slides_json = excluded.hero_slides_json,
+                 featured_route_ids_json = excluded.featured_route_ids_json""",
+            (json.dumps(hero_slides), json.dumps(featured_route_ids)),
+        )
 
 
 def clear_all_itineraries() -> int:

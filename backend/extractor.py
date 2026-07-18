@@ -21,6 +21,9 @@ def extract_video_id(url: str) -> str:
     m = re.search(r"/(?:video|photo)/(\d+)", url)
     if m:
         return f"tt_{m.group(1)}"
+    m = re.search(r"instagram\.com/(?:[\w.]+/)?(?:reel|reels|p)/([A-Za-z0-9_-]+)", url)
+    if m:
+        return f"ig_{m.group(1)}"
     m = re.search(r"(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})", url)
     if m:
         return f"yt_{m.group(1)}"
@@ -37,6 +40,12 @@ def is_slideshow(url: str) -> bool:
     video stream to pull frames from.
     """
     return "/photo/" in url
+
+
+def is_instagram_url(url: str) -> bool:
+    """True for an Instagram Reel or post link (instagram.com/reel/, /reels/, or /p/)."""
+    url = url.lower()
+    return "instagram.com" in url and any(seg in url for seg in ("/reel/", "/reels/", "/p/"))
 
 
 # ── Metadata fetch (no download) ─────────────────────────────────────────────
@@ -219,6 +228,132 @@ def download_slideshow_images(image_urls: list[str], output_dir: str) -> list[st
         raise RuntimeError("Slideshow images were found but none could be downloaded.")
 
     return image_paths
+
+
+# ── Instagram Reels/posts (Apify) ─────────────────────────────────────────────
+#
+# Uses the official "Instagram Scraper" actor (apify/instagram-scraper) —
+# a single call returns BOTH the video content (caption, direct videoUrl,
+# owner) AND the post's top comments (latestComments), unlike TikTok which
+# needs two separate actors for the same two things. Input and output
+# fields below were confirmed against a real run (Apify Console → Runs →
+# Input/Output → JSON), not guessed:
+#
+#   Input: {"directUrls": [url], "resultsType": "reels", "resultsLimit": 1,
+#           "addParentData": false}
+#
+#   Output (one dataset item per post): caption, videoUrl, displayUrl,
+#     ownerUsername, ownerFullName, shortCode, timestamp, likesCount,
+#     videoViewCount, commentsCount, isCommentsDisabled, locationName,
+#     latestComments (list of {text, ownerUsername, likesCount, timestamp,
+#     ownerProfilePicUrl, repliesCount})
+#
+# Instagram's own bot detection is aggressive against datacenter IPs (the
+# same problem that killed YouTube support), but this actor runs on
+# Apify's managed residential proxies rather than Railway's own IP, so it
+# sidesteps that specific issue — same pattern that already works for the
+# TikTok slideshow scraper above.
+
+APIFY_INSTAGRAM_ACTOR = "apify~instagram-scraper"
+
+
+def fetch_instagram_post(url: str) -> dict:
+    """
+    Fetches one Instagram Reel/post's video + caption + top comments in a
+    single Apify call.
+
+    Returns a dict with keys: title, description (both used by the troll
+    filter, same as fetch_metadata/fetch_slideshow_post), video_url,
+    uploader, comments (list of dicts matching fetch_top_comments' shape:
+    text, username, likes, reply_count, avatar_url, created_at).
+
+    Raises RuntimeError on failure — no video (e.g. it's a photo-only
+    post), private/deleted post, or the Apify call itself failing.
+    """
+    if not APIFY_API_TOKEN:
+        raise RuntimeError(
+            "APIFY_API_TOKEN is not set — add it in Railway → Variables."
+        )
+
+    endpoint = f"https://api.apify.com/v2/acts/{APIFY_INSTAGRAM_ACTOR}/run-sync-get-dataset-items"
+    payload = {
+        "directUrls": [url],
+        "resultsType": "reels",
+        "resultsLimit": 1,
+        "addParentData": False,
+    }
+
+    try:
+        resp = requests.post(
+            endpoint, params={"token": APIFY_API_TOKEN}, json=payload, timeout=60,
+        )
+        resp.raise_for_status()
+        items = resp.json()
+    except requests.RequestException as e:
+        raise RuntimeError(f"Apify Instagram request failed: {e}")
+
+    if not items:
+        raise RuntimeError(
+            "No data returned for this Instagram post — it may be private, "
+            "deleted, or the link isn't a public Reel."
+        )
+
+    post = items[0]
+
+    video_url = post.get("videoUrl", "")
+    if not video_url:
+        raise RuntimeError(
+            "This Instagram post has no video attached — is it a photo "
+            "carousel rather than a Reel? Photo-only Instagram posts "
+            "aren't supported yet."
+        )
+
+    caption = (post.get("caption") or "").strip()
+
+    comments = []
+    for c in (post.get("latestComments") or []):
+        text = (c.get("text") or "").strip()
+        if not text:
+            continue
+        comments.append({
+            "text": text,
+            "username": c.get("ownerUsername", ""),
+            "likes": c.get("likesCount", 0) or 0,
+            "reply_count": c.get("repliesCount") or 0,
+            "avatar_url": c.get("ownerProfilePicUrl", ""),
+            "created_at": c.get("timestamp", ""),
+        })
+    comments.sort(key=lambda c: c["likes"], reverse=True)
+
+    return {
+        "title": caption[:200],
+        "description": caption,
+        "video_url": video_url,
+        "uploader": post.get("ownerUsername", ""),
+        "comments": comments,
+    }
+
+
+def download_instagram_video(video_url: str, output_dir: str) -> str:
+    """
+    Downloads the direct Instagram CDN video URL from fetch_instagram_post().
+    Unlike TikTok, no yt-dlp is needed here — Apify already resolved the
+    real playable MP4 URL, so it's a plain HTTP download.
+    """
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; GetWayBot/1.0)",
+        "Referer": "https://www.instagram.com/",
+    }
+    try:
+        resp = requests.get(video_url, headers=headers, timeout=30)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        raise RuntimeError(f"Instagram video download failed: {e}")
+
+    out_path = os.path.join(output_dir, "instagram_video.mp4")
+    with open(out_path, "wb") as f:
+        f.write(resp.content)
+    return out_path
 
 
 # ── Real TikTok comments (Apify) ──────────────────────────────────────────────

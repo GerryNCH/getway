@@ -343,6 +343,9 @@ def enrich_itinerary_with_photos(itinerary) -> None:
             # should find ATV photos, not just generic island scenery.
             # Only fall back to the category term if that search comes up
             # empty (e.g. the name is too much of a sentence to match).
+            stop.photo_is_fallback = True  # reaching this point always means
+                                             # no confident name-match photo —
+                                             # flagged for the admin panel.
             stop.photo_url, stop.photo_attribution = _best_fresh_unsplash(name_query)
             if not stop.photo_url:
                 term = _CATEGORY_PHOTO_TERMS.get(stop.category, "travel")

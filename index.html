@@ -1533,7 +1533,9 @@
             ${isDescriptionNotName ? '<span class="text-[10px] font-semibold uppercase tracking-wide text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">Similar match, not confirmed</span>' : ''}
           </div>
           <div class="text-sm font-medium mb-1">${stop.name}</div>
+          ${stop.property_type || stop.area_label ? `<div class="text-xs text-gray-500 mb-1">${[stop.property_type, stop.area_label].filter(Boolean).map(escapeHtml).join(' · ')}</div>` : ''}
           <div class="text-xs text-gray-500 mb-3">${stop.description}</div>
+          ${stop.transfer_note ? `<div class="inline-flex items-center gap-1 text-[11px] text-gray-500 bg-gray-50 rounded-full px-2.5 py-1 mb-3"><i data-lucide="navigation" class="w-3 h-3"></i>${escapeHtml(stop.transfer_note)}</div>` : ''}
           ${stop.tip ? `<div class="text-xs text-[#8B5CF6] mb-3">💡 ${stop.tip}</div>` : ''}
           ${bookingBlock}
         </div>
@@ -1559,6 +1561,7 @@
           ${creatorHandle ? `<span class="inline-flex items-center gap-1 text-[#085041] normal-case"><i data-lucide="star" class="w-3 h-3"></i>${escapeHtml(creatorHandle)}'s pick</span>` : ''}
         </div>
         <div class="pl-6 md:pl-0 text-xs text-gray-500 mt-1.5 leading-relaxed">${stop.description}</div>
+        ${stop.transfer_note ? `<div class="pl-6 md:pl-0 mt-1.5"><span class="inline-flex items-center gap-1 text-[11px] text-gray-500 bg-gray-50 rounded-full px-2.5 py-1"><i data-lucide="navigation" class="w-3 h-3"></i>${escapeHtml(stop.transfer_note)}</span></div>` : ''}
         ${stop.tip ? `<div class="pl-6 md:pl-0 text-xs text-[#8B5CF6] mt-1.5">💡 ${stop.tip}</div>` : ''}
         ${stop.category === 'food' ? `<a href="${stop.booking_url || `https://www.google.com/maps/search/${encodeURIComponent(mapsQuery)}`}" target="_blank" rel="noopener" class="btn-interactive inline-flex items-center gap-1.5 mt-2.5 ml-6 md:ml-0 h-[36px] px-4 bg-[#8B5CF6] text-white text-xs font-medium rounded-lg"><i data-lucide="calendar" class="w-3.5 h-3.5"></i>Reserve a table</a>` : ''}
       </div>

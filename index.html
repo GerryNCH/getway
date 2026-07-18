@@ -94,7 +94,7 @@
     <div class="absolute inset-0 bg-gradient-to-b from-black/35 via-black/10 to-[#fdfbf7]"></div>
     <div class="relative z-10 h-full flex flex-col items-center justify-center text-center px-6">
       <div class="font-serif-display text-white text-[40px] sm:text-[68px] md:text-[92px] leading-[0.95] tracking-tight mb-5" style="text-shadow: 0 2px 20px rgba(0,0,0,0.25);">GetWay.</div>
-      <div class="text-white/90 text-sm sm:text-base max-w-md" style="text-shadow: 0 1px 10px rgba(0,0,0,0.3);">Curated itineraries from your favorite creators.<br>Turn TikTok clips into real-world trips.</div>
+      <div class="text-white/90 text-sm sm:text-base max-w-md" style="text-shadow: 0 1px 10px rgba(0,0,0,0.3);">Curated itineraries from your favorite creators.<br>Turn TikTok & Instagram clips into real-world trips.</div>
     </div>
   </div>
 
@@ -103,13 +103,14 @@
       <div class="text-center mb-6">
         <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">AI-Powered</div>
         <div class="font-serif-display text-2xl md:text-3xl mb-2">AI Magic Box</div>
-        <div class="text-xs md:text-sm text-gray-600">Turn any TikTok video into a ready-to-book route in 60 seconds.</div>
+        <div class="text-xs md:text-sm text-gray-600">Turn any TikTok or Instagram video into a ready-to-book route in 60 seconds.</div>
       </div>
       <div class="flex items-center gap-2.5 h-[52px] px-4 bg-white/70 border border-gray-200 rounded-2xl mb-3.5">
         <i data-lucide="music-2" class="w-[18px] h-[18px] text-gray-500 flex-shrink-0"></i>
-        <input type="text" placeholder="Paste a TikTok or Instagram Reel link here..." class="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400">
+        <input id="home-tiktok-url" type="text" placeholder="Paste a TikTok or Instagram Reel link here..." class="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400">
+        <button type="button" onclick="pasteFromClipboard('home-tiktok-url')" class="btn-interactive flex-shrink-0 h-8 px-3 rounded-full bg-[#8B5CF6]/10 text-[#6D28D9] text-xs font-medium flex items-center gap-1"><i data-lucide="clipboard" class="w-3.5 h-3.5"></i>Paste</button>
       </div>
-      <button onclick="(function(){ var v=document.querySelector('#screen-home input[type=text]').value.trim(); if(v){document.getElementById('tiktok-url').value=v;} showScreen('magicbox'); if(v){startMagicBox();} })()" class="btn-interactive w-full h-[50px] flex items-center justify-center gap-2 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">
+      <button onclick="(function(){ var v=document.getElementById('home-tiktok-url').value.trim(); if(v){document.getElementById('tiktok-url').value=v;} showScreen('magicbox'); if(v){startMagicBox();} })()" class="btn-interactive w-full h-[50px] flex items-center justify-center gap-2 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">
         Build my route <i data-lucide="rocket" class="w-4 h-4"></i>
       </button>
     </div>
@@ -380,12 +381,13 @@
     <div class="text-center mb-7">
       <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">AI-Powered</div>
       <div class="font-serif-display text-[28px] md:text-4xl mb-2">AI Magic Box</div>
-      <div class="text-xs md:text-sm text-gray-600 leading-relaxed px-2.5">Turn any TikTok video into a ready-to-book route in 60 seconds.</div>
+      <div class="text-xs md:text-sm text-gray-600 leading-relaxed px-2.5">Turn any TikTok or Instagram video into a ready-to-book route in 60 seconds.</div>
     </div>
 
     <div class="flex items-center gap-2.5 h-[52px] px-4 bg-white/70 border border-gray-200 rounded-2xl mb-3">
       <i data-lucide="music-2" class="w-[18px] h-[18px] text-gray-500 flex-shrink-0"></i>
       <input id="tiktok-url" type="text" placeholder="Paste a TikTok or Instagram Reel link here..." class="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400">
+      <button type="button" onclick="pasteFromClipboard('tiktok-url')" class="btn-interactive flex-shrink-0 h-8 px-3 rounded-full bg-[#8B5CF6]/10 text-[#6D28D9] text-xs font-medium flex items-center gap-1"><i data-lucide="clipboard" class="w-3.5 h-3.5"></i>Paste</button>
     </div>
 
     <button onclick="startMagicBox()" class="btn-interactive w-full h-[50px] flex items-center justify-center gap-2 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl mb-8">
@@ -1739,6 +1741,22 @@
     }).catch(() => {
       prompt('Copy this link to save your route:', url);
     });
+  }
+
+  async function pasteFromClipboard(inputId) {
+    const input = document.getElementById(inputId);
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && text.trim()) {
+        input.value = text.trim();
+        input.focus();
+      }
+    } catch (err) {
+      // Clipboard API can fail on iOS Safari outside certain gesture
+      // contexts, or if the user denies permission — fall back to just
+      // focusing the field so they can paste manually (long-press → Paste).
+      input.focus();
+    }
   }
 
   async function startMagicBox() {

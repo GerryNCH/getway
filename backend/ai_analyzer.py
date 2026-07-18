@@ -139,7 +139,10 @@ Schema:
           "category": "hotel|sight|food|activity|beach|village",
           "description": "One sentence — what makes it special",
           "tip": "Practical tip from the creator, max 12 words (empty string if none)",
-          "is_specific_name": true
+          "is_specific_name": true,
+          "property_type": "Hotel stops only — e.g. Boutique Hotel, Beach Resort, Guesthouse, Design Hotel (empty string for non-hotel stops)",
+          "area_label": "Hotel stops only — the neighbourhood/area, e.g. Old Town, Beachfront (empty string if not identifiable or not a hotel)",
+          "transfer_note": "How to get here relative to the hotel or previous stop, in general terms — e.g. 'Short walk from Old Town', 'Boat transfer needed', 'Car recommended'. Empty string if you can't confidently judge this."
         }
       ]
     }
@@ -161,6 +164,22 @@ an empty array if none clearly apply. Don't force a fit:
   mountain        → mountains, hiking, ski, or alpine village setting
   city            → primarily an urban destination
   beach           → primarily a coastal/beach destination
+
+"property_type" and "area_label" (hotel stops only) — describe the
+property's style and neighbourhood the way a travel writer would (e.g.
+"Boutique Hotel", "Old Town"). NEVER include a numeric rating or review
+score (e.g. "8.9", "4.5 stars") — you have no access to real guest review
+data, and inventing a number would present fabricated data as if it were
+a genuine score. Leave both fields as empty strings for non-hotel stops,
+or if genuinely nothing about style/area is visible.
+
+"transfer_note" — a short, general sense of how someone gets from the
+previous stop (or the hotel, for the first stop of the day) to this one —
+e.g. "Short walk from Old Town", "Boat transfer needed", "Car recommended,
+~20 min". Keep it qualitative. Do NOT state a precise number of minutes
+you can't actually know from the video — vague, honest phrasing beats
+false precision. Leave it an empty string whenever you're not reasonably
+confident.
 
 "is_specific_name" must be:
   true  — "name" is a real, searchable property/place name (e.g. "Hotel

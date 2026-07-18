@@ -96,15 +96,31 @@ def _get_place_photo_url(query: str, max_width: int = 800) -> str:
         if not _names_plausibly_match(query_core, name):
             continue
         photos = place.get("photos", [])
-        if photos:
-            return _build_photo_url(photos[0].get("name", ""), max_width)
+        if not photos:
+            continue
+        # Google returns photos in whatever order it ranks them internally
+        # — often a random guest close-up (a boat passing in the distance,
+        # a hallway) rather than a representative exterior/room shot.
+        # Preferring a landscape-oriented, higher-resolution photo among
+        # the first several is a free, cheap signal that tends to favor an
+        # actual establishing shot over a narrow detail crop.
+        candidates = photos[:5]
+        landscape = [p for p in candidates if p.get("widthPx", 0) > p.get("heightPx", 0)]
+        best = max(landscape or candidates, key=lambda p: p.get("widthPx", 0))
+        return _build_photo_url(best.get("name", ""), max_width)
 
     print(f"[Places] No confident name match for '{query}' — skipping photo rather than risk a wrong one")
     return ""
 
 
 def _unsplash_candidates(query: str, per_page: int = 6) -> list[dict]:
-    """Fetches raw Unsplash search results (id, urls, likes, user, links) for one query."""
+    """
+    Fetches raw Unsplash search results (id, urls, likes, user, links) for
+    one query. Excludes Unsplash+ ("plus") photos — those are a separate
+    paid license tier and get served with a visible tiled watermark unless
+    the requesting app has an Unsplash+ subscription, which this app
+    doesn't. Regular free-tier Unsplash photos have no such restriction.
+    """
     if not UNSPLASH_ACCESS_KEY:
         return []
     try:
@@ -117,7 +133,8 @@ def _unsplash_candidates(query: str, per_page: int = 6) -> list[dict]:
         if resp.status_code != 200:
             print(f"[Unsplash] HTTP {resp.status_code} for '{query}': {resp.text[:200]}")
             return []
-        return resp.json().get("results", [])
+        results = resp.json().get("results", [])
+        return [r for r in results if not r.get("plus")]
     except Exception as e:
         print(f"[Unsplash] Exception for '{query}': {type(e).__name__}: {e}")
         return []
@@ -311,8 +328,15 @@ def enrich_itinerary_with_photos(itinerary) -> None:
                 continue
 
             # Either the AI flagged this as a generic/invented name, there's
-            # no API key configured, or the attempt above found nothing —
-            # fall back to a representative (not misleading) category photo.
-            term = _CATEGORY_PHOTO_TERMS.get(stop.category, "travel")
-            stop.photo_url, stop.photo_attribution = _best_fresh_unsplash(f"{city} {term}".strip())
-            print(f"[Photos] Category fallback for '{stop.name}' → {bool(stop.photo_url)}")
+            # no API key configured, or the attempt above found nothing.
+            # Even when a stop isn't a specific bookable place, its own
+            # name is usually a much better photo search term than a
+            # generic category label — "ATV / Quad Bike Rental, Santorini"
+            # should find ATV photos, not just generic island scenery.
+            # Only fall back to the category term if that search comes up
+            # empty (e.g. the name is too much of a sentence to match).
+            stop.photo_url, stop.photo_attribution = _best_fresh_unsplash(name_query)
+            if not stop.photo_url:
+                term = _CATEGORY_PHOTO_TERMS.get(stop.category, "travel")
+                stop.photo_url, stop.photo_attribution = _best_fresh_unsplash(f"{city} {term}".strip())
+            print(f"[Photos] Fallback for '{stop.name}' → {bool(stop.photo_url)}")

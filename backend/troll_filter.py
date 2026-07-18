@@ -17,6 +17,12 @@ from database import get_troll_decision, save_troll_decision
 
 _client = anthropic.Anthropic()   # reads ANTHROPIC_API_KEY from env
 
+# Claude Haiku 4.5 standard rate, $ per million tokens (verified July 2026 —
+# update these two numbers if Anthropic changes pricing or this model is
+# swapped for a different one).
+_HAIKU_INPUT_PER_MTOK = 1.00
+_HAIKU_OUTPUT_PER_MTOK = 5.00
+
 TROLL_SYSTEM = """You are a travel content classifier.
 Given a video title and description, decide if this is a TRAVEL video
 that shows real geographic destinations a tourist could visit.
@@ -33,21 +39,22 @@ Be generous: if there's any reasonable doubt, set is_travel = true.
 Only reject clearly non-travel content."""
 
 
-def check_is_travel(video_id: str, title: str, description: str) -> tuple[bool, str]:
+def check_is_travel(video_id: str, title: str, description: str) -> tuple[bool, str, float]:
     """
-    Returns (is_travel: bool, reason: str).
+    Returns (is_travel, reason, cost_usd).
 
-    Checks the troll cache first — if we've seen this video before,
-    returns the cached decision at zero cost.
+    Checks the troll cache first — if we've seen this video before, returns
+    the cached decision at zero cost (cost_usd = 0.0, no new API call made).
     """
     # Layer 1: check cache (free)
     cached = get_troll_decision(video_id)
     if cached is not None:
-        return cached, "cached decision"
+        return cached, "cached decision", 0.0
 
     # Layer 2: call Claude Haiku (cheap)
     text_to_check = f"Title: {title}\n\nDescription: {description[:600]}"
 
+    cost_usd = 0.0
     try:
         response = _client.messages.create(
             model="claude-haiku-4-5-20251001",   # cheapest model
@@ -55,6 +62,12 @@ def check_is_travel(video_id: str, title: str, description: str) -> tuple[bool, 
             system=TROLL_SYSTEM,
             messages=[{"role": "user", "content": text_to_check}],
         )
+        usage = getattr(response, "usage", None)
+        if usage:
+            cost_usd = (
+                usage.input_tokens * _HAIKU_INPUT_PER_MTOK
+                + usage.output_tokens * _HAIKU_OUTPUT_PER_MTOK
+            ) / 1_000_000
         import json
         raw = response.content[0].text.strip()
         result = json.loads(raw)
@@ -69,4 +82,4 @@ def check_is_travel(video_id: str, title: str, description: str) -> tuple[bool, 
     # Save for next time (free for repeated requests)
     save_troll_decision(video_id, is_travel, reason)
 
-    return is_travel, reason
+    return is_travel, reason, cost_usd

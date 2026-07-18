@@ -225,26 +225,50 @@ Rules:
 - Return only the JSON object"""
 
 
-def analyse_frames(frame_paths: list[str]) -> tuple[Itinerary, str, list[str]]:
+def analyse_frames(frame_paths: list[str], comments: list[dict] | None = None) -> tuple[Itinerary, str, list[str]]:
     """
     Sends all frames to Claude Sonnet and parses the JSON itinerary response.
     Raises ValueError if the response cannot be parsed.
+
+    `comments` (optional): the video's real top comments (from
+    extractor.fetch_top_comments), passed in as an identification aid —
+    viewers frequently ask "what hotel is this??" and someone (often the
+    creator) answers with the actual name, which the AI would otherwise
+    never see since it only looks at frames. Only the comments themselves
+    decide this — the AI is told explicitly not to guess a name it can't
+    verify from either frames or comments.
 
     Returns (itinerary, price_category, tags) — price_category and tags
     aren't part of the Itinerary content model (they're admin-curation
     fields stored separately via database.set_route_meta), so they're
     popped out of the raw response here rather than silently dropped.
     """
+    intro_text = (
+        f"Here are {len(frame_paths)} evenly-spaced frames from a travel video. "
+        "Please identify every travel location and return the structured JSON itinerary."
+    )
+
+    # Comments are genuinely useful for exactly one thing: naming a place
+    # the frames alone don't confirm. Keep it short (top 10 by likes) and
+    # be explicit that this is the only extra source of truth allowed —
+    # nothing here should lower the bar for is_specific_name.
+    if comments:
+        top = sorted(comments, key=lambda c: c.get("likes", 0), reverse=True)[:10]
+        comment_lines = "\n".join(f'- "{c.get("text", "").strip()}"' for c in top if c.get("text", "").strip())
+        if comment_lines:
+            intro_text += (
+                "\n\nHere are this video's top comments (most-liked first). "
+                "Some viewers ask what a specific hotel/restaurant/place is "
+                "called, and sometimes the creator or another viewer answers "
+                "with the real name — if so, use that confirmed name and set "
+                "is_specific_name: true. Do NOT use comments to guess a name "
+                "that isn't actually stated in them; if nothing here confirms "
+                "a name, treat it exactly as if there were no comments at all.\n\n"
+                f"{comment_lines}"
+            )
+
     # Build multimodal content: intro text + all JPEG frames
-    content: list[dict] = [
-        {
-            "type": "text",
-            "text": (
-                f"Here are {len(frame_paths)} evenly-spaced frames from a travel video. "
-                "Please identify every travel location and return the structured JSON itinerary."
-            ),
-        }
-    ]
+    content: list[dict] = [{"type": "text", "text": intro_text}]
 
     for path in frame_paths:
         with open(path, "rb") as f:

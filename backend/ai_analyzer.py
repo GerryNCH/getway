@@ -18,6 +18,12 @@ from models import Itinerary
 
 _client = anthropic.Anthropic()
 
+# Claude Sonnet 4.6 standard rate, $ per million tokens (verified July 2026 —
+# update these two numbers if Anthropic changes pricing or analyse_frames'
+# model string below is changed to a different model).
+_SONNET_INPUT_PER_MTOK = 3.00
+_SONNET_OUTPUT_PER_MTOK = 15.00
+
 # ── Affiliate link config (Phase 2) ──────────────────────────────────────────
 # CJ Affiliate account — Gerry's Publisher ID + Booking.com's Advertiser/Link
 # ID. Booking.com North America approval covers the deep-link format below.
@@ -225,7 +231,7 @@ Rules:
 - Return only the JSON object"""
 
 
-def analyse_frames(frame_paths: list[str], comments: list[dict] | None = None) -> tuple[Itinerary, str, list[str]]:
+def analyse_frames(frame_paths: list[str], comments: list[dict] | None = None) -> tuple[Itinerary, str, list[str], float]:
     """
     Sends all frames to Claude Sonnet and parses the JSON itinerary response.
     Raises ValueError if the response cannot be parsed.
@@ -238,10 +244,13 @@ def analyse_frames(frame_paths: list[str], comments: list[dict] | None = None) -
     decide this — the AI is told explicitly not to guess a name it can't
     verify from either frames or comments.
 
-    Returns (itinerary, price_category, tags) — price_category and tags
-    aren't part of the Itinerary content model (they're admin-curation
-    fields stored separately via database.set_route_meta), so they're
-    popped out of the raw response here rather than silently dropped.
+    Returns (itinerary, price_category, tags, cost_usd) — price_category
+    and tags aren't part of the Itinerary content model (they're
+    admin-curation fields stored separately via database.set_route_meta),
+    so they're popped out of the raw response here rather than silently
+    dropped. cost_usd is the real $ cost of this specific API call,
+    computed from Anthropic's own token usage numbers in the response —
+    not an estimate.
     """
     intro_text = (
         f"Here are {len(frame_paths)} evenly-spaced frames from a travel video. "
@@ -312,4 +321,12 @@ def analyse_frames(frame_paths: list[str], comments: list[dict] | None = None) -
     price_category = data.pop("price_category", "") or "€€"
     tags = data.pop("tags", None) or []
 
-    return Itinerary(**data), price_category, tags
+    usage = getattr(response, "usage", None)
+    cost_usd = 0.0
+    if usage:
+        cost_usd = (
+            usage.input_tokens * _SONNET_INPUT_PER_MTOK
+            + usage.output_tokens * _SONNET_OUTPUT_PER_MTOK
+        ) / 1_000_000
+
+    return Itinerary(**data), price_category, tags, cost_usd

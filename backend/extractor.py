@@ -130,14 +130,17 @@ APIFY_TIKTOK_ACTOR = "clockworks~tiktok-scraper"
 def fetch_slideshow_post(url: str) -> dict:
     """
     Single Apify call for a TikTok slideshow post. Returns everything the
-    pipeline needs: title/description (for the troll filter) and the
-    ordered list of slide image URLs (for the AI analysis step).
+    pipeline needs: title/description (for the troll filter), uploader
+    (creator handle), and the ordered list of slide image URLs (for the
+    AI analysis step).
 
-    Field names below were confirmed against a real run's output (not
-    guessed): each dataset item has `text` (the caption) and
-    `slideshowImageLinks`, a list of {"tiktokLink", "downloadLink"} objects.
-    We use `downloadLink` — it's hosted on Apify's own storage and doesn't
-    expire, unlike the raw signed `tiktokLink` CDN URL.
+    Field names below were confirmed against real run output (not
+    guessed): each dataset item has `text` (the caption),
+    `slideshowImageLinks` (list of {"tiktokLink", "downloadLink"} objects),
+    and — with `scrapeAdditionalAuthorMeta: true` in the request —
+    `authorMeta.name` (a flat key literally containing a dot, not a nested
+    object). We use `downloadLink` for images — it's hosted on Apify's own
+    storage and doesn't expire, unlike the raw signed `tiktokLink` CDN URL.
     """
     if not APIFY_API_TOKEN:
         raise RuntimeError(
@@ -153,6 +156,8 @@ def fetch_slideshow_post(url: str) -> dict:
         "shouldDownloadSubtitles": False,
         "shouldDownloadAvatars": False,
         "shouldDownloadMusicCovers": False,
+        "scrapeAdditionalAuthorMeta": True,  # needed for authorMeta.name (creator handle) —
+                                               # confirmed field name from a real test run
     }
 
     try:
@@ -188,6 +193,7 @@ def fetch_slideshow_post(url: str) -> dict:
     return {
         "title": caption,
         "description": caption,
+        "uploader": post.get("authorMeta.name", ""),
         "webpage_url": post.get("webVideoUrl", url),
         "image_urls": image_urls,
     }

@@ -1396,7 +1396,7 @@
     beach:    { icon: 'waves',    color: '#0E7490', label: 'Beach' },
   };
 
-  function renderAiStopCard(stop, destination) {
+  function renderAiStopCard(stop, destination, creatorHandle) {
     const cfg = CAT_CONFIG[stop.category] || { icon: 'map-pin', color: '#8B5CF6', label: stop.category };
     const seed = slugify(stop.name);
     // Multi-city destinations (e.g. "Cairo & Luxor") need to be split down
@@ -1511,6 +1511,7 @@
         <div class="md:w-3/5 md:pt-2">
           <div class="flex items-center gap-2 mb-2 flex-wrap">
             <span class="text-[11px] font-medium text-[#7C3AED] uppercase tracking-wide">Hotel</span>
+            ${creatorHandle && !isDescriptionNotName ? `<span class="text-[11px] text-gray-400">·</span><span class="inline-flex items-center gap-1 text-[11px] text-[#085041]"><i data-lucide="star" class="w-3 h-3"></i>${escapeHtml(creatorHandle)}'s pick</span>` : ''}
             ${isDescriptionNotName ? '<span class="text-[10px] font-semibold uppercase tracking-wide text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">Similar match, not confirmed</span>' : ''}
           </div>
           <div class="text-sm font-medium mb-1">${stop.name}</div>
@@ -1535,7 +1536,10 @@
           <div class="text-sm font-medium leading-snug">${stop.name}</div>
         </div>
         <div class="text-[10px] text-gray-400 mb-1 pl-6 md:pl-0">Tap to open in Maps</div>
-        <div class="pl-6 md:pl-0 text-[10px] uppercase tracking-wide font-medium" style="color:${cfg.color}">${cfg.label}</div>
+        <div class="pl-6 md:pl-0 text-[10px] uppercase tracking-wide font-medium flex items-center gap-1.5 flex-wrap" style="color:${cfg.color}">
+          <span>${cfg.label}</span>
+          ${creatorHandle ? `<span class="inline-flex items-center gap-1 text-[#085041] normal-case"><i data-lucide="star" class="w-3 h-3"></i>${escapeHtml(creatorHandle)}'s pick</span>` : ''}
+        </div>
         <div class="pl-6 md:pl-0 text-xs text-gray-500 mt-1.5 leading-relaxed">${stop.description}</div>
         ${stop.tip ? `<div class="pl-6 md:pl-0 text-xs text-[#8B5CF6] mt-1.5">💡 ${stop.tip}</div>` : ''}
         ${stop.category === 'food' ? `<a href="${stop.booking_url || `https://www.google.com/maps/search/${encodeURIComponent(mapsQuery)}`}" target="_blank" rel="noopener" class="btn-interactive inline-flex items-center gap-1.5 mt-2.5 ml-6 md:ml-0 h-[36px] px-4 bg-[#8B5CF6] text-white text-xs font-medium rounded-lg"><i data-lucide="calendar" class="w-3.5 h-3.5"></i>Reserve a table</a>` : ''}
@@ -1651,9 +1655,9 @@
         <div class="ai-day-group mb-10 md:mb-14">
           <div class="font-serif-display text-[26px] md:text-4xl leading-tight mb-1">Day ${day.day}</div>
           <div class="text-xs md:text-sm text-gray-500 mb-6 md:mb-8">${day.label} · ${day.stops.length} stop${day.stops.length !== 1 ? 's' : ''}</div>
-          ${hotels.map(h => renderAiStopCard(h, itinerary.destination)).join('')}
+          ${hotels.map(h => renderAiStopCard(h, itinerary.destination, itinerary.creator_handle)).join('')}
           <div class="grid md:grid-cols-2 gap-4 md:gap-6">
-            ${others.map(s => renderAiStopCard(s, itinerary.destination)).join('')}
+            ${others.map(s => renderAiStopCard(s, itinerary.destination, itinerary.creator_handle)).join('')}
           </div>
         </div>`;
     }).join('');

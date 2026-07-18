@@ -89,6 +89,7 @@
     <div class="max-w-5xl mx-auto px-6 pb-4 flex gap-2">
       <button class="tab-chip is-active pill-btn pill-gray border border-gray-200" data-tab="pending">Pending review</button>
       <button class="tab-chip pill-btn pill-gray border border-gray-200" data-tab="approved">Published</button>
+      <button class="tab-chip pill-btn pill-gray border border-gray-200" data-tab="homepage">Homepage</button>
       <button class="tab-chip pill-btn pill-gray border border-gray-200" data-tab="stats">Statistics</button>
     </div>
   </div>
@@ -98,9 +99,13 @@
 
 <script>
 const API_BASE = "https://getway-production.up.railway.app";
+const SITE_URL = "https://getway-theta.vercel.app";
 let SECRET = sessionStorage.getItem("getway_admin_secret") || "";
 let DATA = {};
 let ACTIVE_TAB = "pending";
+let SORT_ORDER = "newest";
+let SELECTED = new Set();
+let DEST_COUNTS = {};
 const CATEGORIES = ["hotel", "sight", "food", "activity", "beach", "village"];
 
 // ── Auth ──────────────────────────────────────────────────────────────
@@ -166,9 +171,27 @@ async function loadTab(tab) {
   const content = document.getElementById("tab-content");
   content.innerHTML = `<p class="text-gray-400 text-sm">Loading…</p>`;
   try {
-    if (tab === "pending") renderRouteList(await apiGet("/admin/pending"), "pending");
-    else if (tab === "approved") renderRouteList(await apiGet("/admin/approved"), "approved");
-    else if (tab === "stats") renderStats(await apiGet("/admin/stats"));
+    if (tab === "pending" || tab === "approved") {
+      const [pendingItems, approvedItems] = await Promise.all([
+        apiGet("/admin/pending"),
+        apiGet("/admin/approved"),
+      ]);
+      DEST_COUNTS = {};
+      [...pendingItems, ...approvedItems].forEach((it) => {
+        const key = (it.destination || "").trim().toLowerCase();
+        if (!key) return;
+        DEST_COUNTS[key] = (DEST_COUNTS[key] || 0) + 1;
+      });
+      renderRouteList(tab === "pending" ? pendingItems : approvedItems, tab);
+    } else if (tab === "homepage") {
+      const [settings, approvedItems] = await Promise.all([
+        apiGet("/site-settings"),
+        apiGet("/admin/approved"),
+      ]);
+      renderHomepageTab(settings, approvedItems);
+    } else if (tab === "stats") {
+      renderStats(await apiGet("/admin/stats"));
+    }
   } catch (e) {
     content.innerHTML = `<p class="text-red-600 text-sm">Failed to load: ${escapeHtml(String(e.message || e))}</p>`;
   }
@@ -182,12 +205,40 @@ function renderStats(stats) {
   const topRows = stats.top_destinations
     .map((d) => `<li class="flex justify-between py-2.5 border-b border-gray-100 text-sm"><span>${escapeHtml(d.destination)}</span><span class="font-semibold">${d.count}</span></li>`)
     .join("");
+  const mostViewed = stats.most_viewed
+    ? `${escapeHtml(stats.most_viewed.destination)} <span class="text-gray-400 text-sm font-sans">(${stats.most_viewed.views} views)</span>`
+    : '<span class="text-gray-400 text-sm font-sans">No views yet</span>';
+  const mostClicked = stats.most_clicked
+    ? `${escapeHtml(stats.most_clicked.destination)} <span class="text-gray-400 text-sm font-sans">(${stats.most_clicked.clicks} clicks)</span>`
+    : '<span class="text-gray-400 text-sm font-sans">No clicks yet</span>';
   content.innerHTML = `
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
       <div class="bento-card p-6 text-center"><div class="font-serif-display text-4xl">${stats.total}</div><div class="text-gray-400 text-xs mt-1 uppercase tracking-wide">Total routes</div></div>
       <div class="bento-card p-6 text-center"><div class="font-serif-display text-4xl text-[#B45309]">${stats.pending}</div><div class="text-gray-400 text-xs mt-1 uppercase tracking-wide">Pending</div></div>
       <div class="bento-card p-6 text-center"><div class="font-serif-display text-4xl text-[#16A34A]">${stats.approved}</div><div class="text-gray-400 text-xs mt-1 uppercase tracking-wide">Approved</div></div>
       <div class="bento-card p-6 text-center"><div class="font-serif-display text-4xl text-[#DC2626]">${stats.rejected}</div><div class="text-gray-400 text-xs mt-1 uppercase tracking-wide">Rejected</div></div>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div class="bento-card p-5">
+        <div class="text-gray-400 text-xs uppercase tracking-wide mb-1.5">Total AI generation cost</div>
+        <div class="font-serif-display text-2xl">$${(stats.total_generation_cost_usd || 0).toFixed(3)}</div>
+        <div class="text-[11px] text-gray-400 mt-1">Real cost from Anthropic's token usage, not an estimate</div>
+      </div>
+      <div class="bento-card p-5">
+        <div class="text-gray-400 text-xs uppercase tracking-wide mb-1.5">Most viewed route</div>
+        <div class="font-serif-display text-lg">${mostViewed}</div>
+      </div>
+      <div class="bento-card p-5">
+        <div class="text-gray-400 text-xs uppercase tracking-wide mb-1.5">Most clicked to book</div>
+        <div class="font-serif-display text-lg">${mostClicked}</div>
+      </div>
+    </div>
+    <div class="bento-card p-6 mb-6">
+      <div class="flex items-center justify-between mb-2">
+        <div class="font-serif-display text-lg">Affiliate link clicks (all routes)</div>
+        <div class="font-serif-display text-2xl">${stats.total_affiliate_clicks || 0}</div>
+      </div>
+      <p class="text-xs text-gray-400 leading-relaxed">This counts clicks on Booking.com / Expedia / Airbnb buttons — not confirmed bookings or commission earned. For actual commission revenue, check the <a href="https://members.cj.com" target="_blank" rel="noopener" class="text-[#8B5CF6] underline">CJ Affiliate dashboard</a> directly — that's where the real booking/payout data lives.</p>
     </div>
     <div class="bento-card p-6">
       <div class="font-serif-display text-lg mb-3">Top destinations</div>
@@ -200,15 +251,188 @@ function renderStats(stats) {
 function renderRouteList(items, listType) {
   const content = document.getElementById("tab-content");
   DATA = {};
-  if (!items.length) {
-    content.innerHTML = `<div class="bento-card p-10 text-center text-gray-400 text-sm">Nothing here yet.</div>`;
+  SELECTED = new Set();
+
+  const sorted = [...items].sort((a, b) => {
+    const da = new Date(a.created_at || 0).getTime();
+    const db = new Date(b.created_at || 0).getTime();
+    return SORT_ORDER === "newest" ? db - da : da - db;
+  });
+
+  content.innerHTML = "";
+
+  const toolbar = document.createElement("div");
+  toolbar.className = "flex items-center justify-between mb-4 flex-wrap gap-3";
+  toolbar.innerHTML = `
+    <div class="flex items-center gap-3 flex-wrap">
+      <label class="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
+        <input type="checkbox" id="select-all-checkbox" class="rounded">
+        Select all
+      </label>
+      <div class="flex gap-1">
+        <button class="sort-btn pill-btn ${SORT_ORDER === 'newest' ? 'pill-purple' : 'pill-gray'} text-xs" data-sort="newest">Newest first</button>
+        <button class="sort-btn pill-btn ${SORT_ORDER === 'oldest' ? 'pill-purple' : 'pill-gray'} text-xs" data-sort="oldest">Oldest first</button>
+      </div>
+    </div>
+    <div class="flex gap-2 bulk-actions"></div>
+  `;
+  content.appendChild(toolbar);
+
+  const bulkActionsEl = toolbar.querySelector(".bulk-actions");
+  if (listType === "pending") {
+    bulkActionsEl.appendChild(makePillBtn("Approve selected", "pill-green", () => doBulk(listType, "approve"), checkIconSvg()));
+    bulkActionsEl.appendChild(makePillBtn("Reject selected", "pill-red", () => doBulk(listType, "reject"), xIconSvg()));
+  } else {
+    bulkActionsEl.appendChild(makePillBtn("Hide selected", "pill-gray", () => doBulk(listType, "hide"), eyeOffIconSvg()));
+  }
+
+  toolbar.querySelectorAll(".sort-btn").forEach((btn) => {
+    btn.addEventListener("click", () => { SORT_ORDER = btn.dataset.sort; renderRouteList(items, listType); });
+  });
+  toolbar.querySelector("#select-all-checkbox").addEventListener("change", (e) => {
+    document.querySelectorAll(".card-select-checkbox").forEach((cb) => {
+      cb.checked = e.target.checked;
+      cb.dispatchEvent(new Event("change"));
+    });
+  });
+
+  if (!sorted.length) {
+    const empty = document.createElement("div");
+    empty.className = "bento-card p-10 text-center text-gray-400 text-sm";
+    empty.textContent = "Nothing here yet.";
+    content.appendChild(empty);
     return;
   }
-  content.innerHTML = "";
-  items.forEach((item) => {
+
+  sorted.forEach((item) => {
     DATA[item.video_id] = item;
     content.appendChild(buildCard(item, listType));
   });
+}
+
+// ── Homepage tab ──────────────────────────────────────────────────────
+function renderHomepageTab(settings, approvedItems) {
+  const content = document.getElementById("tab-content");
+  content.innerHTML = "";
+
+  const state = {
+    heroSlides: [...(settings.hero_slides || [])],
+    featuredIds: new Set(settings.featured_route_ids || []),
+  };
+
+  // Hero slides editor
+  const heroBox = document.createElement("div");
+  heroBox.className = "bento-card p-6 mb-5";
+  heroBox.innerHTML = `
+    <div class="font-serif-display text-lg mb-1">Homepage hero photos</div>
+    <p class="text-xs text-gray-400 mb-4">These rotate at the top of the homepage, above the Magic Box. Paste a photo URL and press Add.</p>
+    <div class="hero-thumbs flex flex-wrap gap-2 mb-3"></div>
+    <div class="flex gap-2">
+      <input class="hero-add-input flex-1" placeholder="Paste a photo URL and press Add">
+      <button class="pill-btn pill-gray btn-interactive hero-add-btn">${plusIconSvg()}<span>Add</span></button>
+    </div>
+  `;
+  content.appendChild(heroBox);
+
+  const heroThumbs = heroBox.querySelector(".hero-thumbs");
+  function renderHeroThumbs() {
+    heroThumbs.innerHTML = "";
+    state.heroSlides.forEach((url, i) => {
+      const cell = document.createElement("div");
+      cell.className = "relative";
+      cell.innerHTML = `
+        <img src="${escapeHtml(url)}" class="w-20 h-14 rounded-lg object-cover bg-gray-100 border border-gray-200" onerror="this.style.opacity=0.15">
+        <button type="button" class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-white shadow flex items-center justify-center text-red-600 remove-hero-btn">${xIconSvg()}</button>
+      `;
+      cell.querySelector(".remove-hero-btn").addEventListener("click", () => {
+        state.heroSlides.splice(i, 1);
+        renderHeroThumbs();
+      });
+      heroThumbs.appendChild(cell);
+    });
+  }
+  renderHeroThumbs();
+  heroBox.querySelector(".hero-add-btn").addEventListener("click", () => {
+    const input = heroBox.querySelector(".hero-add-input");
+    const url = input.value.trim();
+    if (!url) return;
+    state.heroSlides.push(url);
+    input.value = "";
+    renderHeroThumbs();
+  });
+
+  // Featured routes picker
+  const featBox = document.createElement("div");
+  featBox.className = "bento-card p-6 mb-5";
+  const modeNote = state.featuredIds.size
+    ? `Showing only your ${state.featuredIds.size} picked route(s) below, in this order.`
+    : `Currently showing ALL approved routes automatically. Check routes below to switch to manual curation.`;
+  featBox.innerHTML = `
+    <div class="font-serif-display text-lg mb-1">Featured routes on homepage</div>
+    <p class="text-xs text-gray-400 mb-4 feat-mode-note">${modeNote}</p>
+    <div class="feat-list space-y-2"></div>
+    ${approvedItems.length === 0 ? '<p class="text-sm text-gray-400 mt-2">No approved routes yet.</p>' : ''}
+  `;
+  content.appendChild(featBox);
+
+  const featList = featBox.querySelector(".feat-list");
+  const modeNoteEl = featBox.querySelector(".feat-mode-note");
+  function refreshModeNote() {
+    modeNoteEl.textContent = state.featuredIds.size
+      ? `Showing only your ${state.featuredIds.size} picked route(s), in the order checked below.`
+      : `Currently showing ALL approved routes automatically. Check routes below to switch to manual curation.`;
+  }
+
+  approvedItems.forEach((item) => {
+    const row = document.createElement("label");
+    row.className = "flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 cursor-pointer";
+    row.innerHTML = `
+      <input type="checkbox" class="feat-checkbox rounded" ${state.featuredIds.has(item.video_id) ? "checked" : ""}>
+      <img src="${escapeHtml(item.hero_photo_url || "")}" class="w-12 h-9 rounded object-cover bg-gray-100 flex-shrink-0" onerror="this.style.opacity=0.15">
+      <span class="text-sm">${escapeHtml(item.destination)}</span>
+      <span class="text-xs text-gray-400">· ${escapeHtml(item.duration)}</span>
+    `;
+    row.querySelector(".feat-checkbox").addEventListener("change", (e) => {
+      if (e.target.checked) state.featuredIds.add(item.video_id);
+      else state.featuredIds.delete(item.video_id);
+      refreshModeNote();
+    });
+    featList.appendChild(row);
+  });
+
+  const saveBtn = makePillBtn("Save homepage settings", "pill-purple", async () => {
+    saveBtn.disabled = true;
+    saveBtn.querySelector("span").textContent = "Saving…";
+    try {
+      await apiPut("/admin/site-settings", {
+        hero_slides: state.heroSlides,
+        featured_route_ids: Array.from(state.featuredIds),
+      });
+      saveBtn.querySelector("span").textContent = "Saved ✓";
+      setTimeout(() => { saveBtn.disabled = false; saveBtn.querySelector("span").textContent = "Save homepage settings"; }, 1200);
+    } catch (e) {
+      alert("Save failed: " + e.message);
+      saveBtn.disabled = false;
+      saveBtn.querySelector("span").textContent = "Save homepage settings";
+    }
+  }, saveIconSvg());
+  content.appendChild(saveBtn);
+}
+
+async function doBulk(listType, action) {
+  const ids = Array.from(SELECTED);
+  if (!ids.length) { alert("Select at least one route first."); return; }
+  const endpointFor = {
+    approve: (id) => apiPost(`/admin/approve/${encodeURIComponent(id)}`),
+    reject: (id) => apiPost(`/admin/reject/${encodeURIComponent(id)}`),
+    hide: (id) => apiPost(`/admin/hide/${encodeURIComponent(id)}`),
+  };
+  try {
+    await Promise.all(ids.map((id) => endpointFor[action](id)));
+  } catch (e) {
+    alert("Some actions failed: " + e.message);
+  }
+  loadTab(ACTIVE_TAB);
 }
 
 function buildCard(item, listType) {
@@ -216,18 +440,37 @@ function buildCard(item, listType) {
   card.className = "bento-card p-6 mb-5";
   card.dataset.video = item.video_id;
 
+  const destKey = (item.destination || "").trim().toLowerCase();
+  const dupCount = DEST_COUNTS[destKey] || 0;
+
   const header = document.createElement("div");
   header.className = "flex items-start justify-between gap-4 mb-1 flex-wrap";
   header.innerHTML = `
-    <div>
-      <div class="font-serif-display text-xl">${escapeHtml(item.destination)} <span class="text-gray-400 font-sans text-sm font-normal">· ${escapeHtml(item.duration)}</span></div>
-      <div class="text-[11px] text-gray-400 mt-0.5">${escapeHtml(item.video_id)} &nbsp;·&nbsp; ${escapeHtml((item.created_at || "").slice(0, 10))}</div>
+    <div class="flex items-start gap-3">
+      <input type="checkbox" class="card-select-checkbox mt-2.5 rounded flex-shrink-0">
+      <div>
+        <div class="font-serif-display text-xl flex items-center gap-2 flex-wrap">
+          <span>${escapeHtml(item.destination)}</span>
+          <span class="text-gray-400 font-sans text-sm font-normal">· ${escapeHtml(item.duration)}</span>
+          ${dupCount > 1 ? `<span class="text-[10px] font-semibold uppercase tracking-wide text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">Duplicate destination (${dupCount}×)</span>` : ""}
+        </div>
+        <div class="text-[11px] text-gray-400 mt-0.5">
+          ${escapeHtml(item.video_id)} &nbsp;·&nbsp; ${escapeHtml((item.created_at || "").slice(0, 10))}
+          &nbsp;·&nbsp; $${(item.generation_cost_usd || 0).toFixed(3)} to generate
+          &nbsp;·&nbsp; ${item.view_count || 0} views
+        </div>
+      </div>
     </div>
     <div class="flex gap-2 action-buttons flex-wrap"></div>
   `;
   card.appendChild(header);
 
+  header.querySelector(".card-select-checkbox").addEventListener("change", (e) => {
+    if (e.target.checked) SELECTED.add(item.video_id); else SELECTED.delete(item.video_id);
+  });
+
   const actions = header.querySelector(".action-buttons");
+  actions.appendChild(makePillBtn("Preview", "pill-gray", () => window.open(`${SITE_URL}/?route=${encodeURIComponent(item.video_id)}`, "_blank"), previewIconSvg()));
   actions.appendChild(makePillBtn("Edit", "pill-gray", () => toggleEditor(card), editIconSvg()));
 
   if (listType === "pending") {
@@ -260,6 +503,7 @@ function editIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="non
 function eyeOffIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c7 0 10 8 10 8a13.2 13.2 0 0 1-1.67 2.68M6.6 6.6C3.3 8.8 2 12 2 12s3 8 10 8a9.4 9.4 0 0 0 5-1.4M3 3l18 18"/><path d="M9.5 9.5a3 3 0 0 0 4.2 4.2"/></svg>`; }
 function trashIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>`; }
 function refreshIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>`; }
+function previewIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>`; }
 function saveIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>`; }
 function plusIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>`; }
 
@@ -436,7 +680,7 @@ function buildDayBlock(videoId, dayIdx) {
   block.appendChild(stopsWrap);
 
   const addBtn = makePillBtn("Add stop", "pill-gray", () => {
-    DATA[videoId].days[dayIdx].stops.push({ name: "", category: "sight", description: "", tip: "", photo_url: "", is_specific_name: true, booking_url: "", expedia_url: "" });
+    DATA[videoId].days[dayIdx].stops.push({ name: "", category: "sight", description: "", tip: "", photo_url: "", photo_is_fallback: false, is_specific_name: true, booking_url: "", expedia_url: "" });
     stopsWrap.appendChild(buildStopRow(videoId, dayIdx, DATA[videoId].days[dayIdx].stops.length - 1));
   }, plusIconSvg());
   addBtn.classList.add("text-xs");
@@ -458,7 +702,10 @@ function buildStopRow(videoId, dayIdx, stopIdx) {
       <div class="md:col-span-2"><label class="field-label">Name</label><input class="stop-name" value="${escapeHtml(stop.name)}"></div>
       <div><label class="field-label">Category</label><select class="stop-category">${catOptions}</select></div>
       <div>
-        <label class="field-label">Photo URL</label>
+        <label class="field-label flex items-center gap-1.5">
+          <span>Photo URL</span>
+          ${stop.photo_is_fallback ? '<span class="text-[9px] font-semibold normal-case tracking-normal text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">generic match — check this one</span>' : ""}
+        </label>
         <div class="flex items-center gap-2">
           <div class="relative w-9 h-9 rounded-md bg-gray-100 border border-gray-200 flex-shrink-0 overflow-hidden flex items-center justify-center">
             <svg class="w-3.5 h-3.5 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>

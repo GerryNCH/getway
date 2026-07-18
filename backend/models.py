@@ -47,6 +47,22 @@ class Stop(BaseModel):
     expedia_url: str = ""  # Expedia affiliate link (Travel Creator Program),
                             # hotel stops only. Empty for non-hotel stops and
                             # for itineraries cached before this field existed.
+    property_type: str = ""  # Hotel stops only, e.g. "Boutique Hotel",
+                               # "Beach Resort", "Guesthouse" — the AI's own
+                               # read of the property's style from what's
+                               # visible. Deliberately NOT a numeric rating
+                               # (e.g. "8.9 Excellent") — we have no access to
+                               # real Booking.com review scores, and inventing
+                               # one would be showing a fabricated number as
+                               # if it were a genuine guest rating.
+    area_label: str = ""  # Hotel stops only, e.g. "Old Town", "Beachfront" —
+                            # the neighbourhood/area, when identifiable.
+    transfer_note: str = ""  # How to get here relative to the hotel/previous
+                               # stop, e.g. "Short walk from Old Town", "Boat
+                               # transfer needed" — kept qualitative rather
+                               # than inventing precise minutes the AI can't
+                               # actually know. Empty when not confidently
+                               # inferable.
 
 
 class DayPlan(BaseModel):

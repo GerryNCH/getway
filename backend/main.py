@@ -27,7 +27,7 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from models import ExtractRequest, ExtractResponse, Itinerary, Comment, ReviewCreate, Review, ReviewsResponse, RouteMeta
+from models import ExtractRequest, ExtractResponse, Itinerary, Comment, ReviewCreate, Review, ReviewsResponse, RouteMeta, SiteSettings
 import database
 from extractor import (
     extract_video_id, fetch_metadata, download_video, extract_frames,
@@ -124,7 +124,7 @@ async def extract(req: ExtractRequest):
             raise HTTPException(422, f"Could not fetch video info: {e}")
 
     # ── Layer 4: troll filter — Claude Haiku (~$0.0003) ───────────────────────
-    is_travel, reason = check_is_travel(
+    is_travel, reason, troll_cost_usd = check_is_travel(
         video_id,
         meta["title"],
         meta["description"],
@@ -193,7 +193,10 @@ async def extract(req: ExtractRequest):
 
         # Claude multimodal analysis
         try:
-            itinerary, ai_price_category, ai_tags = analyse_frames(frames, comments=raw_comments)
+            itinerary, ai_price_category, ai_tags, ai_cost_usd = analyse_frames(frames, comments=raw_comments)
+            itinerary.generation_cost_usd = troll_cost_usd + ai_cost_usd
+            print(f"[Cost] ${itinerary.generation_cost_usd:.4f} "
+                  f"(troll ${troll_cost_usd:.4f} + analysis ${ai_cost_usd:.4f})")
             print(f"[AI] Destination: {itinerary.destination} — "
                   f"{sum(len(d.stops) for d in itinerary.days)} stops across "
                   f"{len(itinerary.days)} days")
@@ -281,6 +284,30 @@ def clear_cache(secret: str):
     return {"status": "ok", "cleared": count}
 
 
+@app.post("/track/view/{video_id}")
+def track_view(video_id: str):
+    """
+    Public, unauthenticated — bumps a route's view counter by 1. Called
+    once when the AI route page loads. Silently no-ops (still returns ok)
+    if the video_id doesn't exist, since a failed tracking ping should
+    never surface an error to the visitor.
+    """
+    database.increment_view_count(video_id)
+    return {"status": "ok"}
+
+
+@app.post("/track/affiliate-click/{video_id}")
+def track_affiliate_click(video_id: str):
+    """
+    Public, unauthenticated — bumps a route's affiliate-link-click counter
+    by 1. Called when a visitor clicks a Booking.com/Expedia/Airbnb link.
+    Note: this counts CLICKS, not confirmed bookings/commissions — actual
+    commission revenue lives in the CJ Affiliate dashboard, not here.
+    """
+    database.increment_affiliate_click_count(video_id)
+    return {"status": "ok"}
+
+
 @app.get("/routes")
 def list_public_routes():
     """
@@ -288,8 +315,37 @@ def list_public_routes():
     the homepage route grid needs (destination, duration, price category,
     tags, creator handle, stop count, hero photo) without exposing admin
     fields or requiring the admin secret. No pending/rejected routes here.
+
+    If an admin has set featured_route_ids (via /admin/site-settings),
+    only those routes are returned, in that exact order — this is how an
+    admin manually curates the homepage instead of it always showing every
+    approved route. Empty featured_route_ids (the default) means "show
+    everything approved", unchanged from the original behavior.
     """
-    return database.list_public_approved()
+    all_approved = database.list_public_approved()
+    featured_ids = database.get_site_settings().get("featured_route_ids", [])
+    if not featured_ids:
+        return all_approved
+    by_id = {r["video_id"]: r for r in all_approved}
+    return [by_id[vid] for vid in featured_ids if vid in by_id]
+
+
+@app.get("/site-settings")
+def get_public_site_settings():
+    """Public, unauthenticated — homepage hero slides + featured routes."""
+    return database.get_site_settings()
+
+
+@app.put("/admin/site-settings")
+def admin_update_site_settings(settings: SiteSettings, secret: str):
+    """
+    Sets the homepage's hero slide images and/or the admin-curated list of
+    featured routes. Send an empty featured_route_ids list to go back to
+    "show all approved routes automatically".
+    """
+    _check_admin_secret(secret)
+    database.set_site_settings(settings.hero_slides, settings.featured_route_ids)
+    return {"status": "ok"}
 
 
 @app.get("/itinerary/{video_id}", response_model=ExtractResponse)

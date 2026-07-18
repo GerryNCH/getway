@@ -107,7 +107,7 @@
       </div>
       <div class="flex items-center gap-2.5 h-[52px] px-4 bg-white/70 border border-gray-200 rounded-2xl mb-3.5">
         <i data-lucide="music-2" class="w-[18px] h-[18px] text-gray-500 flex-shrink-0"></i>
-        <input type="text" placeholder="Paste the TikTok video link here..." class="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400">
+        <input type="text" placeholder="Paste a TikTok or Instagram Reel link here..." class="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400">
       </div>
       <button onclick="(function(){ var v=document.querySelector('#screen-home input[type=text]').value.trim(); if(v){document.getElementById('tiktok-url').value=v;} showScreen('magicbox'); if(v){startMagicBox();} })()" class="btn-interactive w-full h-[50px] flex items-center justify-center gap-2 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">
         Build my route <i data-lucide="rocket" class="w-4 h-4"></i>
@@ -385,7 +385,7 @@
 
     <div class="flex items-center gap-2.5 h-[52px] px-4 bg-white/70 border border-gray-200 rounded-2xl mb-3">
       <i data-lucide="music-2" class="w-[18px] h-[18px] text-gray-500 flex-shrink-0"></i>
-      <input id="tiktok-url" type="text" placeholder="Paste the TikTok video link here..." class="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400">
+      <input id="tiktok-url" type="text" placeholder="Paste a TikTok or Instagram Reel link here..." class="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400">
     </div>
 
     <button onclick="startMagicBox()" class="btn-interactive w-full h-[50px] flex items-center justify-center gap-2 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl mb-8">
@@ -1714,7 +1714,7 @@
   async function startMagicBox() {
     const url = document.getElementById('tiktok-url').value.trim();
     if (!url) {
-      alert('Please paste a TikTok or YouTube link first.');
+      alert('Please paste a TikTok or Instagram Reel link first.');
       return;
     }
 

@@ -24,6 +24,12 @@ class Stop(BaseModel):
     description: str
     tip: str = ""
     photo_url: str = "" # Google Places photo or empty string
+    photo_is_fallback: bool = False  # True when photo_url came from the
+                                       # generic category search (e.g. "city
+                                       # adventure activity") rather than a
+                                       # confident name-based match — flagged
+                                       # in the admin panel so it's clear
+                                       # which photos most need a manual look.
     photo_attribution: Optional[UnsplashAttribution] = None  # set only when
                                                                # photo_url came from Unsplash
     is_specific_name: bool = True  # False = AI couldn't confirm a real named
@@ -76,6 +82,13 @@ class Itinerary(BaseModel):
                                 # (see ai_analyzer.py), shown as a pill next
                                 # to the destination title, same as the
                                 # static Mallorca demo route.
+    generation_cost_usd: float = 0.0  # Real $ cost of generating this route
+                                        # (troll filter + Sonnet analysis),
+                                        # computed from Anthropic's actual
+                                        # token usage — not an estimate.
+    view_count: int = 0            # Times the route page has been opened
+    affiliate_click_count: int = 0  # Times a Booking/Expedia/Airbnb link
+                                      # was clicked from this route
     hero_photo_url: str = ""  # Best single photo for the destination
     hero_attribution: Optional[UnsplashAttribution] = None
     gallery_photo_urls: list[str] = []  # 4-5 photos for the hero gallery
@@ -92,6 +105,14 @@ class RouteMeta(BaseModel):
     tags: list[str] = []          # most_popular | luxury | budget_friendly |
                                    # exotic | mountain | city | beach
     creator_handle: str = ""      # e.g. "@username"
+
+
+class SiteSettings(BaseModel):
+    hero_slides: list[str] = []          # Homepage rotating background images
+    featured_route_ids: list[str] = []    # Ordered video_ids to show on the
+                                            # homepage grid; empty = show all
+                                            # approved routes automatically
+                                            # (original default behavior)
 
 
 class ExtractRequest(BaseModel):

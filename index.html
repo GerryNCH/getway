@@ -459,8 +459,9 @@
       </button>
     </div>
     <div class="absolute left-0 right-0 bottom-0 h-[160px] hero-bottom-overlay">
-      <div class="absolute bottom-12 left-6 right-6 md:left-14 md:right-14">
+      <div class="absolute bottom-12 left-6 right-6 md:left-14 md:right-14 flex items-end gap-3 flex-wrap">
         <div id="ai-route-destination" class="font-serif-display text-[32px] sm:text-[44px] md:text-[80px] text-white leading-[0.95] tracking-tight uppercase" style="text-shadow: 0 2px 24px rgba(0,0,0,0.45);"></div>
+        <div id="ai-route-price-pill" class="hidden mb-1.5 md:mb-5 inline-flex items-center text-xs md:text-sm font-medium text-white bg-white/15 border border-white/25 rounded-full px-3.5 py-1.5"></div>
       </div>
       <div id="ai-route-source-badge" class="absolute left-6 md:left-14 bottom-[22px] flex items-center gap-1.5 text-xs text-white/80">
         <i data-lucide="music-2" class="w-3 h-3"></i><span id="ai-route-source-text">via AI Magic Box</span>
@@ -1424,17 +1425,27 @@
         isDescriptionNotName = descriptionKeywords.some(kw => stop.name.toLowerCase().includes(kw)) || stop.name.includes(',');
       }
 
-      // Extract location from destination for fallback search when there's
-      // no real hotel name to search by
-      const locationForSearch = stop.name.split(',').slice(-1)[0].trim() || stop.name;
+      // Location fallback for unconfirmed hotels: always use the trip's
+      // actual known destination (cityForSearch, derived from `destination`
+      // a few lines up) — NOT text parsed out of stop.name. stop.name is
+      // an AI-written description when the property couldn't be confirmed
+      // (e.g. "Hotel in Santorini, hidden gem property"), and splitting
+      // that on commas can grab a fragment like "hidden gem property" as
+      // if it were a place name — Booking.com then does a literal text
+      // search and can surface a real but totally unrelated property
+      // (this happened: a Santorini route's Similar button once opened a
+      // hotel in Sapa, Vietnam, because the description fragment happened
+      // to match its name). cityForSearch is always a real place.
+      const locationForSearch = cityForSearch || stop.name.split(',').slice(-1)[0].trim() || stop.name;
       const searchQuery = isDescriptionNotName ? locationForSearch : stop.name;
 
       // For unconfirmed hotels, bias the "Similar" search using a couple of
       // descriptive words from the AI's own description (e.g. "pool",
       // "beachfront") instead of literally searching the made-up name —
-      // gets results that actually resemble what was in the clip.
+      // gets results that actually resemble what was in the clip, still
+      // anchored to the real destination.
       function extractDescriptiveKeywords(text) {
-        const stopWords = new Set(['a','an','the','with','and','for','of','in','on','at','to','is','are','this','that','ideal','perfect','great','after','your']);
+        const stopWords = new Set(['a','an','the','with','and','for','of','in','on','at','to','is','are','this','that','ideal','perfect','great','after','your','hotel','property','room']);
         return (text || '')
           .replace(/[^\w\s]/g, '')
           .split(/\s+/)
@@ -1451,10 +1462,10 @@
       // is the exact place from the video" (which would be misleading).
       const unconfirmedNote = isDescriptionNotName
         ? `<div class="text-[11px] text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-3">
-             We couldn't confirm the exact property from the video — here are hotel options in ${locationForSearch}.
+             We couldn't confirm the exact property from the video — these are similar hotels in ${locationForSearch}, not the one shown.
            </div>`
         : '';
-      const bookButtonLabel = isDescriptionNotName ? 'Find hotels in this area' : 'Book this hotel';
+      const bookButtonLabel = isDescriptionNotName ? 'Find similar hotels' : 'Book this hotel';
 
       // Prefer the server-generated CJ affiliate link (stop.booking_url) —
       // it's already built with the right query (name+city, or just city
@@ -1498,8 +1509,9 @@
           </div>
         </div>
         <div class="md:w-3/5 md:pt-2">
-          <div class="flex items-center gap-2 mb-2">
+          <div class="flex items-center gap-2 mb-2 flex-wrap">
             <span class="text-[11px] font-medium text-[#7C3AED] uppercase tracking-wide">Hotel</span>
+            ${isDescriptionNotName ? '<span class="text-[10px] font-semibold uppercase tracking-wide text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">Similar match, not confirmed</span>' : ''}
           </div>
           <div class="text-sm font-medium mb-1">${stop.name}</div>
           <div class="text-xs text-gray-500 mb-3">${stop.description}</div>
@@ -1539,9 +1551,24 @@
     // Hero
     const dest = itinerary.destination.split(',')[0].toUpperCase();
     document.getElementById('ai-route-destination').textContent = dest;
+
+    const pricePill = document.getElementById('ai-route-price-pill');
+    if (itinerary.price_category && itinerary.price_category.trim()) {
+      pricePill.textContent = itinerary.price_category.trim();
+      pricePill.classList.remove('hidden');
+    } else {
+      pricePill.classList.add('hidden');
+    }
+
     const sourceBadge = document.getElementById('ai-route-source-badge');
-    if (sourceUrl) {
-      sourceBadge.innerHTML = `<i data-lucide="music-2" class="w-3 h-3"></i><a href="${sourceUrl}" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-white">via TikTok ↗</a>`;
+    const handle = (itinerary.creator_handle || '').trim();
+    const profileUrl = handle ? `https://www.tiktok.com/${handle.startsWith('@') ? handle : '@' + handle}` : '';
+
+    if (handle) {
+      const clipLink = sourceUrl ? ` · <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-white">watch clip ↗</a>` : '';
+      sourceBadge.innerHTML = `<i data-lucide="music-2" class="w-3 h-3"></i><a href="${escapeHtml(profileUrl)}" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-white">${escapeHtml(handle)} ↗</a>${clipLink}`;
+    } else if (sourceUrl) {
+      sourceBadge.innerHTML = `<i data-lucide="music-2" class="w-3 h-3"></i><a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-white">via TikTok ↗</a>`;
     } else {
       sourceBadge.innerHTML = '<i data-lucide="music-2" class="w-3 h-3"></i><span>via AI Magic Box</span>';
     }

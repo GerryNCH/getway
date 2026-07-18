@@ -145,9 +145,19 @@ async def extract(req: ExtractRequest):
             except RuntimeError as e:
                 raise HTTPException(500, f"Frame extraction failed: {e}")
 
+        # ── Layer 7a: fetch real TikTok comments early (non-fatal) ────────────
+        # Fetched BEFORE the AI analysis (not after) so they can be used as
+        # an identification aid — see analyse_frames' docstring.
+        raw_comments: list[dict] = []
+        try:
+            raw_comments = fetch_top_comments(url, max_comments=15)
+            print(f"[Comments] Fetched {len(raw_comments)} real TikTok comments")
+        except Exception as e:
+            print(f"[Comments] Fetch failed (non-fatal): {e}")
+
         # Claude multimodal analysis
         try:
-            itinerary, ai_price_category, ai_tags = analyse_frames(frames)
+            itinerary, ai_price_category, ai_tags = analyse_frames(frames, comments=raw_comments)
             print(f"[AI] Destination: {itinerary.destination} — "
                   f"{sum(len(d.stops) for d in itinerary.days)} stops across "
                   f"{len(itinerary.days)} days")
@@ -160,13 +170,7 @@ async def extract(req: ExtractRequest):
         except Exception as e:
             print(f"[Places] Enrichment failed (non-fatal): {e}")
 
-        # ── Layer 7c: fetch real TikTok comments (non-fatal) ──────────────────
-        try:
-            raw_comments = fetch_top_comments(url, max_comments=15)
-            itinerary.comments = [Comment(**c) for c in raw_comments]
-            print(f"[Comments] Fetched {len(itinerary.comments)} real TikTok comments")
-        except Exception as e:
-            print(f"[Comments] Fetch failed (non-fatal): {e}")
+        itinerary.comments = [Comment(**c) for c in raw_comments]
 
     # ── Layer 8: save to database ─────────────────────────────────────────────
     database.save_itinerary(video_id, url, itinerary)
@@ -179,6 +183,8 @@ async def extract(req: ExtractRequest):
     if creator_handle and not creator_handle.startswith("@"):
         creator_handle = f"@{creator_handle}"
     database.set_route_meta(video_id, ai_price_category, ai_tags, creator_handle)
+    itinerary.creator_handle = creator_handle
+    itinerary.price_category = ai_price_category
 
     return ExtractResponse(
         itinerary=itinerary,

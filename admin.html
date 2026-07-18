@@ -684,7 +684,7 @@ function buildDayBlock(videoId, dayIdx) {
   block.appendChild(stopsWrap);
 
   const addBtn = makePillBtn("Add stop", "pill-gray", () => {
-    DATA[videoId].days[dayIdx].stops.push({ name: "", category: "sight", description: "", tip: "", photo_url: "", photo_is_fallback: false, is_specific_name: true, booking_url: "", expedia_url: "" });
+    DATA[videoId].days[dayIdx].stops.push({ name: "", category: "sight", description: "", tip: "", photo_url: "", photo_is_fallback: false, is_specific_name: true, booking_url: "", expedia_url: "", property_type: "", area_label: "", transfer_note: "" });
     stopsWrap.appendChild(buildStopRow(videoId, dayIdx, DATA[videoId].days[dayIdx].stops.length - 1));
   }, plusIconSvg());
   addBtn.classList.add("text-xs");
@@ -720,6 +720,11 @@ function buildStopRow(videoId, dayIdx, stopIdx) {
       </div>
     </div>
     <div class="mb-3"><label class="field-label">Description</label><textarea class="stop-desc">${escapeHtml(stop.description)}</textarea></div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+      <div><label class="field-label">Property type (hotels only)</label><input class="stop-property-type" placeholder="e.g. Boutique Hotel" value="${escapeHtml(stop.property_type || "")}"></div>
+      <div><label class="field-label">Area (hotels only)</label><input class="stop-area-label" placeholder="e.g. Old Town" value="${escapeHtml(stop.area_label || "")}"></div>
+      <div><label class="field-label">Transfer note</label><input class="stop-transfer-note" placeholder="e.g. Short walk from Old Town" value="${escapeHtml(stop.transfer_note || "")}"></div>
+    </div>
     <div class="flex gap-3 items-end">
       <div class="flex-1"><label class="field-label">Tip</label><input class="stop-tip" value="${escapeHtml(stop.tip || "")}"></div>
       <button class="pill-btn pill-red btn-interactive delete-stop-btn text-xs">${xIconSvg()}<span>Remove</span></button>
@@ -734,6 +739,9 @@ function buildStopRow(videoId, dayIdx, stopIdx) {
     if (img) { img.classList.add("hidden"); img.src = e.target.value; }
   });
   row.querySelector(".stop-desc").addEventListener("input", (e) => { stop.description = e.target.value; });
+  row.querySelector(".stop-property-type").addEventListener("input", (e) => { stop.property_type = e.target.value; });
+  row.querySelector(".stop-area-label").addEventListener("input", (e) => { stop.area_label = e.target.value; });
+  row.querySelector(".stop-transfer-note").addEventListener("input", (e) => { stop.transfer_note = e.target.value; });
   row.querySelector(".stop-tip").addEventListener("input", (e) => { stop.tip = e.target.value; });
   row.querySelector(".delete-stop-btn").addEventListener("click", () => {
     const stops = DATA[videoId].days[dayIdx].stops;

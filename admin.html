@@ -60,6 +60,17 @@
   .pill-gray   { background: #F3F4F6; color: #374151; }
 
   .icon { width: 15px; height: 15px; stroke-width: 2.1; }
+
+  .upload-zone { cursor: pointer; transition: all .15s ease; }
+  .upload-zone:hover { border-color: #8B5CF6 !important; }
+  .upload-zone.drag-over { border-color: #8B5CF6 !important; background: #F5F3FF !important; }
+  .upload-zone.uploading { opacity: .5; pointer-events: none; }
+  .upload-zone.uploading::after {
+    content: ""; position: absolute; inset: 0; margin: auto; width: 16px; height: 16px;
+    border: 2px solid #8B5CF6; border-top-color: transparent; border-radius: 50%;
+    animation: upload-spin .7s linear infinite;
+  }
+  @keyframes upload-spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body class="antialiased min-h-screen">
@@ -100,6 +111,58 @@
 <script>
 const API_BASE = "https://getway-production.up.railway.app";
 const SITE_URL = "https://getway-theta.vercel.app";
+
+async function uploadImageFile(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`${API_BASE}/admin/upload-image?secret=${encodeURIComponent(SECRET)}`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Upload failed (${res.status})`);
+  }
+  const data = await res.json();
+  return data.url;
+}
+
+// Wires drag-and-drop + click-to-browse onto a preview box, uploading
+// whatever image is dropped/picked and calling onUploaded(url) with the
+// result. Reused for hero photo, gallery photos, and every stop photo.
+function attachUploadZone(zoneEl, onUploaded) {
+  zoneEl.classList.add("upload-zone");
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.accept = "image/*";
+  fileInput.className = "hidden";
+  zoneEl.appendChild(fileInput);
+
+  async function handleFile(file) {
+    if (!file || !file.type.startsWith("image/")) return;
+    zoneEl.classList.add("uploading");
+    try {
+      const url = await uploadImageFile(file);
+      onUploaded(url);
+    } catch (e) {
+      alert("Upload failed: " + e.message);
+    } finally {
+      zoneEl.classList.remove("uploading");
+    }
+  }
+
+  zoneEl.addEventListener("click", (e) => {
+    if (e.target !== fileInput) fileInput.click();
+  });
+  fileInput.addEventListener("change", (e) => handleFile(e.target.files[0]));
+  zoneEl.addEventListener("dragover", (e) => { e.preventDefault(); zoneEl.classList.add("drag-over"); });
+  zoneEl.addEventListener("dragleave", () => zoneEl.classList.remove("drag-over"));
+  zoneEl.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zoneEl.classList.remove("drag-over");
+    handleFile(e.dataTransfer.files[0]);
+  });
+}
 let SECRET = sessionStorage.getItem("getway_admin_secret") || "";
 let DATA = {};
 let ACTIVE_TAB = "pending";
@@ -521,9 +584,9 @@ function buildEditorBody(item) {
     <div><label class="field-label">Destination</label><input class="itin-field" data-field="destination" value="${escapeHtml(item.destination)}"></div>
     <div><label class="field-label">Duration</label><input class="itin-field" data-field="duration" value="${escapeHtml(item.duration)}"></div>
     <div>
-      <label class="field-label">Hero photo URL</label>
+      <label class="field-label">Hero photo URL <span class="text-gray-400 normal-case font-normal">(paste a link, or click/drop an image below)</span></label>
       <div class="flex items-center gap-2">
-        <div class="relative w-11 h-11 rounded-lg bg-gray-100 border border-gray-200 flex-shrink-0 overflow-hidden flex items-center justify-center">
+        <div class="hero-photo-dropzone relative w-11 h-11 rounded-lg bg-gray-100 border border-gray-200 flex-shrink-0 overflow-hidden flex items-center justify-center">
           <svg class="w-4 h-4 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>
           <img class="hero-photo-preview absolute inset-0 w-full h-full object-cover hidden" src="${escapeHtml(item.hero_photo_url || "")}" onerror="this.classList.add('hidden')" onload="this.classList.remove('hidden')">
         </div>
@@ -539,6 +602,14 @@ function buildEditorBody(item) {
         if (img) { img.classList.add("hidden"); img.src = e.target.value; }
       }
     });
+  });
+  attachUploadZone(topRow.querySelector(".hero-photo-dropzone"), (url) => {
+    item.hero_photo_url = url;
+    const input = topRow.querySelector('[data-field="hero_photo_url"]');
+    const img = topRow.querySelector(".hero-photo-preview");
+    input.value = url;
+    img.classList.add("hidden");
+    img.src = url;
   });
   wrap.appendChild(topRow);
 
@@ -565,7 +636,7 @@ function buildGalleryEditor(item) {
   if (!item.gallery_photo_urls) item.gallery_photo_urls = [];
   const box = document.createElement("div");
   box.className = "mb-5";
-  box.innerHTML = `<label class="field-label mb-2">Gallery photos</label>`;
+  box.innerHTML = `<label class="field-label mb-2">Gallery photos <span class="text-gray-400 normal-case font-normal">(click/drop the + box, or paste a link below)</span></label>`;
 
   const thumbsRow = document.createElement("div");
   thumbsRow.className = "flex flex-wrap gap-2 mb-2";
@@ -588,6 +659,15 @@ function buildGalleryEditor(item) {
   }
   renderThumbs();
   box.appendChild(thumbsRow);
+
+  const uploadZone = document.createElement("div");
+  uploadZone.className = "gallery-upload-zone w-16 h-16 rounded-lg bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-400 mb-3 relative";
+  uploadZone.innerHTML = `<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>`;
+  box.appendChild(uploadZone);
+  attachUploadZone(uploadZone, (url) => {
+    item.gallery_photo_urls.push(url);
+    renderThumbs();
+  });
 
   const addRow = document.createElement("div");
   addRow.className = "flex gap-2";
@@ -709,7 +789,7 @@ function buildStopRow(videoId, dayIdx, stopIdx) {
           ${stop.photo_is_fallback ? '<span class="text-[9px] font-semibold normal-case tracking-normal text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">generic match — check this one</span>' : ""}
         </label>
         <div class="flex items-center gap-2">
-          <div class="relative w-9 h-9 rounded-md bg-gray-100 border border-gray-200 flex-shrink-0 overflow-hidden flex items-center justify-center">
+          <div class="stop-photo-dropzone relative w-9 h-9 rounded-md bg-gray-100 border border-gray-200 flex-shrink-0 overflow-hidden flex items-center justify-center">
             <svg class="w-3.5 h-3.5 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>
             <img class="stop-photo-preview absolute inset-0 w-full h-full object-cover hidden" src="${escapeHtml(stop.photo_url || "")}" onerror="this.classList.add('hidden')" onload="this.classList.remove('hidden')">
           </div>
@@ -735,6 +815,14 @@ function buildStopRow(videoId, dayIdx, stopIdx) {
     stop.photo_url = e.target.value;
     const img = row.querySelector(".stop-photo-preview");
     if (img) { img.classList.add("hidden"); img.src = e.target.value; }
+  });
+  attachUploadZone(row.querySelector(".stop-photo-dropzone"), (url) => {
+    stop.photo_url = url;
+    stop.photo_is_fallback = false;
+    row.querySelector(".stop-photo").value = url;
+    const img = row.querySelector(".stop-photo-preview");
+    img.classList.add("hidden");
+    img.src = url;
   });
   row.querySelector(".stop-desc").addEventListener("input", (e) => { stop.description = e.target.value; });
   row.querySelector(".stop-property-type").addEventListener("input", (e) => { stop.property_type = e.target.value; });

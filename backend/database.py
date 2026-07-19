@@ -10,13 +10,23 @@ Upgrade path: swap engine URL for PostgreSQL when you scale.
 """
 
 import json
+import os
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 
 from models import Itinerary
 
-DB_PATH = Path(__file__).parent / "getway.db"
+# CRITICAL: this must point at a Railway Volume mount (persistent disk),
+# NOT a path inside the code directory. The code directory gets rebuilt
+# from scratch on every deploy — a database file living there is wiped
+# every single time new code is pushed. Set the DATA_DIR environment
+# variable to the Volume's mount path (e.g. "/data") in Railway →
+# Variables. Falls back to the old (non-persistent!) behavior only if
+# DATA_DIR isn't set, so local development still works without a volume.
+DATA_DIR = Path(os.getenv("DATA_DIR", str(Path(__file__).parent)))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH = DATA_DIR / "getway.db"
 
 
 def _conn() -> sqlite3.Connection:

@@ -17,6 +17,7 @@ Run locally:
 """
 
 import tempfile
+import requests
 
 # Load .env FIRST — before any module that reads ANTHROPIC_API_KEY
 from dotenv import load_dotenv
@@ -24,7 +25,7 @@ load_dotenv()
 
 import os
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from models import ExtractRequest, ExtractResponse, Itinerary, Comment, ReviewCreate, Review, ReviewsResponse, RouteMeta, SiteSettings
@@ -273,6 +274,7 @@ def list_reviews(video_id: str):
 # ── Admin endpoints (basic — full panel comes later) ─────────────────────────
 
 ADMIN_SECRET = os.getenv("ADMIN_SECRET", "getway2026")
+IMGBB_API_KEY = os.getenv("IMGBB_API_KEY", "")
 
 
 @app.post("/admin/clear-cache")
@@ -379,6 +381,47 @@ def list_itineraries():
 def _check_admin_secret(secret: str) -> None:
     if secret != ADMIN_SECRET:
         raise HTTPException(403, "Invalid admin secret")
+
+
+@app.post("/admin/upload-image")
+async def admin_upload_image(secret: str, file: UploadFile = File(...)):
+    """
+    Uploads an image file (hero/gallery/stop photo) to imgbb and returns a
+    direct URL — lets the admin panel offer a real drag-and-drop/file-picker
+    upload instead of requiring Gerry to manually upload to imgbb.com and
+    paste the link. The imgbb API key stays server-side (never sent to the
+    browser) since exposing it client-side would let anyone steal it from
+    the page source and use up the account's quota.
+    """
+    _check_admin_secret(secret)
+    if not IMGBB_API_KEY:
+        raise HTTPException(
+            500,
+            "IMGBB_API_KEY is not set — get a free key at api.imgbb.com and "
+            "add it in Railway → Variables.",
+        )
+
+    contents = await file.read()
+    if len(contents) > 32 * 1024 * 1024:  # imgbb's own limit
+        raise HTTPException(413, "Image is larger than imgbb's 32MB limit.")
+
+    import base64
+    try:
+        resp = requests.post(
+            "https://api.imgbb.com/1/upload",
+            params={"key": IMGBB_API_KEY},
+            data={"image": base64.b64encode(contents).decode("utf-8")},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        result = resp.json()
+    except requests.RequestException as e:
+        raise HTTPException(502, f"imgbb upload failed: {e}")
+
+    if not result.get("success"):
+        raise HTTPException(502, f"imgbb rejected the upload: {result}")
+
+    return {"url": result["data"]["url"]}
 
 
 @app.get("/admin/pending")

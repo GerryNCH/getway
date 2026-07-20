@@ -16,6 +16,34 @@ import requests  # pip install requests
 
 # ── Video ID normalisation ────────────────────────────────────────────────────
 
+def resolve_canonical_url(url: str) -> str:
+    """
+    TikTok share links (vm.tiktok.com/XXXXX, tiktok.com/t/XXXXX) are short
+    redirect links that don't contain the video's real numeric ID — and
+    TikTok embeds a unique per-share tracking code in them, so tapping
+    "Share" on the exact same video twice can produce two DIFFERENT short
+    links. extract_video_id() would then hash those into two different
+    IDs, so the same video misses the cache and gets (paid) re-generated
+    instead of instantly returning the cached result.
+
+    Resolving the redirect first gets the real canonical URL (containing
+    /video/123.../), so the same video always maps to the same ID no
+    matter how the link was copied or shared. Skipped entirely for URLs
+    that don't look like a short link, to avoid an unnecessary network
+    round-trip on every request.
+    """
+    if "vm.tiktok.com" not in url and "/t/" not in url:
+        return url
+    try:
+        resp = requests.head(url, allow_redirects=True, timeout=8)
+        if resp.url and resp.url != url:
+            print(f"[URL Resolve] {url} → {resp.url}")
+        return resp.url or url
+    except requests.RequestException as e:
+        print(f"[URL Resolve] Failed to resolve '{url}': {e} — using as-is")
+        return url
+
+
 def extract_video_id(url: str) -> str:
     """Stable, platform-agnostic video ID used as the database key."""
     m = re.search(r"/(?:video|photo)/(\d+)", url)

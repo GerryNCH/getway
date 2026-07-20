@@ -18,6 +18,7 @@ import re
 import requests
 
 from models import UnsplashAttribution
+from ai_analyzer import _booking_affiliate_url, _expedia_affiliate_url
 
 PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")
 UNSPLASH_ACCESS_KEY = os.getenv("UNSPLASH_ACCESS_KEY", "")
@@ -352,6 +353,33 @@ def enrich_itinerary_with_photos(itinerary) -> None:
         for stop in day.stops:
             is_specific = getattr(stop, "is_specific_name", True)
             name_query = stop.name if city.lower() in stop.name.lower() else f"{stop.name}, {city}"
+
+            # Unconfirmed HOTEL stops get one extra chance before falling
+            # back to generic photos: the AI's own description (e.g.
+            # "Beachfront resort hotel, Cala Sant Vicenç area") is often
+            # specific enough for Places to surface an actual, real,
+            # bookable hotel that matches the style/area — even though it's
+            # not confirmed as the exact one shown in the video. When that
+            # happens, upgrade the stop to that real hotel: real name, real
+            # photo, and real booking links (previously there was no way to
+            # "Book this hotel" at all here, since the AI's own description
+            # isn't a real bookable entity — only a generic search was
+            # possible). is_specific_name stays False so the frontend still
+            # shows the "similar match, not confirmed" disclaimer — this is
+            # a real place, just not confirmed as THE place from the clip.
+            if stop.category == "hotel" and not is_specific and PLACES_API_KEY:
+                candidates = _search_places(name_query, max_results=1)
+                if candidates:
+                    real_name = candidates[0].get("displayName", {}).get("text", "").strip()
+                    photos = candidates[0].get("photos", [])
+                    if real_name and photos:
+                        print(f"[Places] Upgraded unconfirmed hotel '{stop.name}' → real match '{real_name}'")
+                        stop.name = real_name
+                        stop.similar_hotel_is_real = True
+                        stop.photo_url = _get_place_photo_url(f"{real_name}, {city}")
+                        booking_query = f"{real_name}, {city}"
+                        stop.booking_url = _booking_affiliate_url(booking_query)
+                        stop.expedia_url = _expedia_affiliate_url(booking_query)
 
             if is_specific and PLACES_API_KEY:
                 # Don't double up the city if the AI already wrote it into

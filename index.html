@@ -1425,7 +1425,7 @@
     // (e.g. "Nile Corniche, Cairo") — Maps handles the plain name better
     // than a redundant "Nile Corniche, Cairo Cairo & Luxor".
     const mapsQuery = cityForSearch && !stop.name.toLowerCase().includes(cityForSearch.toLowerCase())
-      ? `${stop.name} ${cityForSearch}` : stop.name;
+      ? `${stop.name}, ${destination || cityForSearch}` : stop.name;
     const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`;
 
     // GetYourGuide fallback: routes generated before this feature existed

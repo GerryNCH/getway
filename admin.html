@@ -570,6 +570,7 @@ function trashIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="no
 function refreshIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>`; }
 function previewIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>`; }
 function saveIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>`; }
+function searchCheckIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/><path d="m8.5 11 1.8 1.8L14 9"/></svg>`; }
 function plusIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>`; }
 
 function toggleEditor(card) { card.querySelector(".editor").classList.toggle("hidden"); }
@@ -626,6 +627,10 @@ function buildEditorBody(item) {
   wrap.appendChild(buildMetaRow(item));
 
   item.days.forEach((day, dayIdx) => wrap.appendChild(buildDayBlock(item.video_id, dayIdx)));
+
+  const verifyBtn = makePillBtn("Verify locations & photos", "pill-gray verify-locations-btn", () => doVerifyLocations(item.video_id, wrap), searchCheckIconSvg());
+  verifyBtn.classList.add("mt-1", "mb-2");
+  wrap.appendChild(verifyBtn);
 
   const saveBtn = makePillBtn("Save changes", "pill-purple", () => doSave(item.video_id, wrap), saveIconSvg());
   saveBtn.classList.add("mt-1");
@@ -877,6 +882,41 @@ function buildStopRow(videoId, dayIdx, stopIdx) {
 }
 
 // ── Actions ───────────────────────────────────────────────────────────
+async function doVerifyLocations(videoId, wrap) {
+  const btnEl = wrap.querySelector(".verify-locations-btn");
+  const btn = btnEl.querySelector("span");
+  const originalLabel = btn.textContent;
+  btnEl.disabled = true;
+  btn.textContent = "Verifying… (this can take a moment for big routes)";
+
+  // Clear any previous verification banners before re-checking
+  wrap.querySelectorAll(".location-unconfirmed-banner").forEach((el) => el.remove());
+
+  try {
+    const data = await apiPost(`/admin/verify-locations/${encodeURIComponent(videoId)}`);
+    let unconfirmedCount = 0;
+    (data.results || []).forEach((r) => {
+      if (r.confirmed) return;
+      unconfirmedCount++;
+      const row = wrap.querySelector(`.day-block[data-day="${r.day}"] .stop-row[data-stop="${r.stop_index}"]`);
+      if (!row) return;
+      const banner = document.createElement("div");
+      banner.className = "location-unconfirmed-banner text-[11px] text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-3 flex items-center gap-1.5";
+      banner.innerHTML = `<i data-lucide="alert-triangle" class="w-3.5 h-3.5 flex-shrink-0"></i><span>Couldn't confirm this location on Google — double-check the name, add a Maps link override below, and check the photo.</span>`;
+      row.insertBefore(banner, row.firstChild);
+    });
+    if (typeof lucide !== "undefined") lucide.createIcons();
+    btn.textContent = unconfirmedCount
+      ? `${unconfirmedCount} location(s) need a look — see flagged stops below`
+      : "All locations confirmed ✓";
+  } catch (e) {
+    alert("Verification failed: " + e.message);
+    btn.textContent = originalLabel;
+  } finally {
+    btnEl.disabled = false;
+  }
+}
+
 async function doSave(videoId, editorWrap) {
   const btn = editorWrap.querySelector(".pill-purple");
   btn.disabled = true;

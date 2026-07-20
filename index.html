@@ -628,7 +628,7 @@
   ];
 
   const DAY1_STOPS = [
-    { category: "sight", icon: "landmark", iconColor: "#57534E", name: "Palma cathedral & old town", typeLabel: "Sight", photo: "https://picsum.photos/seed/palma-cathedral/900/700", mapsUrl: "https://maps.google.com/?q=Palma+Cathedral", distance: "8 min walk from hotel", distanceType: "walk" },
+    { category: "sight", icon: "landmark", iconColor: "#57534E", name: "Palma cathedral & old town", typeLabel: "Sight", photo: "https://picsum.photos/seed/palma-cathedral/900/700", mapsUrl: "https://www.google.com/maps/search/?api=1&query=Palma+Cathedral", distance: "8 min walk from hotel", distanceType: "walk" },
     { category: "food", icon: "utensils", iconColor: "#16A34A", name: "Restaurant Illeta", badge: { icon: "anchor", text: "Boat transfer needed", color: "#1E40AF" }, photo: "https://picsum.photos/seed/restaurant-illeta/900/700", mapsUrl: "https://maps.google.com", distance: "20 min, incl. boat transfer", distanceType: "boat", reserveUrl: "#" }
   ];
   const DAY2_STOPS = [
@@ -688,13 +688,13 @@
   // match the real hotel stop cards (photo, label, dropdown booking button)
   // rather than a plain bar, and reuses one of the already-fetched
   // destination gallery photos so it doesn't need its own API call.
-  function renderHotelsBanner(destination, galleryPhotos, videoId) {
+  function renderHotelsBanner(destination, galleryPhotos, videoId, bannerPhotoOverride) {
     const container = document.getElementById('ai-route-hotels-banner');
     if (!container) return;
     const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim() || destination || '';
     const bookingHref = bookingAffiliateSearchUrl(city);
     const expediaHref = expediaAffiliateSearchUrl(city);
-    const photo = (galleryPhotos && galleryPhotos.length) ? galleryPhotos[galleryPhotos.length - 1] : '';
+    const photo = bannerPhotoOverride || ((galleryPhotos && galleryPhotos.length) ? galleryPhotos[galleryPhotos.length - 1] : '');
     const seed = 'hotels-banner-' + slugify(city);
 
     container.innerHTML = `
@@ -1426,7 +1426,13 @@
     // than a redundant "Nile Corniche, Cairo Cairo & Luxor".
     const mapsQuery = cityForSearch && !stop.name.toLowerCase().includes(cityForSearch.toLowerCase())
       ? `${stop.name} ${cityForSearch}` : stop.name;
-    const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(mapsQuery)}`;
+    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`;
+
+    // GetYourGuide fallback: routes generated before this feature existed
+    // have no stop.booking_url for activity stops — built client-side here
+    // so those already-published routes get a working button too, with no
+    // need to regenerate them.
+    const gygFallbackUrl = `https://www.getyourguide.com/s/?q=${encodeURIComponent(mapsQuery)}&partner_id=UC97KXN&utm_medium=online_publisher`;
 
     const isHotel = stop.category === 'hotel';
 
@@ -1544,7 +1550,7 @@
 
     return `
     <div data-category="${stop.category}" class="ai-stop-card bento-card bg-white rounded-[22px] overflow-hidden relative flex items-center gap-3 p-4 md:flex-col md:items-stretch md:p-0">
-      <button onclick="window.open('${mapsUrl}','_blank')" class="btn-interactive absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-white shadow flex items-center justify-center">
+      <button data-maps-url="${mapsUrl}" onclick="window.open(this.dataset.mapsUrl,'_blank')" class="btn-interactive absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-white shadow flex items-center justify-center">
         <i data-lucide="map-pin" class="w-4 h-4 text-[#6D28D9]"></i>
       </button>
       <div class="w-14 h-14 md:w-full md:h-44 rounded-xl md:rounded-none flex-shrink-0 ${stop.photo_url ? '' : 'media-placeholder'}" style="${stop.photo_url ? `background-image:url('${stop.photo_url}');background-size:cover;background-position:center;` : `background:${gradientFor(seed)}`}">
@@ -1564,7 +1570,7 @@
         ${stop.transfer_note ? `<div class="pl-6 md:pl-0 mt-1.5"><span class="inline-flex items-center gap-1 text-[11px] text-gray-500 bg-gray-50 rounded-full px-2.5 py-1"><i data-lucide="navigation" class="w-3 h-3"></i>${escapeHtml(stop.transfer_note)}</span></div>` : ''}
         ${stop.tip ? `<div class="pl-6 md:pl-0 text-xs text-[#8B5CF6] mt-1.5">💡 ${stop.tip}</div>` : ''}
         ${stop.category === 'food' ? `<a href="${stop.booking_url || `https://www.google.com/maps/search/${encodeURIComponent(mapsQuery)}`}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-interactive inline-flex items-center gap-1.5 mt-2.5 ml-6 md:ml-0 h-[36px] px-4 bg-[#8B5CF6] text-white text-xs font-medium rounded-lg"><i data-lucide="calendar" class="w-3.5 h-3.5"></i>Reserve a table</a>` : ''}
-        ${stop.category === 'activity' && stop.booking_url ? `<a href="${stop.booking_url}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-interactive inline-flex items-center gap-1.5 mt-2.5 ml-6 md:ml-0 h-[36px] px-4 bg-[#8B5CF6] text-white text-xs font-medium rounded-lg"><i data-lucide="ticket" class="w-3.5 h-3.5"></i>Book via GetYourGuide</a>` : ''}
+        ${stop.category === 'activity' ? `<a href="${stop.booking_url || gygFallbackUrl}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-interactive inline-flex items-center gap-1.5 mt-2.5 ml-6 md:ml-0 h-[36px] px-4 bg-[#8B5CF6] text-white text-xs font-medium rounded-lg"><i data-lucide="ticket" class="w-3.5 h-3.5"></i>Book via GetYourGuide</a>` : ''}
       </div>
     </div>`;
   }
@@ -1669,7 +1675,7 @@
     if (hasRealHotelStop) {
       if (hotelsBannerEl) hotelsBannerEl.innerHTML = '';
     } else {
-      renderHotelsBanner(itinerary.destination, itinerary.gallery_photo_urls, videoId);
+      renderHotelsBanner(itinerary.destination, itinerary.gallery_photo_urls, videoId, itinerary.hotel_banner_photo_url);
     }
     renderAiRouteComments(itinerary.comments);
     initReviewsSection('ai-route', videoId);

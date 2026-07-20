@@ -1426,7 +1426,14 @@
     // than a redundant "Nile Corniche, Cairo Cairo & Luxor".
     const mapsQuery = cityForSearch && !stop.name.toLowerCase().includes(cityForSearch.toLowerCase())
       ? `${stop.name}, ${destination || cityForSearch}` : stop.name;
-    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`;
+    // Admin-set override for when Google's own search can't resolve the
+    // auto-built query (small streets, region-biased accounts, etc.) —
+    // accepts either a full Maps URL (used as-is) or a plain address
+    // (wrapped in the same reliable search format).
+    const override = (stop.maps_url_override || '').trim();
+    const mapsUrl = override
+      ? (override.startsWith('http') ? override : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(override)}`)
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`;
 
     // GetYourGuide fallback: routes generated before this feature existed
     // have no stop.booking_url for activity stops — built client-side here

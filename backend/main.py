@@ -38,7 +38,10 @@ from extractor import (
 )
 from troll_filter import check_is_travel
 from ai_analyzer import analyse_frames
-from places import enrich_itinerary_with_photos, _unsplash_candidates, _attribution_from_candidate, _trigger_unsplash_download
+from places import (
+    enrich_itinerary_with_photos, _unsplash_candidates, _attribution_from_candidate,
+    _trigger_unsplash_download, _search_places, _names_plausibly_match,
+)
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 
@@ -422,6 +425,48 @@ async def admin_upload_image(secret: str, file: UploadFile = File(...)):
         raise HTTPException(502, f"imgbb rejected the upload: {result}")
 
     return {"url": result["data"]["url"]}
+
+
+@app.post("/admin/verify-locations/{video_id}")
+def admin_verify_locations(video_id: str, secret: str):
+    """
+    Re-checks every stop against Google Places to flag which ones Places
+    (and very likely Google Maps' own search too, since both draw on the
+    same underlying database) can't confidently resolve — lets an admin
+    see location/photo risk at a glance in the editor, instead of manually
+    testing every stop's Maps link and photo in a browser one by one.
+
+    This costs one Places API call per stop (same API already used for
+    stop photos) — for a large route, that's a real number of calls, so
+    it's triggered on demand by a button rather than automatically.
+
+    Returns {results: [{day, stop_index, name, category, confirmed}]}.
+    "confirmed: false" doesn't guarantee Maps will fail — just that Places
+    couldn't find a confident match, which is the same signal that
+    already drives the "generic match" photo fallback.
+    """
+    _check_admin_secret(secret)
+    itinerary = database.get_itinerary(video_id)
+    if itinerary is None:
+        raise HTTPException(404, "Route not found")
+
+    city = itinerary.destination.split(",")[0].strip()
+    results = []
+    for day_idx, day in enumerate(itinerary.days):
+        for stop_idx, stop in enumerate(day.stops):
+            query = stop.name if city.lower() in stop.name.lower() else f"{stop.name}, {city}"
+            places = _search_places(query, max_results=1)
+            confirmed = bool(places) and _names_plausibly_match(
+                stop.name, places[0].get("displayName", {}).get("text", "")
+            )
+            results.append({
+                "day": day_idx,
+                "stop_index": stop_idx,
+                "name": stop.name,
+                "category": stop.category,
+                "confirmed": confirmed,
+            })
+    return {"results": results}
 
 
 @app.get("/admin/pending")

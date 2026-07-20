@@ -433,7 +433,12 @@ def fetch_top_comments(url: str, max_comments: int = 15) -> list[dict]:
 
 def extract_frames(video_path: str, output_dir: str, n_frames: int = 8) -> list[str]:
     """
-    Extracts n_frames evenly-spaced JPEG screenshots using OpenCV (cv2).
+    Extracts evenly-spaced JPEG screenshots using OpenCV (cv2).
+
+    `n_frames` is a MINIMUM/baseline, not the final count — actual frame
+    count scales with video duration (see below) so longer, content-dense
+    videos (e.g. a multi-day itinerary compilation) get proportionally
+    more coverage instead of the same fixed sample count as a short clip.
 
     Why cv2 instead of ffmpeg:
       - Pure pip install, no system packages, works on Mac/Linux/Windows
@@ -458,6 +463,17 @@ def extract_frames(video_path: str, output_dir: str, n_frames: int = 8) -> list[
     if duration_sec < 3:
         cap.release()
         raise RuntimeError("Video is too short to extract meaningful frames.")
+
+    # A fixed frame count regardless of video length badly under-samples
+    # longer, content-dense videos — e.g. a 7-day itinerary compilation
+    # running ~100s only got 8 frames (one every ~14s) with the old fixed
+    # count, so entire "Day 6" / "Day 7" caption cards that were only on
+    # screen for a few seconds could fall between samples and never reach
+    # the AI at all. Scale roughly 1 frame per 4 seconds of content instead,
+    # but never go below the caller's requested n_frames (short videos
+    # don't need more than what was asked), and cap at 40 to keep the
+    # Sonnet call's image-token cost bounded.
+    n_frames = max(n_frames, min(40, round(duration_sec / 4)))
 
     # Build evenly-spaced timestamps, skipping 3% intro + 3% outro
     start_sec = duration_sec * 0.03

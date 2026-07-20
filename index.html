@@ -689,14 +689,23 @@
   function renderHotelsBanner(destination, galleryPhotos, videoId, bannerPhotoOverride) {
     const container = document.getElementById('ai-route-hotels-banner');
     if (!container) return;
+    container.innerHTML = buildHotelsBannerHtml(destination, galleryPhotos, videoId, bannerPhotoOverride);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+
+  // Builds the generic "find hotels in [city]" card markup — used both for
+  // the trip-start banner (renderHotelsBanner) and for inline banners
+  // inserted between days when the trip moves to a new city that has no
+  // hotel stop of its own (see renderAiRoute's day-rendering loop).
+  function buildHotelsBannerHtml(destination, galleryPhotos, videoId, bannerPhotoOverride) {
     const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim() || destination || '';
     const bookingHref = bookingAffiliateSearchUrl(city);
     const expediaHref = expediaAffiliateSearchUrl(city);
     const photo = bannerPhotoOverride || ((galleryPhotos && galleryPhotos.length) ? galleryPhotos[galleryPhotos.length - 1] : '');
     const seed = 'hotels-banner-' + slugify(city);
 
-    container.innerHTML = `
-      <div class="ai-stop-card md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
+    return `
+      <div class="ai-stop-card mb-6 md:mb-8 md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
         <div class="md:w-2/5 md:flex-shrink-0">
           <div class="relative h-[140px] md:h-52 mb-3 md:mb-0 rounded-2xl overflow-hidden ${photo ? '' : 'media-placeholder'}" style="${photo ? `background-image:url('${photo}');background-size:cover;background-position:center;` : `background:${gradientFor(seed)}`}">
             ${photo ? '' : '<i data-lucide="bed" class="w-8 h-8 text-white/80"></i>'}
@@ -714,7 +723,6 @@
           </div>
         </div>
       </div>`;
-    if (typeof lucide !== 'undefined') lucide.createIcons();
   }
 
   function renderAiRouteComments(comments) {
@@ -1684,13 +1692,17 @@
 
     // Store for sharing
     window._aiRouteVideoId = videoId;
-    // Only show the generic "browse hotels in [city]" banner when the
-    // video itself didn't feature an actual hotel stop — otherwise this
-    // was stacking a second, unrelated hotel card right below the real
-    // one the creator recommended.
-    const hasRealHotelStop = itinerary.days.some(d => d.stops.some(s => s.category === 'hotel'));
+    // The route should always have a hotel box at the START of the trip —
+    // either a real one (if the AI found it) or the generic "find hotels"
+    // fallback banner. Checking route-WIDE for any hotel stop was wrong:
+    // if the trip has a second real hotel later on (e.g. Day 5, moving to
+    // a different city), that stop already renders as its own card right
+    // where it is — but it was also suppressing the Day 1 fallback banner
+    // for the *start* of the trip, even when Day 1 itself had no hotel at
+    // all. Only Day 1 decides whether the generic banner is needed.
+    const day1HasHotel = itinerary.days[0] && itinerary.days[0].stops.some(s => s.category === 'hotel');
     const hotelsBannerEl = document.getElementById('ai-route-hotels-banner');
-    if (hasRealHotelStop) {
+    if (day1HasHotel) {
       if (hotelsBannerEl) hotelsBannerEl.innerHTML = '';
     } else {
       renderHotelsBanner(itinerary.destination, itinerary.gallery_photo_urls, videoId, itinerary.hotel_banner_photo_url);

@@ -102,6 +102,11 @@ class Itinerary(BaseModel):
                                         # (troll filter + Sonnet analysis),
                                         # computed from Anthropic's actual
                                         # token usage — not an estimate.
+    hotel_banner_photo_url: str = ""  # Admin-editable photo for the generic
+                                        # "Hotels in [city]" fallback banner
+                                        # shown when no real hotel stop was
+                                        # found in the video. Falls back to
+                                        # the last gallery photo if empty.
     view_count: int = 0            # Times the route page has been opened
     affiliate_click_count: int = 0  # Times a Booking/Expedia/Airbnb link
                                       # was clicked from this route

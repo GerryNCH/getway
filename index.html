@@ -1493,14 +1493,27 @@
         : `${searchQuery} similar`;
 
       // Transparency note — shown only when we couldn't confirm the exact
-      // property, so it's clear these are area recommendations, not "this
-      // is the exact place from the video" (which would be misleading).
-      const unconfirmedNote = isDescriptionNotName
+      // property, so it's clear this isn't "the exact place from the
+      // video" (which would be misleading). Two distinct cases:
+      //   similar_hotel_is_real → we found a REAL, bookable hotel that
+      //     matches the video's description (via Google Places) — stop.name
+      //     is a genuine property name, so a real "Book this hotel" link
+      //     makes sense, just clearly flagged as a similar pick, not the
+      //     confirmed one from the clip.
+      //   otherwise → stop.name is only the AI's own written description
+      //     (no real place could be confirmed at all) — nothing specific
+      //     exists to "book", only a search makes sense.
+      const isRealSimilarHotel = isDescriptionNotName && !!stop.similar_hotel_is_real;
+      const unconfirmedNote = isRealSimilarHotel
+        ? `<div class="text-[11px] text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-3">
+             We couldn't confirm this is the exact hotel from the video — but ${escapeHtml(stop.name)} is a similar option in ${locationForSearch}.
+           </div>`
+        : isDescriptionNotName
         ? `<div class="text-[11px] text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-3">
              We couldn't confirm the exact property from the video — these are similar hotels in ${locationForSearch}, not the one shown.
            </div>`
         : '';
-      const bookButtonLabel = isDescriptionNotName ? 'Find similar hotels' : 'Book this hotel';
+      const bookButtonLabel = isDescriptionNotName && !isRealSimilarHotel ? 'Find similar hotels' : 'Book this hotel';
 
       // For unconfirmed hotels, the MAIN button should do the best
       // "similar" search — using similarQuery (city + a couple of

@@ -614,6 +614,10 @@ function buildEditorBody(item) {
   });
   wrap.appendChild(topRow);
 
+  const topActionsRow = document.createElement("div");
+  topActionsRow.className = "flex flex-wrap gap-2 mb-4";
+  wrap.appendChild(topActionsRow);
+
   const summaryWrap = document.createElement("div");
   summaryWrap.className = "mb-4";
   summaryWrap.innerHTML = `<label class="field-label">Destination + route summary</label><textarea class="itin-summary">${escapeHtml(item.summary || "")}</textarea>`;
@@ -629,12 +633,9 @@ function buildEditorBody(item) {
   item.days.forEach((day, dayIdx) => wrap.appendChild(buildDayBlock(item.video_id, dayIdx)));
 
   const verifyBtn = makePillBtn("Verify locations & photos", "pill-gray verify-locations-btn", () => doVerifyLocations(item.video_id, wrap), searchCheckIconSvg());
-  verifyBtn.classList.add("mt-1", "mb-2");
-  wrap.appendChild(verifyBtn);
-
   const saveBtn = makePillBtn("Save changes", "pill-purple", () => doSave(item.video_id, wrap), saveIconSvg());
-  saveBtn.classList.add("mt-1");
-  wrap.appendChild(saveBtn);
+  topActionsRow.appendChild(verifyBtn);
+  topActionsRow.appendChild(saveBtn);
 
   return wrap;
 }
@@ -835,23 +836,46 @@ function buildStopRow(videoId, dayIdx, stopIdx) {
       </div>
     </div>
     <div class="mb-3"><label class="field-label">Description</label><textarea class="stop-desc">${escapeHtml(stop.description)}</textarea></div>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-      <div><label class="field-label">Property type (hotels only)</label><input class="stop-property-type" placeholder="e.g. Boutique Hotel" value="${escapeHtml(stop.property_type || "")}"></div>
-      <div><label class="field-label">Area (hotels only)</label><input class="stop-area-label" placeholder="e.g. Old Town" value="${escapeHtml(stop.area_label || "")}"></div>
-      <div><label class="field-label">Transfer note</label><input class="stop-transfer-note" placeholder="e.g. Short walk from Old Town" value="${escapeHtml(stop.transfer_note || "")}"></div>
+    <div class="hotel-only-fields grid grid-cols-1 md:grid-cols-2 gap-3 mb-3 ${stop.category === "hotel" ? "" : "hidden"}">
+      <div><label class="field-label">Property type</label><input class="stop-property-type" placeholder="e.g. Boutique Hotel" value="${escapeHtml(stop.property_type || "")}"></div>
+      <div><label class="field-label">Area</label><input class="stop-area-label" placeholder="e.g. Old Town" value="${escapeHtml(stop.area_label || "")}"></div>
     </div>
+    <div class="mb-3"><label class="field-label">Transfer note</label><input class="stop-transfer-note" placeholder="e.g. Short walk from Old Town" value="${escapeHtml(stop.transfer_note || "")}"></div>
     <div class="mb-3">
       <label class="field-label">Maps link override <span class="text-gray-400 normal-case font-normal">(paste an address, or a full Google Maps link if search couldn't find it)</span></label>
       <input class="stop-maps-override" placeholder="e.g. 12 Rue de l'Abreuvoir, 75018 Paris — or paste a maps.google.com link" value="${escapeHtml(stop.maps_url_override || "")}">
     </div>
     <div class="flex gap-3 items-end">
-      <div class="flex-1"><label class="field-label">Tip</label><input class="stop-tip" value="${escapeHtml(stop.tip || "")}"></div>
+      <div class="flex-1">
+        <label class="field-label">Tip</label>
+        <select class="stop-tip-presets mb-1.5">
+          <option value="">Quick tip presets…</option>
+          <option value="No specific place — pick any similar option nearby.">No specific place — pick any similar option nearby.</option>
+          <option value="Creator didn't specify — choose one you like in the area.">Creator didn't specify — choose one you like in the area.</option>
+          <option value="Book/reserve ahead — this spot gets busy.">Book/reserve ahead — this spot gets busy.</option>
+          <option value="Go early to avoid crowds.">Go early to avoid crowds.</option>
+          <option value="Best around sunset.">Best around sunset.</option>
+          <option value="Cash only.">Cash only.</option>
+          <option value="Ask locals for their current favorite — this changes often.">Ask locals for their current favorite — this changes often.</option>
+        </select>
+        <input class="stop-tip" value="${escapeHtml(stop.tip || "")}">
+      </div>
       <button class="pill-btn pill-red btn-interactive delete-stop-btn text-xs">${xIconSvg()}<span>Remove</span></button>
     </div>
   `;
 
+  row.querySelector(".stop-tip-presets").addEventListener("change", (e) => {
+    if (!e.target.value) return;
+    stop.tip = e.target.value;
+    row.querySelector(".stop-tip").value = e.target.value;
+    e.target.value = "";
+  });
+
   row.querySelector(".stop-name").addEventListener("input", (e) => { stop.name = e.target.value; });
-  row.querySelector(".stop-category").addEventListener("change", (e) => { stop.category = e.target.value; });
+  row.querySelector(".stop-category").addEventListener("change", (e) => {
+    stop.category = e.target.value;
+    row.querySelector(".hotel-only-fields").classList.toggle("hidden", e.target.value !== "hotel");
+  });
   row.querySelector(".stop-photo").addEventListener("input", (e) => {
     stop.photo_url = e.target.value;
     const img = row.querySelector(".stop-photo-preview");

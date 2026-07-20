@@ -63,6 +63,17 @@ class Stop(BaseModel):
                                # than inventing precise minutes the AI can't
                                # actually know. Empty when not confidently
                                # inferable.
+    maps_url_override: str = ""  # Admin-set fallback for when Google's own
+                                   # search can't resolve the auto-built
+                                   # name+city query (e.g. small streets,
+                                   # region-biased accounts). Accepts either
+                                   # a full Google Maps URL (pasted directly
+                                   # from the address bar after manually
+                                   # finding the place) or a plain address —
+                                   # the frontend uses it as-is if it starts
+                                   # with "http", otherwise wraps it in a
+                                   # Maps search URL. Empty = auto-built as
+                                   # before.
 
 
 class DayPlan(BaseModel):

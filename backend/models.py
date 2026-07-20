@@ -74,6 +74,20 @@ class Stop(BaseModel):
                                    # with "http", otherwise wraps it in a
                                    # Maps search URL. Empty = auto-built as
                                    # before.
+    similar_hotel_is_real: bool = False  # Hotel stops only, and only when
+                                           # is_specific_name is False. True
+                                           # when places.py upgraded an
+                                           # AI-written description (e.g.
+                                           # "Beachfront resort, Cala Sant
+                                           # Vicenç area") to an actual real,
+                                           # bookable hotel found via Google
+                                           # Places — so stop.name is now a
+                                           # real property name, not a
+                                           # generic description, and a real
+                                           # "Book this hotel" link is
+                                           # possible even though it's still
+                                           # not confirmed as the exact one
+                                           # shown in the video.
 
 
 class DayPlan(BaseModel):

@@ -621,6 +621,8 @@ function buildEditorBody(item) {
 
   wrap.appendChild(buildGalleryEditor(item));
 
+  wrap.appendChild(buildHotelBannerEditor(item));
+
   wrap.appendChild(buildMetaRow(item));
 
   item.days.forEach((day, dayIdx) => wrap.appendChild(buildDayBlock(item.video_id, dayIdx)));
@@ -688,6 +690,36 @@ function buildGalleryEditor(item) {
 
 const TAG_OPTIONS = ["most_popular", "luxury", "budget_friendly", "exotic", "mountain", "city", "beach"];
 const PRICE_OPTIONS = ["€", "€€", "€€€"];
+
+function buildHotelBannerEditor(item) {
+  const box = document.createElement("div");
+  box.className = "bg-gray-50 border border-gray-200 rounded-2xl p-4 mb-5";
+  box.innerHTML = `
+    <div class="field-label mb-1">"No hotel found" banner photo</div>
+    <p class="text-xs text-gray-400 mb-3">Only shown on the public page when the video didn't feature a specific hotel — this is the generic "Hotels in [city]" box with Booking.com/Expedia buttons. Leave empty to use the last gallery photo automatically.</p>
+    <div class="flex items-center gap-3">
+      <div class="hotel-banner-dropzone relative w-16 h-16 rounded-lg bg-white border border-gray-200 flex-shrink-0 overflow-hidden flex items-center justify-center">
+        <svg class="w-5 h-5 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>
+        <img class="hotel-banner-preview absolute inset-0 w-full h-full object-cover hidden" src="${escapeHtml(item.hotel_banner_photo_url || "")}" onerror="this.classList.add('hidden')" onload="this.classList.remove('hidden')">
+      </div>
+      <input class="hotel-banner-input flex-1" placeholder="Paste a photo URL, or click/drop an image on the box" value="${escapeHtml(item.hotel_banner_photo_url || "")}">
+    </div>
+  `;
+  const input = box.querySelector(".hotel-banner-input");
+  const preview = box.querySelector(".hotel-banner-preview");
+  input.addEventListener("input", (e) => {
+    item.hotel_banner_photo_url = e.target.value;
+    preview.classList.add("hidden");
+    preview.src = e.target.value;
+  });
+  attachUploadZone(box.querySelector(".hotel-banner-dropzone"), (url) => {
+    item.hotel_banner_photo_url = url;
+    input.value = url;
+    preview.classList.add("hidden");
+    preview.src = url;
+  });
+  return box;
+}
 
 function buildMetaRow(item) {
   const box = document.createElement("div");
@@ -853,6 +885,7 @@ async function doSave(videoId, editorWrap) {
       summary: item.summary || "",
       hero_photo_url: item.hero_photo_url,
       gallery_photo_urls: item.gallery_photo_urls || [],
+      hotel_banner_photo_url: item.hotel_banner_photo_url || "",
     });
     await apiPut(`/admin/meta/${encodeURIComponent(videoId)}`, {
       price_category: item.price_category || "€€",

@@ -118,6 +118,8 @@ def init_db() -> None:
             conn.execute("ALTER TABLE itineraries ADD COLUMN view_count INTEGER DEFAULT 0")
         if "affiliate_click_count" not in existing_cols:
             conn.execute("ALTER TABLE itineraries ADD COLUMN affiliate_click_count INTEGER DEFAULT 0")
+        if "hotel_banner_photo_url" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN hotel_banner_photo_url TEXT DEFAULT ''")
 
         # Seed the singleton site_settings row once, with the hero slides
         # that were previously hardcoded in index.html — so nothing changes
@@ -160,6 +162,7 @@ def get_itinerary(video_id: str) -> Itinerary | None:
         creator_handle=row["creator_handle"] or "",
         price_category=row["price_category"] or "",
         generation_cost_usd=row["generation_cost_usd"] or 0.0,
+        hotel_banner_photo_url=row["hotel_banner_photo_url"] or "",
         view_count=row["view_count"] or 0,
         affiliate_click_count=row["affiliate_click_count"] or 0,
         hero_photo_url=row["hero_photo_url"] or "",
@@ -245,6 +248,7 @@ def _row_to_admin_dict(row: sqlite3.Row) -> dict:
         "generation_cost_usd": row["generation_cost_usd"] or 0.0,
         "view_count": row["view_count"] or 0,
         "affiliate_click_count": row["affiliate_click_count"] or 0,
+        "hotel_banner_photo_url": row["hotel_banner_photo_url"] or "",
     }
 
 
@@ -332,7 +336,8 @@ def update_itinerary_content(video_id: str, itinerary: Itinerary) -> bool:
         cur = conn.execute(
             """UPDATE itineraries
                SET destination = ?, duration = ?, days_json = ?,
-                   hero_photo_url = ?, gallery_photo_urls_json = ?, summary = ?
+                   hero_photo_url = ?, gallery_photo_urls_json = ?, summary = ?,
+                   hotel_banner_photo_url = ?
                WHERE video_id = ?""",
             (
                 itinerary.destination,
@@ -341,6 +346,7 @@ def update_itinerary_content(video_id: str, itinerary: Itinerary) -> bool:
                 itinerary.hero_photo_url,
                 json.dumps(itinerary.gallery_photo_urls),
                 itinerary.summary,
+                itinerary.hotel_banner_photo_url,
                 video_id,
             ),
         )

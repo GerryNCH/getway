@@ -120,7 +120,7 @@
 
   <div id="routes-section" class="max-w-6xl mx-auto px-6 md:px-14 pt-4">
     <div data-aos="fade-up" class="font-serif-display text-3xl md:text-4xl mb-2">Routes</div>
-    <div class="text-xs md:text-sm text-gray-500 mb-6">1 curated route, more added weekly</div>
+    <div id="routes-count-label" class="text-xs md:text-sm text-gray-500 mb-6">More routes added weekly</div>
 
     <!-- Destination search + Duration filter -->
     <div class="flex flex-col md:flex-row md:items-center gap-3 mb-5">
@@ -623,9 +623,7 @@
     }
   };
 
-  const ROUTES = [
-    { slug: "mallorca-5-days", destination: "Mallorca", duration: "5 days", dayCount: 5, priceCategory: "€€", creatorHandle: "@kelseyinlondon", stopCount: 14, fallbackColor: "#334155", tags: ["most_popular"] }
-  ];
+  const ROUTES = [];
 
   const DAY1_STOPS = [
     { category: "sight", icon: "landmark", iconColor: "#57534E", name: "Palma cathedral & old town", typeLabel: "Sight", photo: "https://picsum.photos/seed/palma-cathedral/900/700", mapsUrl: "https://www.google.com/maps/search/?api=1&query=Palma+Cathedral", distance: "8 min walk from hotel", distanceType: "walk" },
@@ -871,7 +869,7 @@
     if (typeof AOS !== 'undefined') { AOS.refreshHard(); }
   }
 
-  const STATIC_ROUTE_SLUGS = new Set(["mallorca-5-days"]);
+  const STATIC_ROUTE_SLUGS = new Set([]);
 
   function renderRoutes() {
     const grid = document.getElementById('route-grid');
@@ -940,6 +938,12 @@
         MEDIA.routes[r.video_id] = { cardPhoto: r.hero_photo_url || "" };
       });
       renderRoutes();
+      const countLabel = document.getElementById('routes-count-label');
+      if (countLabel) {
+        countLabel.textContent = ROUTES.length
+          ? `${ROUTES.length} curated route${ROUTES.length === 1 ? '' : 's'}, more added weekly`
+          : 'More routes added weekly';
+      }
       if (typeof AOS !== 'undefined') AOS.refreshHard();
     } catch (err) {
       console.error('loadRealRoutes failed (non-fatal, homepage keeps static routes):', err);

@@ -34,7 +34,7 @@ from extractor import (
     extract_video_id, fetch_metadata, download_video, extract_frames,
     is_slideshow, fetch_slideshow_post, download_slideshow_images,
     fetch_top_comments, is_instagram_url, fetch_instagram_post,
-    download_instagram_video,
+    download_instagram_video, resolve_canonical_url,
 )
 from troll_filter import check_is_travel
 from ai_analyzer import analyse_frames
@@ -73,6 +73,13 @@ async def extract(req: ExtractRequest):
     url = req.url.strip()
     if not url.startswith("http"):
         raise HTTPException(400, "Invalid URL — must start with http or https")
+
+    # Resolve TikTok short share links (vm.tiktok.com/..., tiktok.com/t/...)
+    # to their canonical form BEFORE computing video_id — otherwise the
+    # same video shared/copied twice can get two different short links
+    # (TikTok embeds a per-share tracking code), missing the cache and
+    # triggering a second paid generation for content already on file.
+    url = resolve_canonical_url(url)
 
     # ── Layer 1: stable video ID ──────────────────────────────────────────────
     video_id = extract_video_id(url)

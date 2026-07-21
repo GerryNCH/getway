@@ -503,6 +503,12 @@ def admin_approve(video_id: str, secret: str):
     _check_admin_secret(secret)
     if not database.set_status(video_id, "approved"):
         raise HTTPException(404, "Route not found")
+    # Approval is a strong signal the stops' current photos/addresses are
+    # good — save them for reuse if this same city gets another route
+    # generated later (e.g. a second Rome video also featuring the Colosseum).
+    itinerary = database.get_itinerary(video_id)
+    if itinerary:
+        database.cache_stops_from_itinerary(itinerary.destination, itinerary)
     return {"status": "ok", "video_id": video_id, "new_status": "approved"}
 
 
@@ -551,6 +557,9 @@ def admin_update_route(video_id: str, itinerary: Itinerary, secret: str):
     _check_admin_secret(secret)
     if not database.update_itinerary_content(video_id, itinerary):
         raise HTTPException(404, "Route not found")
+    # A manual save is an even stronger signal than approval that these
+    # specific photos/addresses are the right ones — cache them too.
+    database.cache_stops_from_itinerary(itinerary.destination, itinerary)
     return {"status": "ok", "video_id": video_id}
 
 

@@ -779,6 +779,35 @@
       </div>`;
   }
 
+  function buildCarRentalBannerHtml(destination, videoId, note) {
+    const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim() || destination || '';
+    const bookingHref = bookingCarRentalUrl(city);
+    const expediaHref = expediaCarRentalUrl(city);
+    const gygHref = gygCarRentalUrl(city);
+    const seed = 'car-rental-' + slugify(city);
+
+    return `
+      <div class="ai-stop-card mb-6 md:mb-8 md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
+        <div class="md:w-2/5 md:flex-shrink-0">
+          <div class="relative h-[100px] md:h-52 mb-3 md:mb-0 rounded-2xl overflow-hidden media-placeholder flex items-center justify-center" style="background:${gradientFor(seed)}">
+            <i data-lucide="car" class="w-8 h-8 text-white/80"></i>
+          </div>
+        </div>
+        <div class="md:w-3/5 md:pt-2">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-[11px] font-medium text-[#7C3AED] uppercase tracking-wide">Getting around</span>
+          </div>
+          <div class="text-sm font-medium mb-1">Rent a car in ${escapeHtml(city)}</div>
+          <div class="text-xs text-gray-500 mb-3">${escapeHtml(note || 'This trip is easiest to explore by car.')}</div>
+          <div class="grid grid-cols-3 gap-2">
+            <a href="${bookingHref}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-outline-interactive h-[40px] flex items-center justify-center gap-1 bg-gray-50 text-gray-700 text-[11px] font-medium rounded-xl"><span>Booking</span></a>
+            <a href="${expediaHref}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-outline-interactive h-[40px] flex items-center justify-center gap-1 bg-gray-50 text-gray-700 text-[11px] font-medium rounded-xl"><span>Expedia</span></a>
+            <a href="${gygHref}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-outline-interactive h-[40px] flex items-center justify-center gap-1 bg-gray-50 text-gray-700 text-[11px] font-medium rounded-xl"><span>GetYourGuide</span></a>
+          </div>
+        </div>
+      </div>`;
+  }
+
   function renderAiRouteComments(comments) {
     const container = document.getElementById('ai-route-comments-section');
     if (!container) return;
@@ -1420,6 +1449,34 @@
     return `https://expedia.com/affiliate?${params.toString()}`;
   }
 
+  // Car rental search links. UNLIKE hotel search, Booking.com/Expedia's
+  // real car rental flow needs specific pickup/dropoff dates (confirmed
+  // via Booking's own Demand API docs) — there's no officially documented
+  // "just a city name" entry point the way hotel search has. These mirror
+  // the same city-search param convention used for hotels on each site's
+  // /cars section, which is a reasonable-confidence guess based on their
+  // consistent param naming — NOT independently confirmed working the way
+  // the hotel URLs were. Worth a spot-check click once real traffic comes
+  // through.
+  function bookingCarRentalUrl(city) {
+    const target = `https://www.booking.com/cars/index.html?ss=${encodeURIComponent(city)}`;
+    return `${CJ_AFFILIATE_BASE}?url=${encodeURIComponent(target)}`;
+  }
+  function expediaCarRentalUrl(city) {
+    const target = `https://www.expedia.com/Cars-Search?destination=${encodeURIComponent(city)}`;
+    const params = new URLSearchParams({
+      siteid: '1',
+      landingPage: target,
+      camref: EXPEDIA_CAMREF,
+      creativeref: EXPEDIA_CREATIVEREF,
+      adref: EXPEDIA_ADREF,
+    });
+    return `https://expedia.com/affiliate?${params.toString()}`;
+  }
+  function gygCarRentalUrl(city) {
+    return `https://www.getyourguide.com/s/?q=${encodeURIComponent(city + ' car rental')}&partner_id=UC97KXN&utm_medium=online_publisher`;
+  }
+
   // ── Admin panel (hidden — open getway-theta.vercel.app/#admin) ──────────
   // Lets Gerry clear the cached-routes table so old TikTok links regenerate
   // fresh (e.g. after a pricing/link-format change) without touching Railway
@@ -1650,7 +1707,7 @@
         ${stop.transfer_note ? `<div class="pl-6 md:pl-0 mt-1.5"><span class="inline-flex items-center gap-1 text-[11px] text-gray-500 bg-gray-50 rounded-full px-2.5 py-1"><i data-lucide="navigation" class="w-3 h-3"></i>${escapeHtml(stop.transfer_note)}</span></div>` : ''}
         ${stop.tip ? `<div class="pl-6 md:pl-0 text-xs text-[#8B5CF6] mt-1.5">💡 ${stop.tip}</div>` : ''}
         ${stop.category === 'food' ? `<a href="${stop.booking_url || `https://www.google.com/maps/search/${encodeURIComponent(mapsQuery)}`}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-interactive inline-flex items-center gap-1.5 mt-2.5 ml-6 md:ml-0 h-[36px] px-4 bg-[#8B5CF6] text-white text-xs font-medium rounded-lg"><i data-lucide="calendar" class="w-3.5 h-3.5"></i>Reserve a table</a>` : ''}
-        ${stop.category === 'activity' ? `<a href="${stop.booking_url || gygFallbackUrl}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-interactive inline-flex items-center gap-1.5 mt-2.5 ml-6 md:ml-0 h-[36px] px-4 bg-[#8B5CF6] text-white text-xs font-medium rounded-lg"><i data-lucide="ticket" class="w-3.5 h-3.5"></i>Book via GetYourGuide</a>` : ''}
+        ${(stop.category === 'activity' || stop.category === 'sight') ? `<a href="${stop.booking_url || gygFallbackUrl}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-interactive inline-flex items-center gap-1.5 mt-2.5 ml-6 md:ml-0 h-[36px] px-4 bg-[#8B5CF6] text-white text-xs font-medium rounded-lg"><i data-lucide="ticket" class="w-3.5 h-3.5"></i>${stop.category === 'sight' ? 'Get tickets via GetYourGuide' : 'Book via GetYourGuide'}</a>` : ''}
       </div>
     </div>`;
   }
@@ -1760,6 +1817,13 @@
       if (hotelsBannerEl) hotelsBannerEl.innerHTML = '';
     } else {
       renderHotelsBanner(itinerary.destination, itinerary.gallery_photo_urls, videoId, itinerary.hotel_banner_photo_url);
+    }
+    // Car rental banner goes right under the hotel banner/card, in the
+    // same slot — shown only when the AI (or admin override) flagged this
+    // specific trip as needing a car, not on every route.
+    if (itinerary.car_rental_recommended && hotelsBannerEl) {
+      hotelsBannerEl.insertAdjacentHTML('beforeend', buildCarRentalBannerHtml(itinerary.destination, videoId, itinerary.car_rental_note));
+      if (typeof lucide !== 'undefined') lucide.createIcons();
     }
     renderAiRouteComments(itinerary.comments);
     initReviewsSection('ai-route', videoId);

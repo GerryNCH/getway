@@ -536,6 +536,9 @@ function buildCard(item, listType) {
 
   const actions = header.querySelector(".action-buttons");
   actions.appendChild(makePillBtn("Preview", "pill-gray", () => window.open(`${SITE_URL}/?route=${encodeURIComponent(item.video_id)}`, "_blank"), previewIconSvg()));
+  if (item.url) {
+    actions.appendChild(makePillBtn("View clip", "pill-gray", () => window.open(item.url, "_blank"), playIconSvg()));
+  }
   actions.appendChild(makePillBtn("Edit", "pill-gray", () => toggleEditor(card), editIconSvg()));
 
   if (listType === "pending") {
@@ -571,6 +574,7 @@ function refreshIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="
 function previewIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>`; }
 function saveIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>`; }
 function searchCheckIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/><path d="m8.5 11 1.8 1.8L14 9"/></svg>`; }
+function playIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4Z" fill="currentColor" stroke="none"/></svg>`; }
 function plusIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>`; }
 
 function toggleEditor(card) { card.querySelector(".editor").classList.toggle("hidden"); }
@@ -627,6 +631,8 @@ function buildEditorBody(item) {
   wrap.appendChild(buildGalleryEditor(item));
 
   wrap.appendChild(buildHotelBannerEditor(item));
+
+  wrap.appendChild(buildCarRentalEditor(item));
 
   wrap.appendChild(buildMetaRow(item));
 
@@ -724,6 +730,25 @@ function buildHotelBannerEditor(item) {
     preview.classList.add("hidden");
     preview.src = url;
   });
+  return box;
+}
+
+function buildCarRentalEditor(item) {
+  const box = document.createElement("div");
+  box.className = "bg-gray-50 border border-gray-200 rounded-2xl p-4 mb-5";
+  box.innerHTML = `
+    <label class="flex items-center gap-2.5 mb-3 cursor-pointer">
+      <input type="checkbox" class="car-rental-checkbox w-4 h-4 rounded" ${item.car_rental_recommended ? "checked" : ""}>
+      <span class="field-label mb-0">Show "Rent a car" box on this route</span>
+    </label>
+    <p class="text-xs text-gray-400 mb-3">AI sets this automatically when the video shows/mentions driving, or the stops span towns not realistically walkable — override here if it guessed wrong.</p>
+    <div>
+      <label class="field-label">Reason shown to the reader (optional)</label>
+      <input class="car-rental-note" placeholder="e.g. This itinerary covers several towns best explored by car" value="${escapeHtml(item.car_rental_note || "")}">
+    </div>
+  `;
+  box.querySelector(".car-rental-checkbox").addEventListener("change", (e) => { item.car_rental_recommended = e.target.checked; });
+  box.querySelector(".car-rental-note").addEventListener("input", (e) => { item.car_rental_note = e.target.value; });
   return box;
 }
 
@@ -955,6 +980,8 @@ async function doSave(videoId, editorWrap) {
       hero_photo_url: item.hero_photo_url,
       gallery_photo_urls: item.gallery_photo_urls || [],
       hotel_banner_photo_url: item.hotel_banner_photo_url || "",
+      car_rental_recommended: item.car_rental_recommended || false,
+      car_rental_note: item.car_rental_note || "",
     });
     await apiPut(`/admin/meta/${encodeURIComponent(videoId)}`, {
       price_category: item.price_category || "€€",

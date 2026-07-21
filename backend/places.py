@@ -17,6 +17,7 @@ import os
 import re
 import requests
 
+import database
 from models import UnsplashAttribution
 from ai_analyzer import _booking_affiliate_url, _expedia_affiliate_url
 
@@ -353,6 +354,20 @@ def enrich_itinerary_with_photos(itinerary) -> None:
         for stop in day.stops:
             is_specific = getattr(stop, "is_specific_name", True)
             name_query = stop.name if city.lower() in stop.name.lower() else f"{stop.name}, {city}"
+
+            # Reuse a photo/address already saved from a PREVIOUS route for
+            # this exact city+stop name (e.g. the Colosseum showing up
+            # again in a second Rome route) — skips the Places/Unsplash
+            # lookup entirely, which both saves the API call and means
+            # Gerry's earlier manual fix for this stop carries over
+            # automatically instead of needing to be redone every time.
+            cached = database.get_cached_stop(city, stop.name)
+            if cached:
+                stop.photo_url = cached["photo_url"]
+                if cached.get("maps_url_override"):
+                    stop.maps_url_override = cached["maps_url_override"]
+                print(f"[Cache] Reused saved photo for '{stop.name}' in {city}")
+                continue
 
             # Unconfirmed HOTEL stops get one extra chance before falling
             # back to generic photos: the AI's own description (e.g.

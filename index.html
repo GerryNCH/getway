@@ -628,6 +628,28 @@
   </div>
 </div>
 
+<!-- Shown instead of the Safari steps when the person is inside Instagram/
+     TikTok/Facebook's own in-app browser — Add to Home Screen isn't
+     available there at all, regardless of what they tap. -->
+<div id="inapp-browser-overlay" class="hidden fixed inset-0 z-[170] bg-black/50 flex items-end sm:items-center justify-center p-4" onclick="if(event.target===this) closeInAppOverlay()">
+  <div class="bento-card bg-white rounded-[22px] p-6 w-full max-w-sm">
+    <div class="flex items-center justify-between mb-4">
+      <div class="font-serif-display text-lg">Open in Safari first</div>
+      <button onclick="closeInAppOverlay()"><i data-lucide="x" class="w-4 h-4 text-gray-400"></i></button>
+    </div>
+    <div class="text-sm text-gray-700 mb-4">You're viewing this inside Instagram/TikTok's built-in browser — "Add to Home Screen" only works in Safari itself.</div>
+    <div class="flex items-start gap-3 mb-4">
+      <div class="w-7 h-7 rounded-full bg-[#8B5CF6]/10 text-[#6D28D9] text-xs font-semibold flex items-center justify-center flex-shrink-0">1</div>
+      <div class="text-sm text-gray-700 pt-0.5">Tap the <b>••• </b> menu (usually top or bottom right)</div>
+    </div>
+    <div class="flex items-start gap-3 mb-5">
+      <div class="w-7 h-7 rounded-full bg-[#8B5CF6]/10 text-[#6D28D9] text-xs font-semibold flex items-center justify-center flex-shrink-0">2</div>
+      <div class="text-sm text-gray-700 pt-0.5">Tap <b>"Open in Safari"</b> (or "Open in Browser")</div>
+    </div>
+    <button onclick="closeInAppOverlay()" class="btn-interactive w-full h-11 flex items-center justify-center bg-[#8B5CF6] text-white text-sm font-medium rounded-xl">Got it</button>
+  </div>
+</div>
+
 <button onclick="toggleSupportChat()" class="btn-interactive fixed bottom-6 right-6 z-[150] w-14 h-14 rounded-full bg-[#8B5CF6] shadow-xl flex items-center justify-center">
   <i data-lucide="message-circle" class="w-6 h-6 text-white"></i>
 </button>
@@ -2044,6 +2066,16 @@
   function isIOS() {
     return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
   }
+  // Instagram/TikTok/Facebook/Messenger's built-in "in-app browser" isn't
+  // real Safari, even though it looks like it — Add to Home Screen isn't
+  // available at all inside it, no matter what the person taps. This is
+  // very likely how most people reach GetWay (from a shared TikTok/IG
+  // link), so detecting it and saying so up front avoids the exact
+  // confusion of following steps that silently don't work.
+  function isInAppBrowser() {
+    const ua = navigator.userAgent || '';
+    return /Instagram|FBAN|FBAV|TikTok|Line\//i.test(ua);
+  }
   function wasRecentlyDismissed() {
     const at = parseInt(localStorage.getItem(DISMISS_KEY) || '0', 10);
     return at && (Date.now() - at) < DISMISS_DAYS * 24 * 60 * 60 * 1000;
@@ -2079,6 +2111,9 @@
         deferredInstallPrompt = null;
         dismissInstallBanner();
       });
+    } else if (isIOS() && isInAppBrowser()) {
+      document.getElementById('inapp-browser-overlay').classList.remove('hidden');
+      dismissInstallBanner(false);
     } else if (isIOS()) {
       document.getElementById('ios-install-overlay').classList.remove('hidden');
       dismissInstallBanner(false); // hide the banner but don't start the 14-day cooldown yet
@@ -2086,6 +2121,9 @@
   }
   function closeIosOverlay() {
     document.getElementById('ios-install-overlay').classList.add('hidden');
+  }
+  function closeInAppOverlay() {
+    document.getElementById('inapp-browser-overlay').classList.add('hidden');
   }
   function dismissInstallBanner(startCooldown) {
     const el = document.getElementById('install-banner');

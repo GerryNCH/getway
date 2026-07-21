@@ -1,436 +1,645 @@
 """
-places.py — Google Places API integration (stops) + Unsplash (destination photos).
+database.py — SQLite cache layer.
 
-Places API (New) is used for specific named stops (hotels, restaurants,
-landmarks) where it returns accurate, place-specific photos.
+Two tables:
+  itineraries  — full extracted routes, keyed by video_id
+  troll_cache  — previous troll-filter decisions (avoid re-checking same URL)
 
-Unsplash is used for the destination hero/gallery, because Places API
-photos for a bare city/region query are often low-quality or blurry
-(user-submitted snapshots), whereas Unsplash returns curated, high-res
-travel photography — exactly what a hero banner needs.
-
-Free tier: Places $200/month credit (~5000 lookups). Unsplash: 50 req/hour
-on the free Demo tier — plenty for this use case.
+SQLite is perfect for this stage: zero setup, single file, fast reads.
+Upgrade path: swap engine URL for PostgreSQL when you scale.
 """
 
+import json
 import os
-import re
-import requests
+import sqlite3
+from datetime import datetime
+from pathlib import Path
 
-import database
-from models import UnsplashAttribution
-from ai_analyzer import _booking_affiliate_url, _expedia_affiliate_url
+from models import Itinerary
 
-PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")
-UNSPLASH_ACCESS_KEY = os.getenv("UNSPLASH_ACCESS_KEY", "")
+# CRITICAL: this must point at a Railway Volume mount (persistent disk),
+# NOT a path inside the code directory. The code directory gets rebuilt
+# from scratch on every deploy — a database file living there is wiped
+# every single time new code is pushed. Set the DATA_DIR environment
+# variable to the Volume's mount path (e.g. "/data") in Railway →
+# Variables. Falls back to the old (non-persistent!) behavior only if
+# DATA_DIR isn't set, so local development still works without a volume.
+DATA_DIR = Path(os.getenv("DATA_DIR", str(Path(__file__).parent)))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH = DATA_DIR / "getway.db"
 
-SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
-UNSPLASH_SEARCH_URL = "https://api.unsplash.com/search/photos"
+
+def _conn() -> sqlite3.Connection:
+    """Returns a thread-safe SQLite connection with dict rows."""
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
-def _build_photo_url(photo_name: str, max_width: int = 1600) -> str:
-    return (
-        f"https://places.googleapis.com/v1/{photo_name}/media"
-        f"?maxWidthPx={max_width}&key={PLACES_API_KEY}&skipHttpRedirect=false"
+def init_db() -> None:
+    """Creates tables if they don't exist yet. Call once at app startup."""
+    with _conn() as conn:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS itineraries (
+                video_id    TEXT PRIMARY KEY,
+                url         TEXT NOT NULL,
+                destination TEXT NOT NULL,
+                duration    TEXT NOT NULL,
+                days_json   TEXT NOT NULL,       -- full Itinerary.days as JSON
+                created_at  TEXT NOT NULL,
+                added_by    TEXT DEFAULT 'ai'    -- 'ai' | 'manual' (admin panel later)
+            );
+
+            CREATE TABLE IF NOT EXISTS troll_cache (
+                video_id    TEXT PRIMARY KEY,
+                is_travel   INTEGER NOT NULL,    -- 1 = travel, 0 = rejected
+                reason      TEXT,
+                checked_at  TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS reviews (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                video_id    TEXT NOT NULL,       -- itinerary video_id, or a
+                                                  -- fixed key for static demo
+                                                  -- routes (e.g. "mallorca-demo-route")
+                name        TEXT NOT NULL,
+                title       TEXT NOT NULL,
+                rating      INTEGER NOT NULL,
+                text        TEXT NOT NULL,
+                created_at  TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_reviews_video_id
+                ON reviews (video_id);
+
+            CREATE TABLE IF NOT EXISTS site_settings (
+                id                       INTEGER PRIMARY KEY CHECK (id = 1),
+                hero_slides_json         TEXT DEFAULT '[]',
+                featured_route_ids_json  TEXT DEFAULT '[]'
+            );
+
+            CREATE TABLE IF NOT EXISTS stop_cache (
+                cache_key          TEXT PRIMARY KEY,
+                city               TEXT,
+                stop_name          TEXT,
+                photo_url          TEXT,
+                maps_url_override  TEXT DEFAULT '',
+                updated_at         TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_itineraries_destination
+                ON itineraries (destination);
+        """)
+
+        # Migration: earlier versions of this table didn't store the hero
+        # image or gallery photos, so cached/shared routes lost them on
+        # reload even though a fresh generation had them. Add the columns
+        # if they're missing (safe to run every startup).
+        existing_cols = {row["name"] for row in conn.execute("PRAGMA table_info(itineraries)")}
+        if "hero_photo_url" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN hero_photo_url TEXT DEFAULT ''")
+        if "gallery_photo_urls_json" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN gallery_photo_urls_json TEXT DEFAULT '[]'")
+        if "comments_json" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN comments_json TEXT DEFAULT '[]'")
+        if "hero_attribution_json" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN hero_attribution_json TEXT DEFAULT NULL")
+        if "gallery_attributions_json" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN gallery_attributions_json TEXT DEFAULT '[]'")
+        if "status" not in existing_cols:
+            # 'pending' | 'approved' | 'rejected'. Existing rows (generated
+            # before the admin panel existed) default to 'approved' so they
+            # keep working exactly as before — only newly-generated routes
+            # start out pending review.
+            conn.execute("ALTER TABLE itineraries ADD COLUMN status TEXT DEFAULT 'pending'")
+            conn.execute("UPDATE itineraries SET status = 'approved' WHERE status IS NULL OR status = 'pending'")
+        if "price_category" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN price_category TEXT DEFAULT ''")
+        if "tags_json" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN tags_json TEXT DEFAULT '[]'")
+        if "creator_handle" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN creator_handle TEXT DEFAULT ''")
+        if "summary" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN summary TEXT DEFAULT ''")
+        if "generation_cost_usd" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN generation_cost_usd REAL DEFAULT 0.0")
+        if "view_count" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN view_count INTEGER DEFAULT 0")
+        if "affiliate_click_count" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN affiliate_click_count INTEGER DEFAULT 0")
+        if "hotel_banner_photo_url" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN hotel_banner_photo_url TEXT DEFAULT ''")
+        if "car_rental_recommended" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN car_rental_recommended INTEGER DEFAULT 0")
+        if "car_rental_note" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN car_rental_note TEXT DEFAULT ''")
+
+        # Seed the singleton site_settings row once, with the hero slides
+        # that were previously hardcoded in index.html — so nothing changes
+        # visually on the homepage until an admin actually edits them.
+        row = conn.execute("SELECT id FROM site_settings WHERE id = 1").fetchone()
+        if row is None:
+            default_hero_slides = json.dumps([
+                "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=2000&auto=format&fit=crop",
+                "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=2000&auto=format&fit=crop",
+                "https://images.unsplash.com/photo-1488085061387-422e29b40080?w=2000&auto=format&fit=crop",
+            ])
+            conn.execute(
+                "INSERT INTO site_settings (id, hero_slides_json, featured_route_ids_json) VALUES (1, ?, '[]')",
+                (default_hero_slides,),
+            )
+
+    print(f"[DB] Initialised at {DB_PATH}")
+
+
+# ── Itinerary cache ───────────────────────────────────────────────────────────
+
+def get_itinerary(video_id: str) -> Itinerary | None:
+    """Returns a cached Itinerary or None if not found."""
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM itineraries WHERE video_id = ?", (video_id,)
+        ).fetchone()
+    if not row:
+        return None
+    days = json.loads(row["days_json"])
+    gallery_urls = json.loads(row["gallery_photo_urls_json"] or "[]")
+    comments = json.loads(row["comments_json"] or "[]")
+    hero_attribution = json.loads(row["hero_attribution_json"]) if row["hero_attribution_json"] else None
+    gallery_attributions = json.loads(row["gallery_attributions_json"] or "[]")
+    return Itinerary(
+        destination=row["destination"],
+        duration=row["duration"],
+        days=days,
+        summary=row["summary"] or "",
+        creator_handle=row["creator_handle"] or "",
+        price_category=row["price_category"] or "",
+        generation_cost_usd=row["generation_cost_usd"] or 0.0,
+        hotel_banner_photo_url=row["hotel_banner_photo_url"] or "",
+        car_rental_recommended=bool(row["car_rental_recommended"]),
+        car_rental_note=row["car_rental_note"] or "",
+        view_count=row["view_count"] or 0,
+        affiliate_click_count=row["affiliate_click_count"] or 0,
+        hero_photo_url=row["hero_photo_url"] or "",
+        hero_attribution=hero_attribution,
+        gallery_photo_urls=gallery_urls,
+        gallery_attributions=gallery_attributions,
+        comments=comments,
     )
 
 
-def _search_places(query: str, max_results: int = 1) -> list[dict]:
-    """Runs a Places Text Search and returns the raw places list (with photos field)."""
-    if not PLACES_API_KEY:
-        return []
-    try:
-        resp = requests.post(
-            SEARCH_URL,
-            json={"textQuery": query, "maxResultCount": max_results},
-            headers={
-                "Content-Type": "application/json",
-                "X-Goog-Api-Key": PLACES_API_KEY,
-                "X-Goog-FieldMask": "places.photos,places.displayName",
-            },
-            timeout=6,
+def _attr_to_dict(attr) -> dict | None:
+    """
+    Normalizes an attribution value to a plain dict for JSON storage.
+    Accepts either an UnsplashAttribution instance (has .model_dump()) or
+    an already-plain dict (places.py sets it directly as a dict, which
+    doesn't have .model_dump()) — calling .model_dump() unconditionally
+    crashed on the latter.
+    """
+    if attr is None:
+        return None
+    return attr.model_dump() if hasattr(attr, "model_dump") else dict(attr)
+
+
+def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
+    """Saves a freshly extracted itinerary to the cache."""
+    with _conn() as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO itineraries
+               (video_id, url, destination, duration, days_json, created_at,
+                hero_photo_url, gallery_photo_urls_json, comments_json,
+                hero_attribution_json, gallery_attributions_json, summary,
+                generation_cost_usd, car_rental_recommended, car_rental_note)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                video_id,
+                url,
+                itinerary.destination,
+                itinerary.duration,
+                json.dumps([d.model_dump() for d in itinerary.days]),
+                datetime.utcnow().isoformat(),
+                itinerary.hero_photo_url,
+                json.dumps(itinerary.gallery_photo_urls),
+                json.dumps([c.model_dump() for c in itinerary.comments]),
+                json.dumps(_attr_to_dict(itinerary.hero_attribution)),
+                json.dumps([_attr_to_dict(a) for a in itinerary.gallery_attributions]),
+                itinerary.summary,
+                itinerary.generation_cost_usd,
+                int(itinerary.car_rental_recommended),
+                itinerary.car_rental_note,
+            ),
         )
-        if resp.status_code != 200:
-            print(f"[Places] HTTP {resp.status_code} for '{query}': {resp.text[:300]}")
-            return []
-        return resp.json().get("places", [])
-    except Exception as e:
-        print(f"[Places] Exception searching '{query}': {type(e).__name__}: {e}")
-        return []
+    print(f"[DB] Saved itinerary for {video_id} ({itinerary.destination})")
 
 
-def _names_plausibly_match(query_name: str, candidate_name: str) -> bool:
+def list_itineraries() -> list[dict]:
+    """Returns all cached itineraries (for admin panel later)."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT video_id, url, destination, duration, created_at, added_by "
+            "FROM itineraries ORDER BY created_at DESC"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def _row_to_admin_dict(row: sqlite3.Row) -> dict:
     """
-    Loose check that a Places search result is actually the place we asked
-    for, not just whatever Google's text search happened to rank first.
-    Word-overlap based (not exact match) since displayName often differs
-    slightly in wording/punctuation from how the AI wrote the stop name.
+    Full itinerary content + admin metadata (status, video_id, url,
+    created_at) — everything the admin panel needs to render a preview
+    and inline editor without a second request.
     """
-    strip = lambda s: re.sub(r"[^\w\s]", " ", s.lower())
-    stopwords = {"the", "a", "an", "of", "at", "in", "and", "cafe", "restaurant"}
-    q_words = {w for w in strip(query_name).split() if len(w) > 2 and w not in stopwords}
-    c_words = {w for w in strip(candidate_name).split() if len(w) > 2 and w not in stopwords}
-    if not q_words:
-        return True
-    overlap = q_words & c_words
-    return len(overlap) / len(q_words) >= 0.4
+    return {
+        "video_id": row["video_id"],
+        "url": row["url"],
+        "destination": row["destination"],
+        "duration": row["duration"],
+        "days": json.loads(row["days_json"]),
+        "summary": row["summary"] or "",
+        "hero_photo_url": row["hero_photo_url"] or "",
+        "gallery_photo_urls": json.loads(row["gallery_photo_urls_json"] or "[]"),
+        "status": row["status"] or "pending",
+        "created_at": row["created_at"],
+        "price_category": row["price_category"] or "",
+        "tags": json.loads(row["tags_json"] or "[]"),
+        "creator_handle": row["creator_handle"] or "",
+        "generation_cost_usd": row["generation_cost_usd"] or 0.0,
+        "view_count": row["view_count"] or 0,
+        "affiliate_click_count": row["affiliate_click_count"] or 0,
+        "hotel_banner_photo_url": row["hotel_banner_photo_url"] or "",
+        "car_rental_recommended": bool(row["car_rental_recommended"]),
+        "car_rental_note": row["car_rental_note"] or "",
+    }
 
 
-def _get_place_photo_url(query: str, max_width: int = 800) -> str:
+def set_route_meta(video_id: str, price_category: str, tags: list[str], creator_handle: str) -> bool:
     """
-    Given a search query (e.g. "Cafe 67, Rome"), returns one photo URL or
-    "". Requests a few candidates and picks the first one whose name
-    plausibly matches what we searched for — Google's Text Search can
-    return an unrelated nearby business as the top hit for a loosely-worded
-    or partial-match query, which previously produced photos with nothing
-    to do with the actual stop (e.g. a convenience store for "Nile
-    Corniche"). If nothing matches confidently, returns "" rather than a
-    misleading photo.
+    Saves the homepage-grid curation fields an admin sets when approving a
+    route (price category, filter tags, creator handle) — separate from
+    update_itinerary_content since these aren't part of the Itinerary
+    content model itself. Returns False if video_id doesn't exist.
     """
-    places = _search_places(query, max_results=3)
-    if not places:
-        print(f"[Places] No places found for '{query}'")
-        return ""
-
-    query_core = query.split(",")[0]  # drop the appended city for the name comparison
-    for place in places:
-        name = place.get("displayName", {}).get("text", "")
-        if not _names_plausibly_match(query_core, name):
-            continue
-        photos = place.get("photos", [])
-        if not photos:
-            continue
-        # Google returns photos in whatever order it ranks them internally
-        # — often a random guest close-up (a boat passing in the distance,
-        # a hallway) rather than a representative exterior/room shot.
-        # Preferring a landscape-oriented, higher-resolution photo among
-        # the first several is a free, cheap signal that tends to favor an
-        # actual establishing shot over a narrow detail crop.
-        candidates = photos[:5]
-        landscape = [p for p in candidates if p.get("widthPx", 0) > p.get("heightPx", 0)]
-        best = max(landscape or candidates, key=lambda p: p.get("widthPx", 0))
-        return _build_photo_url(best.get("name", ""), max_width)
-
-    print(f"[Places] No confident name match for '{query}' — skipping photo rather than risk a wrong one")
-    return ""
-
-
-def _unsplash_candidates(query: str, per_page: int = 6) -> list[dict]:
-    """
-    Fetches raw Unsplash search results (id, urls, likes, user, links) for
-    one query. Excludes Unsplash+ ("plus") photos — those are a separate
-    paid license tier and get served with a visible tiled watermark unless
-    the requesting app has an Unsplash+ subscription, which this app
-    doesn't. Regular free-tier Unsplash photos have no such restriction.
-    """
-    if not UNSPLASH_ACCESS_KEY:
-        return []
-    try:
-        resp = requests.get(
-            UNSPLASH_SEARCH_URL,
-            params={"query": query, "per_page": per_page, "orientation": "landscape"},
-            headers={"Authorization": f"Client-ID {UNSPLASH_ACCESS_KEY}"},
-            timeout=6,
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE itineraries SET price_category = ?, tags_json = ?, creator_handle = ? WHERE video_id = ?",
+            (price_category, json.dumps(tags), creator_handle, video_id),
         )
-        # Unsplash returns these on every response (even successful ones) —
-        # logging them means a rate-limit problem shows up immediately in
-        # Railway logs instead of being guessed at after the fact. Demo-tier
-        # apps get 50/hour; Production-tier gets 5000/hour.
-        limit = resp.headers.get("X-Ratelimit-Limit")
-        remaining = resp.headers.get("X-Ratelimit-Remaining")
-        if limit and remaining:
-            print(f"[Unsplash] Rate limit: {remaining}/{limit} remaining this hour")
-        if resp.status_code != 200:
-            print(f"[Unsplash] HTTP {resp.status_code} for '{query}': {resp.text[:200]}")
-            return []
-        results = resp.json().get("results", [])
-        return [r for r in results if not r.get("plus")]
-    except Exception as e:
-        print(f"[Unsplash] Exception for '{query}': {type(e).__name__}: {e}")
-        return []
+    return cur.rowcount > 0
 
 
-def _attribution_from_candidate(c: dict) -> UnsplashAttribution:
+def list_public_approved() -> list[dict]:
     """
-    Extracts the fields Unsplash's API guidelines require us to display
-    whenever a photo is shown: the photographer's name + profile link, and
-    a link to the photo's own Unsplash page.
+    Lightweight summary of every approved route — everything the homepage
+    route grid needs to render a card, and nothing more (no full stop
+    content, no admin-only fields). Used by the public GET /routes endpoint.
     """
-    user = c.get("user") or {}
-    return UnsplashAttribution(
-        photographer_name=user.get("name", ""),
-        photographer_url=(user.get("links") or {}).get("html", ""),
-        unsplash_url=(c.get("links") or {}).get("html", ""),
-    )
+    with _conn() as conn:
+        rows = conn.execute(
+            """SELECT video_id, destination, duration, days_json, hero_photo_url,
+                      price_category, tags_json, creator_handle, summary
+               FROM itineraries WHERE status = 'approved' ORDER BY created_at DESC"""
+        ).fetchall()
+    result = []
+    for r in rows:
+        days = json.loads(r["days_json"])
+        stop_count = sum(len(d.get("stops", [])) for d in days)
+        result.append({
+            "video_id": r["video_id"],
+            "destination": r["destination"],
+            "duration": r["duration"],
+            "day_count": len(days),
+            "stop_count": stop_count,
+            "hero_photo_url": r["hero_photo_url"] or "",
+            "price_category": r["price_category"] or "€€",
+            "tags": json.loads(r["tags_json"] or "[]"),
+            "creator_handle": r["creator_handle"] or "",
+            "summary": r["summary"] or "",
+        })
+    return result
 
 
-def _trigger_unsplash_download(c: dict) -> None:
+def list_by_status(status: str) -> list[dict]:
+    """Returns full itinerary content for every route with the given status."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM itineraries WHERE status = ? ORDER BY created_at DESC",
+            (status,),
+        ).fetchall()
+    return [_row_to_admin_dict(r) for r in rows]
+
+
+def set_status(video_id: str, status: str) -> bool:
+    """Updates just the status column. Returns False if video_id doesn't exist."""
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE itineraries SET status = ? WHERE video_id = ?", (status, video_id)
+        )
+    return cur.rowcount > 0
+
+
+def delete_itinerary_permanently(video_id: str) -> bool:
+    """Hard-deletes a route. Used by the admin 'Изтрий' button (not 'Отхвърли')."""
+    with _conn() as conn:
+        cur = conn.execute("DELETE FROM itineraries WHERE video_id = ?", (video_id,))
+    return cur.rowcount > 0
+
+
+def update_itinerary_content(video_id: str, itinerary: Itinerary) -> bool:
     """
-    Fires Unsplash's required "download" tracking event for a photo that's
-    actually being used (not just browsed in search results) — part of
-    their API guidelines for Production access. Best-effort: this should
-    never block or fail the actual response to the user.
+    Overwrites the editable content of a route (days/stops, hero photo,
+    gallery, destination, duration) from the admin inline editor.
+    Deliberately does NOT touch status/url/created_at/comments — those
+    aren't part of what the admin editor edits.
+    Returns False if video_id doesn't exist.
     """
-    download_location = (c.get("links") or {}).get("download_location")
-    if not download_location or not UNSPLASH_ACCESS_KEY:
+    with _conn() as conn:
+        cur = conn.execute(
+            """UPDATE itineraries
+               SET destination = ?, duration = ?, days_json = ?,
+                   hero_photo_url = ?, gallery_photo_urls_json = ?, summary = ?,
+                   hotel_banner_photo_url = ?, car_rental_recommended = ?,
+                   car_rental_note = ?
+               WHERE video_id = ?""",
+            (
+                itinerary.destination,
+                itinerary.duration,
+                json.dumps([d.model_dump() for d in itinerary.days]),
+                itinerary.hero_photo_url,
+                json.dumps(itinerary.gallery_photo_urls),
+                itinerary.summary,
+                itinerary.hotel_banner_photo_url,
+                int(itinerary.car_rental_recommended),
+                itinerary.car_rental_note,
+                video_id,
+            ),
+        )
+    return cur.rowcount > 0
+
+
+def get_stats() -> dict:
+    """Counts for the admin Statistics tab: totals by status, top destinations, cost, and engagement."""
+    with _conn() as conn:
+        total = conn.execute("SELECT COUNT(*) c FROM itineraries").fetchone()["c"]
+        pending = conn.execute(
+            "SELECT COUNT(*) c FROM itineraries WHERE status = 'pending'"
+        ).fetchone()["c"]
+        approved = conn.execute(
+            "SELECT COUNT(*) c FROM itineraries WHERE status = 'approved'"
+        ).fetchone()["c"]
+        rejected = conn.execute(
+            "SELECT COUNT(*) c FROM itineraries WHERE status = 'rejected'"
+        ).fetchone()["c"]
+        top_rows = conn.execute(
+            """SELECT destination, COUNT(*) c FROM itineraries
+               GROUP BY destination ORDER BY c DESC LIMIT 5"""
+        ).fetchall()
+        total_cost = conn.execute(
+            "SELECT COALESCE(SUM(generation_cost_usd), 0) c FROM itineraries"
+        ).fetchone()["c"]
+        total_views = conn.execute(
+            "SELECT COALESCE(SUM(view_count), 0) c FROM itineraries"
+        ).fetchone()["c"]
+        total_affiliate_clicks = conn.execute(
+            "SELECT COALESCE(SUM(affiliate_click_count), 0) c FROM itineraries"
+        ).fetchone()["c"]
+        most_viewed_row = conn.execute(
+            """SELECT video_id, destination, view_count FROM itineraries
+               WHERE view_count > 0 ORDER BY view_count DESC LIMIT 1"""
+        ).fetchone()
+        most_clicked_row = conn.execute(
+            """SELECT video_id, destination, affiliate_click_count FROM itineraries
+               WHERE affiliate_click_count > 0 ORDER BY affiliate_click_count DESC LIMIT 1"""
+        ).fetchone()
+    return {
+        "total": total,
+        "pending": pending,
+        "approved": approved,
+        "rejected": rejected,
+        "top_destinations": [{"destination": r["destination"], "count": r["c"]} for r in top_rows],
+        "total_generation_cost_usd": total_cost,
+        "total_views": total_views,
+        "total_affiliate_clicks": total_affiliate_clicks,
+        "most_viewed": (
+            {"destination": most_viewed_row["destination"], "views": most_viewed_row["view_count"]}
+            if most_viewed_row else None
+        ),
+        "most_clicked": (
+            {"destination": most_clicked_row["destination"], "clicks": most_clicked_row["affiliate_click_count"]}
+            if most_clicked_row else None
+        ),
+    }
+
+
+def increment_view_count(video_id: str) -> bool:
+    """Bumps a route's view counter by 1. Silently no-ops if the video_id doesn't exist."""
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE itineraries SET view_count = view_count + 1 WHERE video_id = ?", (video_id,)
+        )
+    return cur.rowcount > 0
+
+
+def increment_affiliate_click_count(video_id: str) -> bool:
+    """Bumps a route's affiliate-link-click counter by 1 (Booking/Expedia/Airbnb buttons)."""
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE itineraries SET affiliate_click_count = affiliate_click_count + 1 WHERE video_id = ?",
+            (video_id,),
+        )
+    return cur.rowcount > 0
+
+
+def get_site_settings() -> dict:
+    """
+    Returns the homepage's admin-controlled settings: hero_slides (list of
+    image URLs for the rotating homepage background) and featured_route_ids
+    (ordered list of video_ids to show on the homepage grid — empty means
+    "show all approved routes automatically", the original default behavior).
+    """
+    with _conn() as conn:
+        row = conn.execute("SELECT * FROM site_settings WHERE id = 1").fetchone()
+    if row is None:
+        return {"hero_slides": [], "featured_route_ids": []}
+    return {
+        "hero_slides": json.loads(row["hero_slides_json"] or "[]"),
+        "featured_route_ids": json.loads(row["featured_route_ids_json"] or "[]"),
+    }
+
+
+def set_site_settings(hero_slides: list[str], featured_route_ids: list[str]) -> None:
+    """Overwrites the homepage settings row (upsert — creates it if somehow missing)."""
+    with _conn() as conn:
+        conn.execute(
+            """INSERT INTO site_settings (id, hero_slides_json, featured_route_ids_json)
+               VALUES (1, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+                 hero_slides_json = excluded.hero_slides_json,
+                 featured_route_ids_json = excluded.featured_route_ids_json""",
+            (json.dumps(hero_slides), json.dumps(featured_route_ids)),
+        )
+
+
+def clear_all_itineraries() -> int:
+    """
+    Deletes every cached itinerary. Used by the admin 'Clear Cache' button
+    so previously-generated routes regenerate fresh (e.g. after a link
+    format or pricing change) instead of serving stale cached data.
+    Returns the number of rows deleted.
+    """
+    with _conn() as conn:
+        cur = conn.execute("DELETE FROM itineraries")
+        count = cur.rowcount
+    print(f"[DB] Cleared {count} cached itineraries")
+    return count
+
+
+# ── Troll filter cache ────────────────────────────────────────────────────────
+
+def get_troll_decision(video_id: str) -> bool | None:
+    """
+    Returns:
+      True  — previously confirmed as travel content
+      False — previously rejected as non-travel
+      None  — never checked before
+    """
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT is_travel FROM troll_cache WHERE video_id = ?", (video_id,)
+        ).fetchone()
+    if row is None:
+        return None
+    return bool(row["is_travel"])
+
+
+def save_troll_decision(video_id: str, is_travel: bool, reason: str) -> None:
+    """Stores the result of a troll-filter check so we never repeat it."""
+    with _conn() as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO troll_cache
+               (video_id, is_travel, reason, checked_at)
+               VALUES (?, ?, ?, ?)""",
+            (video_id, int(is_travel), reason, datetime.utcnow().isoformat()),
+        )
+
+
+# ── Reviews ────────────────────────────────────────────────────────────────
+
+def save_review(video_id: str, name: str, title: str, rating: int, text: str) -> dict:
+    """Saves a new review and returns it as a dict (ready for Review(**dict))."""
+    created_at = datetime.utcnow().isoformat()
+    with _conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO reviews (video_id, name, title, rating, text, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (video_id, name, title, rating, text, created_at),
+        )
+        new_id = cur.lastrowid
+    print(f"[DB] Saved review #{new_id} for {video_id} ({rating}★)")
+    return {
+        "id": new_id,
+        "video_id": video_id,
+        "name": name,
+        "title": title,
+        "rating": rating,
+        "text": text,
+        "created_at": created_at,
+    }
+
+
+# ── Troll-filter decision cache ──────────────────────────────────────────
+# Avoids re-running the Haiku travel-content check (small but non-zero
+# cost) for a video_id that's already been checked before — e.g. a repeat
+# submission of the same link, or a re-extraction after Clear cache.
+
+def get_troll_decision(video_id: str) -> bool | None:
+    """Returns the cached is_travel decision for this video_id, or None if never checked."""
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT is_travel FROM troll_cache WHERE video_id = ?", (video_id,)
+        ).fetchone()
+    if row is None:
+        return None
+    return bool(row["is_travel"])
+
+
+def save_troll_decision(video_id: str, is_travel: bool, reason: str) -> None:
+    """Saves (or updates) the troll-filter decision for a video_id."""
+    with _conn() as conn:
+        conn.execute(
+            """INSERT INTO troll_cache (video_id, is_travel, reason, checked_at)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(video_id) DO UPDATE SET
+                   is_travel = excluded.is_travel,
+                   reason = excluded.reason,
+                   checked_at = excluded.checked_at""",
+            (video_id, int(is_travel), reason, datetime.utcnow().isoformat()),
+        )
+
+
+def get_reviews(video_id: str) -> list[dict]:
+    """Returns all reviews for a video_id, most recent first."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM reviews WHERE video_id = ? ORDER BY created_at DESC",
+            (video_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── Stop photo/address cache — reuse across routes for the same city ────────
+# When the same destination gets a second (or third) route generated later,
+# stops that already appeared before (e.g. "Colosseum" showing up again in a
+# second Rome route) shouldn't have to be re-fetched and re-fixed by hand
+# every time — reuse whatever photo and address Gerry already approved or
+# fixed for that exact stop in this city.
+
+def _stop_cache_key(city: str, stop_name: str) -> str:
+    """Normalizes city+name into a stable lookup key (lowercase, trimmed)."""
+    return f"{(city or '').strip().lower()}|{(stop_name or '').strip().lower()}"
+
+
+def get_cached_stop(city: str, stop_name: str) -> dict | None:
+    """
+    Returns {"photo_url": ..., "maps_url_override": ...} if this exact
+    city+stop_name combination was already saved from a previous route,
+    else None. Called during photo enrichment, before falling back to a
+    fresh Places/Unsplash lookup.
+    """
+    key = _stop_cache_key(city, stop_name)
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT photo_url, maps_url_override FROM stop_cache WHERE cache_key = ?",
+            (key,),
+        ).fetchone()
+    if not row or not row["photo_url"]:
+        return None
+    return {"photo_url": row["photo_url"], "maps_url_override": row["maps_url_override"] or ""}
+
+
+def upsert_stop_cache(city: str, stop_name: str, photo_url: str, maps_url_override: str = "") -> None:
+    """Saves/updates one stop's photo+address for reuse in future routes for the same city."""
+    if not stop_name or not photo_url:
         return
-    try:
-        requests.get(
-            download_location,
-            headers={"Authorization": f"Client-ID {UNSPLASH_ACCESS_KEY}"},
-            timeout=4,
+    key = _stop_cache_key(city, stop_name)
+    with _conn() as conn:
+        conn.execute(
+            """INSERT INTO stop_cache (cache_key, city, stop_name, photo_url, maps_url_override, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(cache_key) DO UPDATE SET
+                   photo_url = excluded.photo_url,
+                   maps_url_override = excluded.maps_url_override,
+                   updated_at = excluded.updated_at""",
+            (key, city, stop_name, photo_url, maps_url_override or "", datetime.utcnow().isoformat()),
         )
-    except Exception as e:
-        print(f"[Unsplash] Download-tracking ping failed (non-fatal): {type(e).__name__}: {e}")
 
 
-def _get_destination_gallery_unsplash(destination: str, count: int = 5) -> list[dict]:
+def cache_stops_from_itinerary(destination: str, itinerary: Itinerary) -> None:
     """
-    Returns up to `count` curated, high-resolution travel photo entries for
-    a destination from Unsplash, each as {"url": ..., "likes": ...}. Uses
-    several distinct queries (rather than one broad query) so the gallery
-    shows varied shots instead of several near-duplicate frames from the
-    same photo session. Falls back to an empty list if no key is
-    configured or all requests fail.
+    Bulk-saves every stop's current photo+address into the cache — called
+    whenever an admin saves edits or approves a route, since that's the
+    signal that the photos in it (at least the ones worth keeping) are
+    good. Cheap no-op for stops with no photo set.
     """
-    if not UNSPLASH_ACCESS_KEY:
-        print("[Unsplash] No API key — skipping destination gallery")
-        return []
-
-    # Multi-city destinations (e.g. "Cairo & Luxor", "Rome and Florence")
-    # need to be split down to a single clean city name — querying Unsplash
-    # with the full compound string returns few or no results, which starved
-    # the gallery down to 0-1 photos and hid the thumbnail strip entirely.
-    city = re.split(r"\s*(?:,|&|\band\b)\s*", destination, maxsplit=1, flags=re.IGNORECASE)[0].strip()
-
-    # These target generically striking travel photography rather than
-    # city-specific shots — "night skyline" or "waterfront" return nothing
-    # useful for an island/nature destination (e.g. Bali), which is what
-    # starved the gallery down to 2-3 photos instead of 5. "Aerial",
-    # "sunset", "scenic", and "beautiful" are terms photographers tag
-    # constantly across every destination type, so they reliably surface
-    # a full gallery of appealing shots for cities, islands, and nature
-    # destinations alike.
-    queries = [
-        f"{city} aerial view",
-        f"{city} scenic",
-        f"{city} sunset",
-        f"{city} landmark",
-        f"{city} beautiful",
-    ]
-    # Used only to top up the gallery if the specific queries above didn't
-    # collectively return `count` photos (e.g. an obscure destination) —
-    # broad enough to almost always return something, still tied to the
-    # destination rather than falling back to something generic like
-    # "travel", which could return a photo of an unrelated place.
-    fallback_queries = [f"{city} travel", f"{city} view", city]
-
-    # Overlapping queries (e.g. "Cairo aerial view" and "Cairo landmark")
-    # very often surface the exact same handful of iconic photos as each
-    # other's top result — deduping on URL alone let 3 near-identical
-    # skyline shots into the same gallery. Tracking used photo IDs *across
-    # every query* and falling through to the next-best candidate within
-    # a query (instead of giving up on that query) fixes it properly.
-    #
-    # IMPORTANT: always sample at least 2 distinct queries and pool their
-    # candidates together before picking the best `count`, even when
-    # count=1. Stopping the loop the moment len(photos) >= count meant
-    # count=1 (set to conserve Unsplash quota) searched ONLY the first
-    # query term ("aerial view") and kept whatever came back — no chance
-    # to compare against "scenic", "landmark", etc. That's what was
-    # producing consistently mediocre hero photos, not a lack of good
-    # photos on Unsplash. Comparing across a small pool first, then
-    # keeping only the top `count`, costs one extra API call but fixes
-    # the actual quality regression.
-    sample_query_count = max(2, count)
-    used_ids: set[str] = set()
-    candidate_pool: list[dict] = []
-    queries_to_try = (queries + fallback_queries)[:sample_query_count]
-    for query in queries_to_try:
-        for c in _unsplash_candidates(query):
-            cid = c.get("id")
-            url = c.get("urls", {}).get("regular")
-            if not url or cid in used_ids:
-                continue
-            used_ids.add(cid)
-            candidate_pool.append({
-                "url": url,
-                "likes": c.get("likes", 0),
-                "attribution": _attribution_from_candidate(c),
-                "_raw": c,
-            })
-
-    candidate_pool.sort(key=lambda p: p["likes"], reverse=True)
-    photos = candidate_pool[:count]
-    for p in photos:
-        _trigger_unsplash_download(p.pop("_raw"))
-
-    # If the small sample somehow didn't fill `count` (rare — an obscure
-    # destination with thin Unsplash coverage), top up from the remaining
-    # fallback queries before giving up.
-    if len(photos) < count:
-        for query in (queries + fallback_queries)[sample_query_count:]:
-            if len(photos) >= count:
-                break
-            for c in sorted(_unsplash_candidates(query), key=lambda r: r.get("likes", 0), reverse=True):
-                cid = c.get("id")
-                url = c.get("urls", {}).get("regular")
-                if not url or cid in used_ids:
-                    continue
-                used_ids.add(cid)
-                _trigger_unsplash_download(c)
-                photos.append({"url": url, "likes": c.get("likes", 0), "attribution": _attribution_from_candidate(c)})
-                break
-
-    print(f"[Unsplash] Gallery for '{destination}': {len(photos)} photos (sampled {len(queries_to_try)} queries, {len(candidate_pool)} candidates)")
-    return photos
-
-
-# Google Places is now tried first for every specific-name stop regardless
-# of category — it has real photos of the actual entity (crowd-sourced from
-# Google Maps), whereas Unsplash is keyword-matched stock photography that
-# can return something merely thematically similar rather than the actual
-# restaurant/beach/landmark. Unsplash-by-name is only the fallback when
-# Places has no listing/photo for that specific place.
-
-# Rough Unsplash query term per category — used as a fallback photo when a
-# stop's name isn't a real, searchable place (see enrich_itinerary_with_photos).
-_CATEGORY_PHOTO_TERMS = {
-    "hotel": "hotel room interior",
-    "food": "cafe restaurant food",
-    "sight": "landmark",
-    "activity": "adventure activity",
-    "beach": "tropical beach",
-    "village": "village street",
-}
-
-
-def enrich_itinerary_with_photos(itinerary) -> None:
-    """
-    Mutates the itinerary in-place:
-      - gallery_photo_urls / hero_photo_url: Unsplash (curated destination shots)
-      - each stop's photo_url: Google Places first for ANY specific-name
-        stop (real photo of the actual entity, any category); Unsplash
-        search-by-name as fallback when Places has no listing/photo for
-        that specific place; a category-matched Unsplash photo as the
-        final fallback when the AI couldn't confirm a specific name at all
-        (`is_specific_name=False`).
-    """
-    # Destination gallery from Unsplash — the *best-liked* photo doubles as
-    # the hero, not just whichever of the 5 queries happened to run first
-    # (that previously meant "aerial view" always won the hero slot even
-    # when "sunset" or "landmark" returned a much more striking photo).
-    gallery = _get_destination_gallery_unsplash(itinerary.destination, count=1)
-    itinerary.gallery_photo_urls = [p["url"] for p in gallery]
-    itinerary.gallery_attributions = [p["attribution"] for p in gallery]
-    hero = max(gallery, key=lambda p: p["likes"]) if gallery else None
-    itinerary.hero_photo_url = hero["url"] if hero else ""
-    itinerary.hero_attribution = hero["attribution"] if hero else None
-    print(f"[Photos] Hero: {itinerary.destination} → {bool(itinerary.hero_photo_url)}")
-
-    # Single primary city (e.g. "Cairo" from "Cairo & Luxor") — same split
-    # used for the gallery above. Deliberately NOT the full multi-city
-    # string: appending "Cairo & Luxor" to every stop's search query would
-    # bias a Luxor stop's photo/Maps search toward Cairo just because it
-    # shares the trip. Imperfect for multi-city trips (a Luxor-only stop
-    # with no city in its own name still gets "Cairo" appended), but the
-    # AI usually already writes the correct city into stop.name itself
-    # (e.g. "Egyptian Museum, Cairo") — the fallback below only kicks in
-    # when it didn't.
-    city = re.split(r"\s*(?:,|&|\band\b)\s*", itinerary.destination, maxsplit=1, flags=re.IGNORECASE)[0].strip()
-    used_ids: set[str] = set()  # avoid repeating a photo across stop cards
-
-    def _best_fresh_unsplash(query: str) -> tuple[str, dict | None]:
-        """Returns (url, attribution) — attribution is None if nothing found."""
-        for c in sorted(_unsplash_candidates(query, per_page=10), key=lambda r: r.get("likes", 0), reverse=True):
-            cid, url = c.get("id"), c.get("urls", {}).get("regular")
-            if url and cid not in used_ids:
-                used_ids.add(cid)
-                _trigger_unsplash_download(c)
-                return url, _attribution_from_candidate(c)
-        return "", None
-
+    city = (destination or "").split(",")[0].strip()
     for day in itinerary.days:
         for stop in day.stops:
-            is_specific = getattr(stop, "is_specific_name", True)
-            name_query = stop.name if city.lower() in stop.name.lower() else f"{stop.name}, {city}"
-
-            # Reuse a photo/address already saved from a PREVIOUS route for
-            # this exact city+stop name (e.g. the Colosseum showing up
-            # again in a second Rome route) — skips the Places/Unsplash
-            # lookup entirely, which both saves the API call and means
-            # Gerry's earlier manual fix for this stop carries over
-            # automatically instead of needing to be redone every time.
-            cached = database.get_cached_stop(city, stop.name)
-            if cached:
-                stop.photo_url = cached["photo_url"]
-                if cached.get("maps_url_override"):
-                    stop.maps_url_override = cached["maps_url_override"]
-                print(f"[Cache] Reused saved photo for '{stop.name}' in {city}")
-                continue
-
-            # Unconfirmed HOTEL stops get one extra chance before falling
-            # back to generic photos: the AI's own description (e.g.
-            # "Beachfront resort hotel, Cala Sant Vicenç area") is often
-            # specific enough for Places to surface an actual, real,
-            # bookable hotel that matches the style/area — even though it's
-            # not confirmed as the exact one shown in the video. When that
-            # happens, upgrade the stop to that real hotel: real name, real
-            # photo, and real booking links (previously there was no way to
-            # "Book this hotel" at all here, since the AI's own description
-            # isn't a real bookable entity — only a generic search was
-            # possible). is_specific_name stays False so the frontend still
-            # shows the "similar match, not confirmed" disclaimer — this is
-            # a real place, just not confirmed as THE place from the clip.
-            if stop.category == "hotel" and not is_specific and PLACES_API_KEY:
-                candidates = _search_places(name_query, max_results=1)
-                if candidates:
-                    real_name = candidates[0].get("displayName", {}).get("text", "").strip()
-                    photos = candidates[0].get("photos", [])
-                    if real_name and photos:
-                        print(f"[Places] Upgraded unconfirmed hotel '{stop.name}' → real match '{real_name}'")
-                        stop.name = real_name
-                        stop.similar_hotel_is_real = True
-                        stop.photo_url = _get_place_photo_url(f"{real_name}, {city}")
-                        booking_query = f"{real_name}, {city}"
-                        stop.booking_url = _booking_affiliate_url(booking_query)
-                        stop.expedia_url = _expedia_affiliate_url(booking_query)
-
-            if is_specific and PLACES_API_KEY:
-                # Don't double up the city if the AI already wrote it into
-                # the name (e.g. "Nile Corniche, Cairo") — searching
-                # "Nile Corniche, Cairo, Cairo & Luxor" is redundant and
-                # doesn't help Places match the right place.
-                stop.photo_url = _get_place_photo_url(name_query)  # Places photo — no Unsplash attribution needed
-                print(f"[Places] Stop: {name_query} → {bool(stop.photo_url)}")
-
-            if not stop.photo_url and is_specific:
-                # Places had no listing/photo for this specific place (or no
-                # API key configured) — fall back to an Unsplash search BY
-                # NAME. This is a weaker match than Places (Unsplash is
-                # keyword-matched stock photography, not a business photo
-                # directory — it can return something merely thematically
-                # similar rather than the actual place), so it only kicks in
-                # when Places genuinely has nothing.
-                stop.photo_url, stop.photo_attribution = _best_fresh_unsplash(name_query)
-                print(f"[Photos] Unsplash (named) fallback for '{stop.name}' → {bool(stop.photo_url)}")
-
-            if stop.photo_url:
-                continue
-
-            # Either the AI flagged this as a generic/invented name, there's
-            # no API key configured, or the attempt above found nothing.
-            # Even when a stop isn't a specific bookable place, its own
-            # name is usually a much better photo search term than a
-            # generic category label — "ATV / Quad Bike Rental, Santorini"
-            # should find ATV photos, not just generic island scenery.
-            # Only fall back to the category term if that search comes up
-            # empty (e.g. the name is too much of a sentence to match).
-            stop.photo_is_fallback = True  # reaching this point always means
-                                             # no confident name-match photo —
-                                             # flagged for the admin panel.
-            stop.photo_url, stop.photo_attribution = _best_fresh_unsplash(name_query)
-            if not stop.photo_url:
-                term = _CATEGORY_PHOTO_TERMS.get(stop.category, "travel")
-                stop.photo_url, stop.photo_attribution = _best_fresh_unsplash(f"{city} {term}".strip())
-            print(f"[Photos] Fallback for '{stop.name}' → {bool(stop.photo_url)}")
+            upsert_stop_cache(city, stop.name, stop.photo_url, getattr(stop, "maps_url_override", ""))

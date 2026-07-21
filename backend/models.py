@@ -132,6 +132,16 @@ class Itinerary(BaseModel):
                                         # shown when no real hotel stop was
                                         # found in the video. Falls back to
                                         # the last gallery photo if empty.
+    car_rental_recommended: bool = False  # AI-set (and admin-overridable):
+                                            # true when the video itself
+                                            # shows/mentions driving, or the
+                                            # itinerary covers multiple towns
+                                            # best reached by car. Shows a
+                                            # "Rent a car" box under the
+                                            # hotel box when true.
+    car_rental_note: str = ""  # Short reason shown alongside the car
+                                 # rental box, e.g. "This itinerary covers
+                                 # several towns best explored by car."
     view_count: int = 0            # Times the route page has been opened
     affiliate_click_count: int = 0  # Times a Booking/Expedia/Airbnb link
                                       # was clicked from this route

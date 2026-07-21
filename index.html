@@ -586,6 +586,48 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.js"></script>
 
+<!-- "Add to Home Screen" prompt — mobile only. Android/Chrome gets a real
+     one-tap native install; iOS Safari has no equivalent API (Apple doesn't
+     allow triggering the prompt programmatically), so it gets a short
+     step-by-step overlay instead. Most people never find this feature
+     buried in browser menus on their own, so the site offers it directly. -->
+<div id="install-banner" class="hidden fixed bottom-0 left-0 right-0 z-[160] p-3">
+  <div class="bento-card bg-white rounded-2xl p-3.5 flex items-center gap-3 border border-gray-100">
+    <div class="w-11 h-11 rounded-xl overflow-hidden flex-shrink-0">
+      <img src="/icon-192.png" alt="" class="w-full h-full object-cover">
+    </div>
+    <div class="flex-1 min-w-0">
+      <div class="text-[13px] font-medium text-gray-900">Add GetWay to your Home Screen</div>
+      <div class="text-[11px] text-gray-500">Open it like an app, one tap, no browser bar</div>
+    </div>
+    <button onclick="handleInstallClick()" class="btn-interactive flex-shrink-0 h-9 px-3.5 rounded-full bg-[#8B5CF6] text-white text-xs font-medium">Add</button>
+    <button onclick="dismissInstallBanner()" class="flex-shrink-0 w-7 h-7 flex items-center justify-center text-gray-400"><i data-lucide="x" class="w-4 h-4"></i></button>
+  </div>
+</div>
+
+<!-- iOS-only instructional overlay (no native install API exists on iOS Safari) -->
+<div id="ios-install-overlay" class="hidden fixed inset-0 z-[170] bg-black/50 flex items-end sm:items-center justify-center p-4" onclick="if(event.target===this) closeIosOverlay()">
+  <div class="bento-card bg-white rounded-[22px] p-6 w-full max-w-sm">
+    <div class="flex items-center justify-between mb-4">
+      <div class="font-serif-display text-lg">Add to Home Screen</div>
+      <button onclick="closeIosOverlay()"><i data-lucide="x" class="w-4 h-4 text-gray-400"></i></button>
+    </div>
+    <div class="flex items-start gap-3 mb-4">
+      <div class="w-7 h-7 rounded-full bg-[#8B5CF6]/10 text-[#6D28D9] text-xs font-semibold flex items-center justify-center flex-shrink-0">1</div>
+      <div class="text-sm text-gray-700 pt-0.5">Tap the <i data-lucide="share" class="w-4 h-4 inline text-[#6D28D9]"></i> <b>Share</b> button in Safari's toolbar</div>
+    </div>
+    <div class="flex items-start gap-3 mb-4">
+      <div class="w-7 h-7 rounded-full bg-[#8B5CF6]/10 text-[#6D28D9] text-xs font-semibold flex items-center justify-center flex-shrink-0">2</div>
+      <div class="text-sm text-gray-700 pt-0.5">Scroll down and tap <b>"Add to Home Screen"</b></div>
+    </div>
+    <div class="flex items-start gap-3 mb-5">
+      <div class="w-7 h-7 rounded-full bg-[#8B5CF6]/10 text-[#6D28D9] text-xs font-semibold flex items-center justify-center flex-shrink-0">3</div>
+      <div class="text-sm text-gray-700 pt-0.5">Tap <b>"Add"</b> — done!</div>
+    </div>
+    <button onclick="closeIosOverlay()" class="btn-interactive w-full h-11 flex items-center justify-center bg-[#8B5CF6] text-white text-sm font-medium rounded-xl">Got it</button>
+  </div>
+</div>
+
 <button onclick="toggleSupportChat()" class="btn-interactive fixed bottom-6 right-6 z-[150] w-14 h-14 rounded-full bg-[#8B5CF6] shadow-xl flex items-center justify-center">
   <i data-lucide="message-circle" class="w-6 h-6 text-white"></i>
 </button>
@@ -1991,7 +2033,68 @@
     }
   }
 
+  // ── "Add to Home Screen" prompt ───────────────────────────────────────
+  let deferredInstallPrompt = null;
+  const DISMISS_KEY = 'getway_install_dismissed_at';
+  const DISMISS_DAYS = 14;
+
+  function isStandaloneAlready() {
+    return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  }
+  function isIOS() {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  }
+  function wasRecentlyDismissed() {
+    const at = parseInt(localStorage.getItem(DISMISS_KEY) || '0', 10);
+    return at && (Date.now() - at) < DISMISS_DAYS * 24 * 60 * 60 * 1000;
+  }
+
+  // Android/Chrome fires this when the site qualifies for installation —
+  // we intercept it so OUR banner (not the browser's own mini-toast, which
+  // most people miss or ignore) triggers the real native prompt.
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    maybeShowInstallBanner();
+  });
+
+  function maybeShowInstallBanner() {
+    if (isStandaloneAlready() || wasRecentlyDismissed()) return;
+    if (window.innerWidth >= 640) return; // mobile only
+    // iOS: no beforeinstallprompt event exists at all, so show our banner
+    // for it directly (gated only by device + standalone + dismissal above).
+    // Android/Chrome: only show once we actually have a captured prompt.
+    if (isIOS() || deferredInstallPrompt) {
+      setTimeout(() => {
+        const el = document.getElementById('install-banner');
+        if (el) { el.classList.remove('hidden'); if (typeof lucide !== 'undefined') lucide.createIcons(); }
+      }, 3500);
+    }
+  }
+
+  function handleInstallClick() {
+    if (deferredInstallPrompt) {
+      deferredInstallPrompt.prompt();
+      deferredInstallPrompt.userChoice.finally(() => {
+        deferredInstallPrompt = null;
+        dismissInstallBanner();
+      });
+    } else if (isIOS()) {
+      document.getElementById('ios-install-overlay').classList.remove('hidden');
+      dismissInstallBanner(false); // hide the banner but don't start the 14-day cooldown yet
+    }
+  }
+  function closeIosOverlay() {
+    document.getElementById('ios-install-overlay').classList.add('hidden');
+  }
+  function dismissInstallBanner(startCooldown) {
+    const el = document.getElementById('install-banner');
+    if (el) el.classList.add('hidden');
+    if (startCooldown !== false) localStorage.setItem(DISMISS_KEY, String(Date.now()));
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
+    if (isIOS()) maybeShowInstallBanner(); // Android waits for beforeinstallprompt instead
     safeRun('renderRoutes', renderRoutes);
     safeRun('renderMallorcaHero', renderMallorcaHero);
     safeRun('renderRouteMedia', renderRouteMedia);

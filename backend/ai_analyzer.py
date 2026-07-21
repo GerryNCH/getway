@@ -109,7 +109,9 @@ def _attach_booking_urls(data: dict) -> dict:
         frontend already applies for its own "unconfirmed hotel" fallback.
       - food     → Google Maps search (name + city) as a stand-in until
         TheFork affiliate is live.
-      - activity → GetYourGuide search wrapped in Gerry's affiliate params.
+      - activity/sight → GetYourGuide search wrapped in Gerry's affiliate
+        params — sights (museums, landmarks) often need advance tickets
+        too, not just tour-style activities.
     Any other category is left untouched.
     """
     destination = data.get("destination", "")
@@ -128,7 +130,7 @@ def _attach_booking_urls(data: dict) -> dict:
             elif category == "food":
                 query = f"{name} {city}".strip()
                 stop["booking_url"] = _google_maps_search_url(query)
-            elif category == "activity":
+            elif category in ("activity", "sight"):
                 query = f"{name} {city}".strip() if is_specific else f"{city} tours activities"
                 stop["booking_url"] = _getyourguide_affiliate_url(query)
 
@@ -154,6 +156,8 @@ Schema:
   "summary": "2-3 sentence intro: what makes this destination special, and what this specific route covers (e.g. its vibe, standout stops, or theme)",
   "price_category": "€ | €€ | €€€",
   "tags": ["0-3 of: most_popular, luxury, budget_friendly, exotic, mountain, city, beach"],
+  "car_rental_recommended": true,
+  "car_rental_note": "Short reason, e.g. 'This itinerary covers several towns best explored by car.' — empty string if car_rental_recommended is false",
   "days": [
     {
       "day": 1,
@@ -189,6 +193,14 @@ an empty array if none clearly apply. Don't force a fit:
   mountain        → mountains, hiking, ski, or alpine village setting
   city            → primarily an urban destination
   beach           → primarily a coastal/beach destination
+
+"car_rental_recommended" — set true only when there's real signal for it:
+  - the video itself shows/mentions driving, a rental car, or road-tripping, OR
+  - the stops span multiple distinct towns/areas that aren't realistically
+    walkable or connected by an obvious single public transit line
+  Set false for single-city, walkable, or public-transit-friendly itineraries
+  (most city breaks). When true, "car_rental_note" is one short, concrete
+  reason — not a generic "cars are convenient" filler.
 
 "property_type" and "area_label" (hotel stops only) — describe the
 property's style and neighbourhood the way a travel writer would (e.g.

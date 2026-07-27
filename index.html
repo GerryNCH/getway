@@ -781,8 +781,8 @@
 
   function buildCarRentalBannerHtml(destination, videoId, note) {
     const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim() || destination || '';
-    const bookingHref = bookingCarRentalUrl(city);
-    const expediaHref = expediaCarRentalUrl(city);
+    const bookingHref = bookingCarRentalUrl();
+    const expediaHref = expediaCarRentalUrl();
     const gygHref = gygCarRentalUrl(city);
     const seed = 'car-rental-' + slugify(city);
 
@@ -1449,21 +1449,23 @@
     return `https://expedia.com/affiliate?${params.toString()}`;
   }
 
-  // Car rental search links. UNLIKE hotel search, Booking.com/Expedia's
-  // real car rental flow needs specific pickup/dropoff dates (confirmed
-  // via Booking's own Demand API docs) — there's no officially documented
-  // "just a city name" entry point the way hotel search has. These mirror
-  // the same city-search param convention used for hotels on each site's
-  // /cars section, which is a reasonable-confidence guess based on their
-  // consistent param naming — NOT independently confirmed working the way
-  // the hotel URLs were. Worth a spot-check click once real traffic comes
-  // through.
-  function bookingCarRentalUrl(city) {
-    const target = `https://www.booking.com/cars/index.html?ss=${encodeURIComponent(city)}`;
+  // Car rental search links. CONFIRMED July 2026 (fetched both pages
+  // directly): Booking.com's real car rental flow lives behind a
+  // pickup/dropoff date + location picker — there is no documented
+  // "just a city name" query param the way hotel search has (?ss= is a
+  // hotel-search param and does nothing on /cars/index.html). Same for
+  // Expedia — /Cars is a real, live landing page, but Cars-Search?destination=
+  // was never a real endpoint. Rather than link to a guessed URL that
+  // silently fails, these send the traveler to each site's real car
+  // rental homepage (still wrapped in our affiliate tracking) where they
+  // enter their own pickup city/dates. Less precise than a deep link,
+  // but actually works.
+  function bookingCarRentalUrl() {
+    const target = `https://www.booking.com/cars/`;
     return `${CJ_AFFILIATE_BASE}?url=${encodeURIComponent(target)}`;
   }
-  function expediaCarRentalUrl(city) {
-    const target = `https://www.expedia.com/Cars-Search?destination=${encodeURIComponent(city)}`;
+  function expediaCarRentalUrl() {
+    const target = `https://www.expedia.com/Cars`;
     const params = new URLSearchParams({
       siteid: '1',
       landingPage: target,
@@ -1773,8 +1775,21 @@
     // source.unsplash.com's old "Source" endpoint was deprecated and could
     // return a broken image or something entirely unrelated to the trip.
     const heroBg = document.getElementById('ai-route-hero-bg');
-    // Dedup by URL — different stops can share the same Google Places photo
-    const gallery = [...new Set(itinerary.gallery_photo_urls || [])];
+    // Dedup by URL — different stops can share the same Google Places photo.
+    // Attributions must be deduped in lockstep with the URLs (not just the
+    // URLs on their own), or credit[i] stops matching photo[i] as soon as a
+    // duplicate earlier in the list gets dropped.
+    const rawGalleryUrls = itinerary.gallery_photo_urls || [];
+    const rawGalleryAttributions = itinerary.gallery_attributions || [];
+    const seenGalleryUrls = new Set();
+    const gallery = [];
+    const galleryAttributions = [];
+    rawGalleryUrls.forEach((url, i) => {
+      if (!url || seenGalleryUrls.has(url)) return;
+      seenGalleryUrls.add(url);
+      gallery.push(url);
+      galleryAttributions.push(rawGalleryAttributions[i]);
+    });
     if (itinerary.hero_photo_url) {
       heroBg.style.backgroundImage = `url('${itinerary.hero_photo_url}')`;
       heroBg.style.opacity = '1';
@@ -1799,7 +1814,7 @@
       galleryHint.classList.add('hidden');
     }
     window._aiRouteGallery = gallery;
-    window._aiRouteGalleryAttributions = itinerary.gallery_attributions || [];
+    window._aiRouteGalleryAttributions = galleryAttributions;
 
     // Store for sharing
     window._aiRouteVideoId = videoId;
@@ -1816,7 +1831,7 @@
     if (day1HasHotel) {
       if (hotelsBannerEl) hotelsBannerEl.innerHTML = '';
     } else {
-      renderHotelsBanner(itinerary.destination, itinerary.gallery_photo_urls, videoId, itinerary.hotel_banner_photo_url);
+      renderHotelsBanner(itinerary.destination, gallery, videoId, itinerary.hotel_banner_photo_url);
     }
     // Car rental banner goes right under the hotel banner/card, in the
     // same slot — shown only when the AI (or admin override) flagged this

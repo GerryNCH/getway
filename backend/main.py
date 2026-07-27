@@ -16,7 +16,10 @@ Run locally:
   uvicorn main:app --reload --port 8000
 """
 
+import json
 import tempfile
+from datetime import datetime, timezone
+
 import requests
 
 # Load .env FIRST — before any module that reads ANTHROPIC_API_KEY
@@ -25,7 +28,7 @@ load_dotenv()
 
 import os
 
-from fastapi import FastAPI, HTTPException, File, UploadFile
+from fastapi import FastAPI, HTTPException, File, UploadFile, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from models import ExtractRequest, ExtractResponse, Itinerary, Comment, ReviewCreate, Review, ReviewsResponse, RouteMeta, SiteSettings
@@ -495,6 +498,32 @@ def admin_stats(secret: str):
     """Counts for the admin panel's Statistics tab."""
     _check_admin_secret(secret)
     return database.get_stats()
+
+
+@app.get("/admin/export")
+def admin_export_routes(secret: str):
+    """
+    Dumps every approved route as a downloadable JSON file.
+
+    Used by the "Export all routes" button in admin.html, and by the
+    nightly backup GitHub Action (.github/workflows/backup.yml) which
+    hits this endpoint and commits the result to backups/ in the repo —
+    a second copy of the data independent of the Railway Volume.
+    """
+    _check_admin_secret(secret)
+    routes = database.list_by_status("approved")
+    payload = {
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "count": len(routes),
+        "routes": routes,
+    }
+    body = json.dumps(payload, indent=2, ensure_ascii=False, default=str)
+    filename = f"routes-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}.json"
+    return Response(
+        content=body,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.post("/admin/approve/{video_id}")

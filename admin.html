@@ -46,6 +46,9 @@
   }
   input:focus, select:focus, textarea:focus { border-color: #8B5CF6; }
   textarea { resize: vertical; min-height: 52px; }
+  input[type="checkbox"], input[type="radio"] {
+    width: 16px; height: 16px; padding: 0; border-radius: 4px; flex: 0 0 auto; accent-color: #8B5CF6;
+  }
   label.field-label { font-size: 11px; font-weight: 600; color: #9CA3AF; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; display: block; }
 
   .stop-row { border: 1px solid #EEF0F3; border-radius: 14px; padding: 14px; margin-bottom: 10px; background: #FAFAFB; }
@@ -220,6 +223,23 @@ async function apiPut(path, body) {
 }
 async function apiDelete(path) { const r = await fetch(withSecret(path), { method: "DELETE" }); if (!r.ok) throw new Error(await r.text()); return r.json(); }
 
+async function exportAllRoutes() {
+  const r = await fetch(withSecret("/admin/export"));
+  if (!r.ok) throw new Error(await r.text());
+  const blob = await r.blob();
+  const disposition = r.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename="?([^"]+)"?/);
+  const filename = match ? match[1] : `routes-${new Date().toISOString().slice(0, 10)}.json`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 // ── Tabs ──────────────────────────────────────────────────────────────
 document.querySelectorAll(".tab-chip").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -275,6 +295,9 @@ function renderStats(stats) {
     ? `${escapeHtml(stats.most_clicked.destination)} <span class="text-gray-400 text-sm font-sans">(${stats.most_clicked.clicks} clicks)</span>`
     : '<span class="text-gray-400 text-sm font-sans">No clicks yet</span>';
   content.innerHTML = `
+    <div class="flex items-center justify-end mb-4">
+      <button id="export-routes-btn" class="pill-btn pill-gray btn-interactive text-xs">${saveIconSvg()}<span>Export all routes</span></button>
+    </div>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
       <div class="bento-card p-6 text-center"><div class="font-serif-display text-4xl">${stats.total}</div><div class="text-gray-400 text-xs mt-1 uppercase tracking-wide">Total routes</div></div>
       <div class="bento-card p-6 text-center"><div class="font-serif-display text-4xl text-[#B45309]">${stats.pending}</div><div class="text-gray-400 text-xs mt-1 uppercase tracking-wide">Pending</div></div>
@@ -308,6 +331,21 @@ function renderStats(stats) {
       <ul>${topRows || '<li class="text-gray-400 text-sm">No data yet</li>'}</ul>
     </div>
   `;
+
+  const exportBtn = document.getElementById("export-routes-btn");
+  exportBtn.addEventListener("click", async () => {
+    exportBtn.disabled = true;
+    exportBtn.querySelector("span").textContent = "Exporting…";
+    try {
+      await exportAllRoutes();
+      exportBtn.querySelector("span").textContent = "Downloaded ✓";
+      setTimeout(() => { exportBtn.disabled = false; exportBtn.querySelector("span").textContent = "Export all routes"; }, 1200);
+    } catch (e) {
+      alert("Export failed: " + e.message);
+      exportBtn.disabled = false;
+      exportBtn.querySelector("span").textContent = "Export all routes";
+    }
+  });
 }
 
 // ── Pending / Approved list ───────────────────────────────────────────
@@ -450,7 +488,7 @@ function renderHomepageTab(settings, approvedItems) {
     const row = document.createElement("label");
     row.className = "flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 cursor-pointer";
     row.innerHTML = `
-      <input type="checkbox" class="feat-checkbox rounded" ${state.featuredIds.has(item.video_id) ? "checked" : ""}>
+      <input type="checkbox" class="feat-checkbox rounded flex-shrink-0" ${state.featuredIds.has(item.video_id) ? "checked" : ""}>
       <img src="${escapeHtml(item.hero_photo_url || "")}" class="w-12 h-9 rounded object-cover bg-gray-100 flex-shrink-0" onerror="this.style.opacity=0.15">
       <span class="text-sm">${escapeHtml(item.destination)}</span>
       <span class="text-xs text-gray-400">· ${escapeHtml(item.duration)}</span>

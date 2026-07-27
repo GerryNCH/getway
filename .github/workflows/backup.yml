@@ -1,0 +1,66 @@
+name: Nightly routes backup
+
+on:
+  schedule:
+    # 02:00 UTC every night
+    - cron: "0 2 * * *"
+  workflow_dispatch: {}   # lets Gerry trigger a backup manually from the Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Fetch approved routes from Railway
+        env:
+          RAILWAY_BACKEND_URL: ${{ secrets.RAILWAY_BACKEND_URL }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p backups
+          DATE="$(date -u +%Y-%m-%d)"
+          OUT="backups/routes-${DATE}.json"
+
+          HTTP_STATUS=$(curl -sS -o "$OUT" -w "%{http_code}" \
+            "${RAILWAY_BACKEND_URL%/}/admin/export?secret=${ADMIN_TOKEN}")
+
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "::error::Export request failed with HTTP $HTTP_STATUS"
+            cat "$OUT" || true
+            rm -f "$OUT"
+            exit 1
+          fi
+
+          # Sanity check: make sure we actually got JSON, not an HTML error page
+          if ! python3 -c "import json,sys; json.load(open('$OUT'))" 2>/dev/null; then
+            echo "::error::Response was not valid JSON — not committing a broken backup"
+            rm -f "$OUT"
+            exit 1
+          fi
+
+          echo "Saved $OUT ($(wc -c < "$OUT") bytes)"
+
+      - name: Prune old backups (keep last 30)
+        run: |
+          set -euo pipefail
+          cd backups
+          # List backup files oldest-first, delete all but the newest 30
+          ls -1 routes-*.json 2>/dev/null | sort | head -n -30 | xargs -r rm -v --
+
+      - name: Commit and push
+        run: |
+          set -euo pipefail
+          git config user.name "getway-backup-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add backups/
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Nightly routes backup ($(date -u +%Y-%m-%d))"
+            git push
+          fi

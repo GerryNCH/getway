@@ -515,14 +515,6 @@
     </div>
   </div>
 
-  <!-- Affiliate + AI accuracy disclosure — required for FTC/EU transparency -->
-  <div class="px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-4">
-    <div class="bg-[#F5F3FF] border border-[#DDD6FE] rounded-xl px-4 py-3 text-[11px] md:text-xs text-gray-600 leading-relaxed flex items-start gap-2">
-      <i data-lucide="info" class="w-3.5 h-3.5 text-[#8B5CF6] flex-shrink-0 mt-0.5"></i>
-      <span>This itinerary was generated automatically from a public video using AI — please confirm hours, prices and availability before you travel. GetWay may earn a commission from bookings made through the links below, at no extra cost to you. <a href="#" onclick="showScreen('terms'); return false;" class="underline">Learn more</a>.</span>
-    </div>
-  </div>
-
   <!-- Always-shown hotel booking banner — independent of whether the AI
        found a "hotel" stop in the video itself, so every route earns a
        shot at affiliate commission. -->
@@ -530,6 +522,13 @@
 
   <!-- Days + stops rendered here -->
   <div id="ai-route-days" class="px-5 md:px-14 lg:px-24 pb-16 md:pb-24 max-w-4xl mx-auto"></div>
+
+  <!-- Affiliate + AI accuracy disclosure — required for FTC/EU transparency,
+       kept deliberately understated per product decision: plain small text,
+       no colored callout box, placed after all stops rather than above them. -->
+  <div class="px-5 md:px-14 lg:px-24 max-w-4xl mx-auto pb-6 md:pb-8">
+    <p class="text-[10px] text-gray-400 leading-relaxed text-center">This itinerary was generated automatically from a public video using AI — please confirm hours, prices and availability before you travel. GetWay may earn a commission from bookings made through links on this page, at no extra cost to you. <a href="#" onclick="showScreen('terms'); return false;" class="underline">Learn more</a>.</p>
+  </div>
 
   <!-- ================== TikTok Comments (real — fetched via Apify) ================== -->
   <div id="ai-route-comments-section"></div>
@@ -1752,7 +1751,7 @@
 
     if (handle) {
       const clipLink = sourceUrl ? ` · <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-white">watch clip ↗</a>` : '';
-      const reportLink = ` · <a href="mailto:getway.smart@gmail.com?subject=Removal request&body=Route: ${encodeURIComponent(window.location.href)}" class="underline underline-offset-2 hover:text-white">is this you? request removal</a>`;
+      const reportLink = ` <a href="mailto:getway.smart@gmail.com?subject=Removal request&body=Route: ${encodeURIComponent(window.location.href)}" class="text-white/35 hover:text-white/70 text-[10px] no-underline ml-1.5">report</a>`;
       sourceBadge.innerHTML = `<i data-lucide="music-2" class="w-3 h-3"></i><a href="${escapeHtml(profileUrl)}" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-white">${escapeHtml(handle)} ↗</a>${clipLink}${reportLink}`;
     } else if (sourceUrl) {
       sourceBadge.innerHTML = `<i data-lucide="music-2" class="w-3 h-3"></i><a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-white">via TikTok ↗</a>`;

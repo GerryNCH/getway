@@ -53,6 +53,8 @@ app = FastAPI(title="GetWay Backend", version="0.2.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "https://gogetway.com",
+        "https://www.gogetway.com",
         "https://getway-theta.vercel.app",
         "http://localhost:3000",
         "http://127.0.0.1:5500",

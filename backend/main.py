@@ -242,6 +242,7 @@ async def extract(req: ExtractRequest):
     database.set_route_meta(video_id, ai_price_category, ai_tags, creator_handle)
     itinerary.creator_handle = creator_handle
     itinerary.price_category = ai_price_category
+    itinerary.source_url = url
 
     return ExtractResponse(
         itinerary=itinerary,

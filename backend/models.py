@@ -109,6 +109,10 @@ class Itinerary(BaseModel):
     destination: str
     duration: str
     days: list[DayPlan]
+    source_url: str = ""  # original TikTok/Instagram clip URL — populated from
+                            # the DB's `url` column so the frontend can always
+                            # link back to the source video, regardless of
+                            # which endpoint loaded the route.
     summary: str = ""  # 2-3 sentence intro: what makes the destination
                         # special + what this particular route covers.
                         # Empty for itineraries cached before this field

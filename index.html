@@ -1748,6 +1748,12 @@
     const sourceBadge = document.getElementById('ai-route-source-badge');
     const handle = (itinerary.creator_handle || '').trim();
     const profileUrl = handle ? `https://www.tiktok.com/${handle.startsWith('@') ? handle : '@' + handle}` : '';
+    // Defensive fallback: some load paths (route grid, direct slug fetch)
+    // pass '' for sourceUrl because the backend response wasn't wired to
+    // carry it at those call sites. If the backend *does* include the
+    // original clip URL on the itinerary object under any of these common
+    // field names, use it instead of the (possibly empty) parameter.
+    sourceUrl = sourceUrl || itinerary.source_url || itinerary.video_url || itinerary.tiktok_url || itinerary.original_url || itinerary.clip_url || '';
 
     if (handle) {
       const clipLink = sourceUrl ? ` · <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-white">watch clip ↗</a>` : '';

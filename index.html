@@ -515,6 +515,14 @@
     </div>
   </div>
 
+  <!-- Affiliate + AI accuracy disclosure — required for FTC/EU transparency -->
+  <div class="px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-4">
+    <div class="bg-[#F5F3FF] border border-[#DDD6FE] rounded-xl px-4 py-3 text-[11px] md:text-xs text-gray-600 leading-relaxed flex items-start gap-2">
+      <i data-lucide="info" class="w-3.5 h-3.5 text-[#8B5CF6] flex-shrink-0 mt-0.5"></i>
+      <span>This itinerary was generated automatically from a public video using AI — please confirm hours, prices and availability before you travel. GetWay may earn a commission from bookings made through the links below, at no extra cost to you. <a href="#" onclick="showScreen('terms'); return false;" class="underline">Learn more</a>.</span>
+    </div>
+  </div>
+
   <!-- Always-shown hotel booking banner — independent of whether the AI
        found a "hotel" stop in the video itself, so every route earns a
        shot at affiliate commission. -->
@@ -552,7 +560,7 @@
     <section><h2 class="text-base font-semibold mb-2">1. Who we are</h2><p>GetWay ("we", "us", "our") operates a platform that turns curated and AI-extracted travel content — including TikTok itineraries — into bookable routes. For any privacy question, contact us at <a href="mailto:getway.smart@gmail.com" class="text-[#6D28D9]">getway.smart@gmail.com</a>.</p></section>
     <section><h2 class="text-base font-semibold mb-2">2. What we collect</h2><p class="mb-2"><strong>Account data:</strong> email address, and any name or profile details you choose to provide.</p><p class="mb-2"><strong>Usage data:</strong> pages viewed, routes saved or booked, links clicked, device type, and approximate location.</p><p><strong>Content you submit:</strong> TikTok URLs pasted into the AI Magic Box, and concierge form requests.</p></section>
     <section><h2 class="text-base font-semibold mb-2">3. Why we collect it</h2><p>To operate the route-generation service, process affiliate referrals, respond to support, and comply with legal obligations. We do not sell your personal data.</p></section>
-    <section><h2 class="text-base font-semibold mb-2">4. Third parties and affiliate links</h2><p>Hotel/restaurant links take you to third-party sites (Booking.com, Expedia, Airbnb); we may earn a commission. TikTok content remains the property of its creators.</p></section>
+    <section><h2 class="text-base font-semibold mb-2">4. Third parties and affiliate links</h2><p>Hotel/restaurant/activity links take you to third-party sites (Booking.com, Expedia, GetYourGuide, Airbnb); we may earn a commission. We also use third-party services to operate GetWay: Anthropic (AI route analysis), Apify (video/comment retrieval), Google Places (location data), Unsplash and imgbb (images), and Railway/Vercel (hosting). TikTok/Instagram content remains the property of its creators.</p></section>
     <section><h2 class="text-base font-semibold mb-2">5. Cookies</h2><p>Essential cookies keep the site functional; analytics cookies, where enabled, help us understand usage.</p></section>
     <section><h2 class="text-base font-semibold mb-2">6. Your rights (GDPR)</h2><p class="mb-2">EEA/UK users may access, correct, delete, restrict, or port their data, and withdraw consent at any time.</p><p>Email <a href="mailto:getway.smart@gmail.com" class="text-[#6D28D9]">getway.smart@gmail.com</a> to exercise these rights.</p></section>
     <section><h2 class="text-base font-semibold mb-2">7. Data retention</h2><p>We retain data for as long as your account is active or as legally required.</p></section>
@@ -573,6 +581,7 @@
     <section><h2 class="text-base font-semibold mb-2">2. What GetWay is</h2><p>GetWay curates itineraries inspired by short-form video, including AI-extracted TikTok routes. Always verify details directly with the venue before traveling.</p></section>
     <section><h2 class="text-base font-semibold mb-2">3. Affiliate disclosure</h2><p>We participate in affiliate programs (Booking.com, Expedia, Airbnb) and may earn a commission, at no extra cost to you.</p></section>
     <section><h2 class="text-base font-semibold mb-2">4. Content ownership</h2><p>TikTok content remains the property of its creators; GetWay provides attribution.</p></section>
+    <section><h2 class="text-base font-semibold mb-2">4b. Creator removal requests</h2><p>If you created content featured in a GetWay route and want it removed or corrected, email <a href="mailto:getway.smart@gmail.com" class="text-[#6D28D9]">getway.smart@gmail.com</a> with a link to the route. We aim to respond within 48 hours and resolve requests within 5 business days.</p></section>
     <section><h2 class="text-base font-semibold mb-2">5. Your responsibilities</h2><p>Use GetWay lawfully and do not attempt to disrupt the platform's tooling.</p></section>
     <section><h2 class="text-base font-semibold mb-2">6. No warranty</h2><p>GetWay is provided "as is"; we do not guarantee route accuracy or availability.</p></section>
     <section><h2 class="text-base font-semibold mb-2">7. Limitation of liability</h2><p>GetWay is not liable for damages arising from use of the platform or third-party bookings.</p></section>
@@ -1743,7 +1752,8 @@
 
     if (handle) {
       const clipLink = sourceUrl ? ` · <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-white">watch clip ↗</a>` : '';
-      sourceBadge.innerHTML = `<i data-lucide="music-2" class="w-3 h-3"></i><a href="${escapeHtml(profileUrl)}" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-white">${escapeHtml(handle)} ↗</a>${clipLink}`;
+      const reportLink = ` · <a href="mailto:getway.smart@gmail.com?subject=Removal request&body=Route: ${encodeURIComponent(window.location.href)}" class="underline underline-offset-2 hover:text-white">is this you? request removal</a>`;
+      sourceBadge.innerHTML = `<i data-lucide="music-2" class="w-3 h-3"></i><a href="${escapeHtml(profileUrl)}" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-white">${escapeHtml(handle)} ↗</a>${clipLink}${reportLink}`;
     } else if (sourceUrl) {
       sourceBadge.innerHTML = `<i data-lucide="music-2" class="w-3 h-3"></i><a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-white">via TikTok ↗</a>`;
     } else {

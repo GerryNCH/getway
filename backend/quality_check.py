@@ -2,21 +2,35 @@
 quality_check.py — AI Quality Check for generated itineraries.
 
 Runs a QA pass over a generated Itinerary BEFORE it reaches the admin's
-review queue: flags generic/unnamed stops, thin days, missing hotel
-content, broken coordinates, and missing photos.
+review queue: flags stops with generic/unnamed places, missing or invalid
+coordinates, and missing photos.
 
 IMPORTANT: this only flags problems — it never approves, rejects, or
 publishes anything. Final approval is always a manual decision in the
 admin panel (POST /admin/approve/{video_id}).
 
+By design this does NOT check:
+  - Stops per day: a day can legitimately be a single full-day activity
+    (a hike, a boat trip, a long museum visit) — stop count alone isn't a
+    quality signal.
+  - Hotel presence: GetWay auto-populates a generic "Hotels in [city]"
+    fallback elsewhere in the product for routes with no hotel stop, so an
+    empty hotel_banner_photo_url on the Itinerary object doesn't mean the
+    visitor sees no hotel content.
+
 Split between two layers, on purpose:
-  - Countable facts (stop count/day, hotel presence, coordinate RANGE
-    validity, placeholder/missing photos) are checked in plain Python —
-    free, exact, instant. No reason to spend a model call on arithmetic.
+  - Countable facts (coordinate RANGE validity, placeholder/missing
+    photos) are checked in plain Python — free, exact, instant. No reason
+    to spend a model call on arithmetic.
   - Judgment calls (is this name a real specific place? do these
     coordinates plausibly belong to this destination's country?) go to
     Claude Haiku (claude-haiku-4-5-20251001) — cheap (~$0.001/check) and
     fast, and this is exactly the kind of fuzzy judgment Haiku is good at.
+
+Both layers report per-stop, and are merged into ONE issue line per
+problematic stop (e.g. "generic name, missing photo" together) rather
+than one line per sub-problem — keeps the admin panel readable instead of
+repeating the same stop three times.
 
 A Haiku failure (rate limit, bad JSON, network error, etc.) is non-fatal:
 the deterministic checks still run and are returned, since a partial
@@ -46,7 +60,7 @@ _QUALITY_SYSTEM = """You are a travel-itinerary QA reviewer for GetWay, a TikTok
 
 You will receive a destination and a flat list of stops (day, stop_number, name, category, lat, lng). Judge ONLY two things:
 
-1. GENERIC NAMES — does `name` identify one real, specific, bookable place? Reject vague placeholders such as "Restaurant near the Colosseum", "Hotel in Rome", "Unknown location", "Local cafe", "A beach in the south", "Place near city". Accept real proper names even if you cannot personally confirm they exist (e.g. "Ristorante Aroma", "Hotel Artemide", "Cala Llombards").
+1. GENERIC NAMES — does `name` identify one real, specific, bookable place? Reject vague placeholders such as "Restaurant near the Colosseum", "Hotel in Rome", "Unknown location", "Local cafe", "A beach in the south", "Cafe in Montmartre", "Place near city". Accept real proper names even if you cannot personally confirm they exist (e.g. "Ristorante Aroma", "Hotel Artemide", "Cala Llombards").
 
 2. COORDINATE PLAUSIBILITY — does (lat, lng) fall roughly within the country/region implied by the destination? Only flag stops that are CLEARLY wrong (e.g. a Rome stop with coordinates in another continent) — not small in-city imprecision. Skip stops where lat or lng is null.
 
@@ -67,68 +81,51 @@ def _is_placeholder_photo(url: str) -> bool:
     return any(marker in low for marker in _PLACEHOLDER_PHOTO_MARKERS)
 
 
-def _deterministic_checks(itinerary: Itinerary) -> tuple[list[str], list[str], int]:
+def _deterministic_stop_findings(itinerary: Itinerary) -> dict:
     """
-    Everything countable without a model call: stops/day, hotel presence,
-    coordinate range validity, and placeholder/missing photos.
+    Per-stop coordinate/photo problems — everything countable without a
+    model call. Keyed by (day, stop_number).
 
-    Returns (issues, suggestions, score_deduction).
+    Returns {(day, stop_number): {"name": str, "problems": [str], "deduction": int}}
     """
-    issues: list[str] = []
-    suggestions: list[str] = []
-    deduction = 0
-
-    # A hotel stop OR an admin-set "Hotels in [city]" fallback banner both
-    # satisfy "at least 1 hotel stop or hotel banner" per the spec.
-    has_hotel = bool(itinerary.hotel_banner_photo_url)
-    missing_or_invalid_coords = 0
-    missing_photos = 0
+    findings: dict = {}
 
     for day in itinerary.days:
-        if len(day.stops) < 3:
-            issues.append(f"Day {day.day}: Only {len(day.stops)} stops (need at least 3)")
-            deduction += 10
-
         for i, stop in enumerate(day.stops, start=1):
-            if stop.category == "hotel":
-                has_hotel = True
+            problems = []
+            deduction = 0
 
             if stop.lat is None or stop.lng is None:
-                missing_or_invalid_coords += 1
-                issues.append(f"Day {day.day}, Stop {i}: Missing coordinates for '{stop.name}'")
+                problems.append("missing coordinates")
                 deduction += 3
             elif not (-90 <= stop.lat <= 90) or not (-180 <= stop.lng <= 180):
-                missing_or_invalid_coords += 1
-                issues.append(f"Day {day.day}, Stop {i}: Invalid coordinates for '{stop.name}'")
+                problems.append("invalid coordinates")
                 deduction += 10
 
             if _is_placeholder_photo(stop.photo_url):
-                missing_photos += 1
-                issues.append(f"Day {day.day}, Stop {i}: Missing photo for stop '{stop.name}'")
+                problems.append("missing photo")
                 deduction += 5
 
-    if not has_hotel:
-        issues.append("Missing hotel stop or hotel banner photo for the route")
-        suggestions.append("Add a hotel stop or upload a hotel banner photo for the route")
-        deduction += 15
+            if problems:
+                findings[(day.day, i)] = {
+                    "name": stop.name,
+                    "problems": problems,
+                    "deduction": deduction,
+                }
 
-    if missing_or_invalid_coords:
-        suggestions.append("Check and fix the coordinates on the flagged stops")
-    if missing_photos:
-        suggestions.append("Add missing photos for the flagged stops")
-
-    return issues, suggestions, deduction
+    return findings
 
 
-def _haiku_semantic_checks(itinerary: Itinerary) -> tuple[list[str], list[str], int, float]:
+def _haiku_stop_findings(itinerary: Itinerary) -> tuple[dict, float]:
     """
     Claude Haiku's judgment on generic names and coordinate/country
     plausibility — the two checks that need real reasoning, not just
-    arithmetic.
+    arithmetic. Keyed by (day, stop_number), same shape as
+    _deterministic_stop_findings, plus an optional "suggestion" key.
 
-    Returns (issues, suggestions, score_deduction, cost_usd). Never raises —
-    on any failure (bad JSON, network, rate limit) returns an all-empty,
-    zero-cost result so the deterministic checks above still get returned.
+    Returns (findings, cost_usd). Never raises — on any failure (bad JSON,
+    network, rate limit) returns ({}, 0.0) so the deterministic findings
+    above still get returned on their own.
     """
     stops_payload = []
     for day in itinerary.days:
@@ -147,9 +144,7 @@ def _haiku_semantic_checks(itinerary: Itinerary) -> tuple[list[str], list[str], 
         "stops": stops_payload,
     }, ensure_ascii=False)
 
-    issues: list[str] = []
-    suggestions: list[str] = []
-    deduction = 0
+    findings: dict = {}
     cost_usd = 0.0
 
     try:
@@ -173,28 +168,26 @@ def _haiku_semantic_checks(itinerary: Itinerary) -> tuple[list[str], list[str], 
             raw = re.sub(r"^```(json)?|```$", "", raw, flags=re.MULTILINE).strip()
         result = json.loads(raw)
 
-        for item in result.get("generic_names", []):
-            day, num = item.get("day"), item.get("stop_number")
-            name = item.get("name", "")
-            issues.append(f"Day {day}, Stop {num}: Generic name — '{name}'")
-            deduction += 15
+        def _add(item: dict, problem: str, deduction: int) -> None:
+            key = (item.get("day"), item.get("stop_number"))
+            entry = findings.setdefault(key, {"name": item.get("name", ""), "problems": [], "deduction": 0})
+            entry["problems"].append(problem)
+            entry["deduction"] += deduction
             if item.get("suggestion"):
-                suggestions.append(item["suggestion"])
+                entry["suggestion"] = item["suggestion"]
+
+        for item in result.get("generic_names", []):
+            _add(item, "generic name", 15)
 
         for item in result.get("coordinate_issues", []):
-            day, num = item.get("day"), item.get("stop_number")
-            name = item.get("name", "")
-            issues.append(f"Day {day}, Stop {num}: Coordinates don't match the destination — '{name}'")
-            deduction += 10
-            if item.get("suggestion"):
-                suggestions.append(item["suggestion"])
+            _add(item, "coordinates don't match the destination", 10)
 
     except Exception as e:
         # A failed QA pass must never block route generation — just log it
         # and fall back to the deterministic checks only.
         print(f"[QualityCheck] Haiku semantic check failed (non-fatal): {e}")
 
-    return issues, suggestions, deduction, cost_usd
+    return findings, cost_usd
 
 
 def ai_quality_check(itinerary: Itinerary) -> dict:
@@ -212,17 +205,45 @@ def ai_quality_check(itinerary: Itinerary) -> dict:
 
     Status thresholds: good 80-100, needs_attention 50-79, poor under 50.
 
+    Each problematic stop produces exactly ONE issue line combining every
+    sub-problem found for it (e.g. "generic name, missing photo") — kept
+    compact on purpose so the admin panel doesn't repeat the same stop
+    three times over.
+
     Never raises. This is a QA aid for the admin, not a gate — the itinerary
     is generated (or shown in the panel) exactly the same whether this
     check succeeds, partially succeeds, or fails outright.
     """
     try:
-        det_issues, det_suggestions, det_deduction = _deterministic_checks(itinerary)
-        sem_issues, sem_suggestions, sem_deduction, cost_usd = _haiku_semantic_checks(itinerary)
+        det_findings = _deterministic_stop_findings(itinerary)
+        haiku_findings, cost_usd = _haiku_stop_findings(itinerary)
 
-        issues = det_issues + sem_issues
-        suggestions = det_suggestions + sem_suggestions
-        score = max(0, min(100, 100 - det_deduction - sem_deduction))
+        # Merge the two per-stop dicts.
+        merged: dict = {}
+        for key, entry in det_findings.items():
+            merged[key] = dict(entry)
+        for key, entry in haiku_findings.items():
+            if key in merged:
+                merged[key]["problems"] += entry["problems"]
+                merged[key]["deduction"] += entry["deduction"]
+                if "suggestion" in entry:
+                    merged[key]["suggestion"] = entry["suggestion"]
+            else:
+                merged[key] = entry
+
+        issues: list[str] = []
+        suggestions: list[str] = []
+        deduction = 0
+
+        for (day, stop_num), entry in sorted(merged.items()):
+            deduction += entry["deduction"]
+            issues.append(f"Day {day}, Stop {stop_num}: '{entry['name']}' — {', '.join(entry['problems'])}")
+            if entry.get("suggestion"):
+                suggestions.append(entry["suggestion"])
+            else:
+                suggestions.append(f"Fix '{entry['name']}': {', '.join(entry['problems'])}")
+
+        score = max(0, min(100, 100 - deduction))
 
         if score >= 80:
             status = "good"

@@ -19,6 +19,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" crossorigin="anonymous" />
 <style>
   body {
     font-family: 'Inter', sans-serif;
@@ -85,6 +86,19 @@
      here sidesteps that entirely regardless of what other display utility
      is on the element. */
   .filter-hidden { display: none !important; }
+
+  /* ── Route Map view (Leaflet) ─────────────────────────────────────── */
+  .getway-map-pin {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: #8B5CF6; color: #fff; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; border: 2px solid #fff;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.28);
+    font-family: 'Inter', sans-serif;
+  }
+  .map-day-tab { transition: all 0.25s ease; cursor: pointer; }
+  .leaflet-popup-content-wrapper { border-radius: 14px; }
+  .leaflet-popup-content { margin: 10px 12px; }
+  #ai-route-map .leaflet-control-attribution { font-size: 9px; }
 </style>
 </head>
 <body class="text-[#111827] antialiased">
@@ -525,6 +539,19 @@
     </div>
   </div>
 
+  <!-- Route Map view — day tabs + Leaflet map with numbered stops.
+       Hidden entirely (see initAiRouteMap) when the itinerary has no
+       stop coordinates yet, e.g. cached routes generated before Stop.lat/
+       Stop.lng existed on the backend. -->
+  <div id="ai-route-map-section" class="hidden px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-10 md:mb-14">
+    <div class="flex items-center justify-between gap-3 mb-4 flex-wrap">
+      <div class="font-serif-display text-2xl md:text-3xl">Map</div>
+      <div id="ai-map-day-tabs" class="peek-scroll flex gap-1.5 overflow-x-auto"></div>
+    </div>
+    <div id="ai-route-map" class="w-full h-[340px] md:h-[440px] rounded-[26px] overflow-hidden bento-card"></div>
+    <div id="ai-map-stop-list" class="mt-4 space-y-2"></div>
+  </div>
+
   <!-- Always-shown hotel booking banner — independent of whether the AI
        found a "hotel" stop in the video itself, so every route earns a
        shot at affiliate commission. -->
@@ -603,6 +630,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" crossorigin="anonymous"></script>
 
 <!-- "Add to Home Screen" prompt — mobile only. Android/Chrome gets a real
      one-tap native install; iOS Safari has no equivalent API (Apple doesn't
@@ -867,6 +895,14 @@
     const target = document.getElementById('screen-' + name);
     target.classList.add('active');
     window.scrollTo({ top: 0, behavior: 'instant' });
+    // Leaflet computes tile/marker positions from the map div's size at
+    // creation time. If that happened while this screen was still
+    // display:none (e.g. renderAiRoute ran before showScreen), the map
+    // measured 0×0 and everything renders in the top-left corner —
+    // invalidateSize() re-measures now that the div is actually visible.
+    if (name === 'ai-route' && window._aiRouteLeafletMap) {
+      setTimeout(() => window._aiRouteLeafletMap.invalidateSize(), 60);
+    }
     if (typeof lucide !== 'undefined') { lucide.createIcons(); }
     if (typeof AOS !== 'undefined') {
       // While this screen was hidden (display:none), AOS measured its
@@ -1822,6 +1858,147 @@
     document.getElementById('aihotel-' + seed).classList.toggle('hidden');
   }
 
+  // ── Route Map view (Leaflet) ─────────────────────────────────────────
+  // Straight-line distance between two coordinates, in km. Used only to
+  // label "X km to next stop" in the map popup/list — never presented as
+  // a driving/walking time, since we don't have real routing data.
+  function haversineKm(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  // Builds the day-tab row and shows the whole Map section, but only if
+  // at least one stop anywhere in the itinerary actually has coordinates.
+  // Itineraries generated before backend/models.py gained Stop.lat/lng
+  // (or where Google Places couldn't resolve a stop) simply won't show a
+  // map — better than showing an empty/broken one.
+  function initAiRouteMap(itinerary) {
+    const section = document.getElementById('ai-route-map-section');
+    if (!section) return;
+    const hasCoords = (itinerary.days || []).some(d => d.stops.some(s => typeof s.lat === 'number' && typeof s.lng === 'number'));
+    if (!hasCoords) {
+      section.classList.add('hidden');
+      window._aiRouteItineraryForMap = null;
+      return;
+    }
+    section.classList.remove('hidden');
+    window._aiRouteItineraryForMap = itinerary;
+
+    const tabsEl = document.getElementById('ai-map-day-tabs');
+    tabsEl.innerHTML = itinerary.days.map((day, i) => `
+      <button onclick="renderMapForDay(${i})" data-day-idx="${i}" class="map-day-tab flex-shrink-0 h-[32px] px-3.5 text-xs font-medium rounded-full whitespace-nowrap ${i === 0 ? 'bg-[#8B5CF6] text-white' : 'bg-white border border-gray-200 text-gray-600'}">Day ${day.day}</button>
+    `).join('');
+
+    let startDay = itinerary.days.findIndex(d => d.stops.some(s => typeof s.lat === 'number' && typeof s.lng === 'number'));
+    if (startDay < 0) startDay = 0;
+    renderMapForDay(startDay);
+  }
+
+  // Renders the Leaflet map (created once, reused across day switches) for
+  // a single day: numbered purple pins in visit order, a connecting route
+  // line, and a tap/click popup with name + category + distance to the
+  // next stop. Also mirrors the same numbered list below the map so the
+  // stops are readable without needing to tap every pin on mobile.
+  function renderMapForDay(dayIndex) {
+    const itinerary = window._aiRouteItineraryForMap;
+    if (!itinerary) return;
+    const day = itinerary.days[dayIndex];
+    if (!day) return;
+
+    document.querySelectorAll('.map-day-tab').forEach(btn => {
+      const active = parseInt(btn.dataset.dayIdx, 10) === dayIndex;
+      btn.classList.toggle('bg-[#8B5CF6]', active);
+      btn.classList.toggle('text-white', active);
+      btn.classList.toggle('bg-white', !active);
+      btn.classList.toggle('border', !active);
+      btn.classList.toggle('border-gray-200', !active);
+      btn.classList.toggle('text-gray-600', !active);
+    });
+
+    const stopsWithCoords = day.stops.filter(s => typeof s.lat === 'number' && typeof s.lng === 'number');
+    const mapEl = document.getElementById('ai-route-map');
+    const listEl = document.getElementById('ai-map-stop-list');
+
+    if (stopsWithCoords.length === 0) {
+      if (window._aiRouteMapLayer) { window._aiRouteMapLayer.remove(); window._aiRouteMapLayer = null; }
+      mapEl.innerHTML = '<div class="w-full h-full flex items-center justify-center text-xs text-gray-400 px-6 text-center">No map coordinates for this day yet.</div>';
+      listEl.innerHTML = '';
+      return;
+    }
+
+    if (!window._aiRouteLeafletMap) {
+      mapEl.innerHTML = '';
+      window._aiRouteLeafletMap = L.map(mapEl, { scrollWheelZoom: false });
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+        maxZoom: 19
+      }).addTo(window._aiRouteLeafletMap);
+    }
+    const map = window._aiRouteLeafletMap;
+
+    if (window._aiRouteMapLayer) { window._aiRouteMapLayer.remove(); }
+    const layerGroup = L.layerGroup().addTo(map);
+    window._aiRouteMapLayer = layerGroup;
+
+    const latlngs = [];
+    stopsWithCoords.forEach((s, seq) => {
+      const latlng = [s.lat, s.lng];
+      latlngs.push(latlng);
+      const icon = L.divIcon({
+        className: '',
+        html: `<div class="getway-map-pin">${seq + 1}</div>`,
+        iconSize: [26, 26],
+        iconAnchor: [13, 13]
+      });
+      const marker = L.marker(latlng, { icon }).addTo(layerGroup);
+
+      const cfg = CAT_CONFIG[s.category] || { label: s.category, color: '#8B5CF6' };
+      const next = stopsWithCoords[seq + 1];
+      const distanceLine = next
+        ? `<div style="font-size:11px;color:#6b7280;margin-top:4px;">${haversineKm(s.lat, s.lng, next.lat, next.lng).toFixed(1)} km to next stop</div>`
+        : '';
+      marker.bindPopup(`
+        <div style="font-family:'Inter',sans-serif;min-width:160px;">
+          <div style="font-size:13px;font-weight:600;margin-bottom:2px;">${escapeHtml(s.name)}</div>
+          <div style="font-size:11px;text-transform:uppercase;color:${cfg.color};">${escapeHtml(cfg.label)}</div>
+          ${distanceLine}
+        </div>
+      `);
+    });
+
+    if (latlngs.length > 1) {
+      L.polyline(latlngs, { color: '#8B5CF6', weight: 3, opacity: 0.75 }).addTo(layerGroup);
+    }
+
+    map.fitBounds(latlngs.length > 1 ? latlngs : [latlngs[0], latlngs[0]], { padding: [36, 36], maxZoom: 16 });
+    setTimeout(() => map.invalidateSize(), 60);
+
+    // "Open in Google Maps" — a real, working multi-stop directions link
+    // (origin/waypoints/destination), which is more immediately useful
+    // than a fabricated "optimize route" feature we can't back with a
+    // real routing engine.
+    const coordPairs = latlngs.map(([lat, lng]) => `${lat},${lng}`);
+    const directionsUrl = coordPairs.length > 1
+      ? `https://www.google.com/maps/dir/?api=1&origin=${coordPairs[0]}&destination=${coordPairs[coordPairs.length - 1]}&waypoints=${coordPairs.slice(1, -1).join('|')}`
+      : `https://www.google.com/maps/search/?api=1&query=${coordPairs[0]}`;
+
+    listEl.innerHTML = `
+      <a href="${directionsUrl}" target="_blank" rel="noopener" class="btn-interactive w-full h-[44px] flex items-center justify-center gap-1.5 bg-[#8B5CF6] text-white text-xs font-medium rounded-xl mb-3">
+        <i data-lucide="navigation" class="w-3.5 h-3.5"></i> Open Day ${day.day} route in Google Maps
+      </a>
+      ${stopsWithCoords.map((s, seq) => `
+        <div class="flex items-center gap-2.5 bg-white rounded-xl px-3.5 py-2.5 bento-card">
+          <div class="getway-map-pin" style="flex-shrink:0;">${seq + 1}</div>
+          <div class="text-xs font-medium">${escapeHtml(s.name)}</div>
+        </div>
+      `).join('')}
+    `;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+
   function renderAiRoute(itinerary, videoId, sourceUrl) {
     // Fire-and-forget view tracking — never blocks rendering, never
     // surfaces an error to the visitor if it fails.
@@ -1930,6 +2107,7 @@
 
     // Store for sharing
     window._aiRouteVideoId = videoId;
+    initAiRouteMap(itinerary);
     // The route should always have a hotel box at the START of the trip —
     // either a real one (if the AI found it) or the generic "find hotels"
     // fallback banner. Checking route-WIDE for any hotel stop was wrong:

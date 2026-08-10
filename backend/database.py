@@ -133,6 +133,13 @@ def init_db() -> None:
             conn.execute("ALTER TABLE itineraries ADD COLUMN car_rental_recommended INTEGER DEFAULT 0")
         if "car_rental_note" not in existing_cols:
             conn.execute("ALTER TABLE itineraries ADD COLUMN car_rental_note TEXT DEFAULT ''")
+        if "qc_json" not in existing_cols:
+            # AI Quality Check result (see quality_check.ai_quality_check):
+            # {"score", "status", "issues", "suggestions", "cost_usd"}.
+            # NULL until the check has run at least once for this route.
+            # Purely informational for the admin panel — never affects
+            # status (pending/approved/rejected), which stays a manual call.
+            conn.execute("ALTER TABLE itineraries ADD COLUMN qc_json TEXT DEFAULT NULL")
 
         # Seed the singleton site_settings row once, with the hero slides
         # that were previously hardcoded in index.html — so nothing changes
@@ -269,6 +276,7 @@ def _row_to_admin_dict(row: sqlite3.Row) -> dict:
         "hotel_banner_photo_url": row["hotel_banner_photo_url"] or "",
         "car_rental_recommended": bool(row["car_rental_recommended"]),
         "car_rental_note": row["car_rental_note"] or "",
+        "quality_check": json.loads(row["qc_json"]) if row["qc_json"] else None,
     }
 
 
@@ -283,6 +291,23 @@ def set_route_meta(video_id: str, price_category: str, tags: list[str], creator_
         cur = conn.execute(
             "UPDATE itineraries SET price_category = ?, tags_json = ?, creator_handle = ? WHERE video_id = ?",
             (price_category, json.dumps(tags), creator_handle, video_id),
+        )
+    return cur.rowcount > 0
+
+
+def save_quality_check(video_id: str, result: dict) -> bool:
+    """
+    Saves an AI Quality Check result (see quality_check.ai_quality_check)
+    against an existing route — called automatically right after a new
+    route is generated, and on demand from the admin panel's "🤖 AI Check"
+    button. This only stores a score/issues/suggestions for the admin to
+    read; it never touches `status` — approve/reject/hide are always a
+    manual decision. Returns False if video_id doesn't exist.
+    """
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE itineraries SET qc_json = ? WHERE video_id = ?",
+            (json.dumps(result, ensure_ascii=False), video_id),
         )
     return cur.rowcount > 0
 

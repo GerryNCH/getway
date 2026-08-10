@@ -198,7 +198,12 @@
     <div id="mallorca-hero-media" class="absolute inset-0"></div>
     <div class="absolute inset-0 hero-top-overlay h-32 md:h-40"></div>
     <div class="absolute top-[22px] left-[18px] right-[18px] md:top-8 md:left-14 md:right-14 flex items-center justify-between z-10">
-      <button onclick="showScreen('home')" class="text-base md:text-3xl lg:text-4xl font-medium font-serif-display text-white" style="text-shadow: 0 1px 8px rgba(0,0,0,0.4);">GetWay<span class="text-[#C4B5FD]">.</span></button>
+      <div class="flex items-center gap-2.5 md:gap-4">
+        <button onclick="showScreen('home')" aria-label="Back" class="btn-interactive flex items-center gap-1 text-[11px] md:text-xs font-medium text-white/90 hover:text-white bg-black/20 hover:bg-black/30 backdrop-blur-sm rounded-full pl-2 pr-3 py-1.5" style="text-shadow: 0 1px 4px rgba(0,0,0,0.3);">
+          <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Back
+        </button>
+        <button onclick="showScreen('home')" class="text-base md:text-3xl lg:text-4xl font-medium font-serif-display text-white" style="text-shadow: 0 1px 8px rgba(0,0,0,0.4);">GetWay<span class="text-[#C4B5FD]">.</span></button>
+      </div>
     </div>
     <div class="absolute left-0 right-0 bottom-0 h-[180px] md:h-[230px] hero-bottom-overlay">
       <div class="absolute bottom-16 md:bottom-24 left-6 right-6 md:left-14 md:right-14 flex items-end gap-3 flex-wrap">
@@ -466,7 +471,12 @@
     <div id="ai-route-hero-bg" class="absolute inset-0 bg-cover bg-center" style="background-image:url('https://picsum.photos/seed/ai-route-hero/2000/1300');"></div>
     <div class="absolute inset-0 hero-top-overlay h-32"></div>
     <div class="absolute top-[22px] left-[18px] right-[18px] md:top-8 md:left-14 md:right-14 flex items-center justify-between z-10">
-      <button onclick="showScreen('home')" class="text-base md:text-2xl font-medium font-serif-display text-white" style="text-shadow: 0 1px 8px rgba(0,0,0,0.4);">GetWay<span class="text-[#C4B5FD]">.</span></button>
+      <div class="flex items-center gap-2.5 md:gap-4">
+        <button onclick="showScreen('home')" aria-label="Back" class="btn-interactive flex items-center gap-1 text-[11px] md:text-xs font-medium text-white/90 hover:text-white bg-black/20 hover:bg-black/30 backdrop-blur-sm rounded-full pl-2 pr-3 py-1.5" style="text-shadow: 0 1px 4px rgba(0,0,0,0.3);">
+          <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Back
+        </button>
+        <button onclick="showScreen('home')" class="text-base md:text-2xl font-medium font-serif-display text-white" style="text-shadow: 0 1px 8px rgba(0,0,0,0.4);">GetWay<span class="text-[#C4B5FD]">.</span></button>
+      </div>
       <button onclick="copyAiRouteLink()" class="btn-interactive flex items-center gap-1.5 text-[11px] font-medium text-white/90 border border-white/40 rounded-full px-3.5 py-1.5">
         <i data-lucide="bookmark" class="w-3 h-3"></i> Save
       </button>
@@ -787,18 +797,24 @@
       </div>`;
   }
 
-  function buildCarRentalBannerHtml(destination, videoId, note) {
+  // Falls back to a generic "car on a scenic road" Unsplash placeholder
+  // when no admin-set or backend-provided photo is available, so the
+  // "Rent a car" card never shows an empty/broken image.
+  const CAR_RENTAL_PLACEHOLDER_PHOTO = 'https://source.unsplash.com/800x400/?car,travel,road';
+
+  function buildCarRentalBannerHtml(destination, videoId, note, photo) {
     const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim() || destination || '';
     const bookingHref = bookingCarRentalUrl();
     const expediaHref = expediaCarRentalUrl();
     const gygHref = gygCarRentalUrl(city);
     const seed = 'car-rental-' + slugify(city);
+    const photoUrl = photo || CAR_RENTAL_PLACEHOLDER_PHOTO;
 
     return `
       <div class="ai-stop-card mb-6 md:mb-8 md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
         <div class="md:w-2/5 md:flex-shrink-0">
-          <div class="relative h-[100px] md:h-52 mb-3 md:mb-0 rounded-2xl overflow-hidden media-placeholder flex items-center justify-center" style="background:${gradientFor(seed)}">
-            <i data-lucide="car" class="w-8 h-8 text-white/80"></i>
+          <div class="relative h-[100px] md:h-52 mb-3 md:mb-0 rounded-2xl overflow-hidden">
+            <img src="${photoUrl}" alt="" class="w-full h-full object-cover" data-icon="car" data-seed="${seed}" onerror="imgFallback(this, this.dataset.icon, this.dataset.seed)">
           </div>
         </div>
         <div class="md:w-3/5 md:pt-2">
@@ -1054,6 +1070,7 @@
     mediaLayer.innerHTML = `<img id="mallorca-hero-photo" src="" class="absolute inset-0 w-full h-full object-cover" alt="" onerror="imgFallback(this,'image','mallorca-hero')">`;
     document.getElementById('mallorca-hero-photo').src = MEDIA.mallorca.gallery.find(g => g.type === 'photo').url;
     renderUnsplashCredit('mallorca-hero-credit', (window._mallorcaGalleryAttributions || [])[1]);
+    window._mallorcaActiveIndex = MEDIA.mallorca.gallery.findIndex(g => g.type === 'photo');
 
     const thumbs = document.getElementById('mallorca-thumbnails');
     thumbs.innerHTML = MEDIA.mallorca.gallery.map((item, i) => {
@@ -1065,6 +1082,7 @@
   }
 
   function selectGalleryItem(index) {
+    window._mallorcaActiveIndex = index;
     const item = MEDIA.mallorca.gallery[index];
     const photo = document.getElementById('mallorca-hero-photo');
     if (item.type === 'photo' && photo) {
@@ -1079,6 +1097,73 @@
     });
     const counter = document.getElementById('mallorca-gallery-counter');
     if (counter) counter.textContent = (index + 1) + ' / ' + MEDIA.mallorca.gallery.length;
+  }
+
+  // ── Swipe / drag gallery navigation ─────────────────────────────────
+  // Generic touch+mouse handler shared by both hero galleries (the static
+  // Mallorca demo route and the AI-generated route). Wraps around at the
+  // ends so a swipe from the last photo goes back to the first, matching
+  // how the thumbnail row already behaves when clicked in sequence.
+  function attachSwipeGallery(el, getIndex, getLength, onSelect) {
+    if (!el || el.dataset.swipeAttached) return;
+    el.dataset.swipeAttached = '1';
+    const THRESHOLD = 40; // px — minimum horizontal drag to count as a swipe
+    let startX = 0, startY = 0, dragging = false, moved = false;
+
+    function start(x, y) { startX = x; startY = y; dragging = true; moved = false; }
+    function move(x, y) {
+      if (!dragging) return;
+      if (Math.abs(x - startX) > 10 || Math.abs(y - startY) > 10) moved = true;
+    }
+    function finish(x) {
+      if (!dragging) return;
+      dragging = false;
+      const dx = x - startX;
+      if (!moved || Math.abs(dx) < THRESHOLD) return;
+      const len = getLength();
+      if (len < 2) return;
+      const idx = getIndex();
+      const nextIdx = dx < 0 ? (idx + 1) % len : (idx - 1 + len) % len;
+      onSelect(nextIdx);
+    }
+
+    el.addEventListener('touchstart', (e) => {
+      const t = e.touches[0];
+      start(t.clientX, t.clientY);
+    }, { passive: true });
+    el.addEventListener('touchmove', (e) => {
+      const t = e.touches[0];
+      move(t.clientX, t.clientY);
+    }, { passive: true });
+    el.addEventListener('touchend', (e) => {
+      finish(e.changedTouches[0].clientX);
+    });
+
+    // Desktop mouse-drag support
+    el.addEventListener('mousedown', (e) => {
+      start(e.clientX, e.clientY);
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', (e) => { if (dragging) move(e.clientX, e.clientY); });
+    document.addEventListener('mouseup', (e) => { if (dragging) finish(e.clientX); });
+
+    el.style.cursor = 'grab';
+    el.style.touchAction = 'pan-y';
+  }
+
+  function initSwipeGalleries() {
+    attachSwipeGallery(
+      document.getElementById('mallorca-hero-media'),
+      () => window._mallorcaActiveIndex || 0,
+      () => MEDIA.mallorca.gallery.length,
+      selectGalleryItem
+    );
+    attachSwipeGallery(
+      document.getElementById('ai-route-hero-bg'),
+      () => window._aiRouteActiveIndex || 0,
+      () => (window._aiRouteGallery || []).length,
+      selectAiGalleryPhoto
+    );
   }
 
   function renderRouteMedia() {
@@ -1830,6 +1915,7 @@
     }
     window._aiRouteGallery = gallery;
     window._aiRouteGalleryAttributions = galleryAttributions;
+    window._aiRouteActiveIndex = 0;
 
     // Store for sharing
     window._aiRouteVideoId = videoId;
@@ -1852,7 +1938,7 @@
     // same slot — shown only when the AI (or admin override) flagged this
     // specific trip as needing a car, not on every route.
     if (itinerary.car_rental_recommended && hotelsBannerEl) {
-      hotelsBannerEl.insertAdjacentHTML('beforeend', buildCarRentalBannerHtml(itinerary.destination, videoId, itinerary.car_rental_note));
+      hotelsBannerEl.insertAdjacentHTML('beforeend', buildCarRentalBannerHtml(itinerary.destination, videoId, itinerary.car_rental_note, itinerary.car_rental_photo_url));
       if (typeof lucide !== 'undefined') lucide.createIcons();
     }
     renderAiRouteComments(itinerary.comments);
@@ -1882,6 +1968,7 @@
     const gallery = window._aiRouteGallery || [];
     const url = gallery[index];
     if (!url) return;
+    window._aiRouteActiveIndex = index;
     const heroBg = document.getElementById('ai-route-hero-bg');
     heroBg.style.backgroundImage = `url('${url}')`;
     document.querySelectorAll('.ai-gallery-thumb').forEach((el, i) => {
@@ -2227,6 +2314,7 @@
     });
     safeRun('handleSharedRouteParam', handleSharedRouteParam);
     safeRun('wireMallorcaDemoHotelLinks', wireMallorcaDemoHotelLinks);
+    safeRun('initSwipeGalleries', initSwipeGalleries);
     loadMallorcaRealPhotos();
     loadRealRoutes();
     loadSiteSettings();

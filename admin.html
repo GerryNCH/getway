@@ -659,29 +659,22 @@ function renderQualityCheck(card, result) {
   if (!panel) return;
 
   const issues = result.issues || [];
-  const suggestions = result.suggestions || [];
   const issuesHtml = issues.length
-    ? `<div class="mb-3">
+    ? `<div>
          <div class="text-[11px] uppercase tracking-wide text-gray-400 mb-1.5">⚠️ Issues</div>
          <ul class="list-disc pl-5 text-sm text-gray-700 space-y-1">${issues.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>
        </div>`
     : "";
-  const suggestionsHtml = suggestions.length
-    ? `<div>
-         <div class="text-[11px] uppercase tracking-wide text-gray-400 mb-1.5">💡 Suggestions</div>
-         <ul class="list-disc pl-5 text-sm text-gray-700 space-y-1">${suggestions.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ul>
-       </div>`
-    : "";
-  const emptyHtml = (!issuesHtml && !suggestionsHtml)
-    ? `<p class="text-sm text-gray-400">No issues — route looks ready.</p>`
-    : "";
+  const emptyHtml = issuesHtml
+    ? ""
+    : `<p class="text-sm text-gray-400">No issues — route looks ready.</p>`;
 
   panel.innerHTML = `
     <div class="flex items-center gap-2 mb-3">
       <span class="text-lg leading-none">${meta.emoji}</span>
       <span class="font-serif-display text-base">Score ${result.score}/100 — ${meta.label}</span>
     </div>
-    ${issuesHtml}${suggestionsHtml}${emptyHtml}
+    ${issuesHtml}${emptyHtml}
   `;
   panel.classList.remove("hidden");
 }

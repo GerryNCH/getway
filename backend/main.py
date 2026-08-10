@@ -41,6 +41,7 @@ from extractor import (
 )
 from troll_filter import check_is_travel
 from ai_analyzer import analyse_frames
+from quality_check import ai_quality_check
 from places import (
     enrich_itinerary_with_photos, _unsplash_candidates, _attribution_from_candidate,
     _trigger_unsplash_download, _search_places, _names_plausibly_match,
@@ -233,6 +234,18 @@ async def extract(req: ExtractRequest):
 
     # ── Layer 8: save to database ─────────────────────────────────────────────
     database.save_itinerary(video_id, url, itinerary)
+
+    # ── Layer 9: AI Quality Check — Claude Haiku (~$0.001, non-fatal) ─────────
+    # Runs automatically on every freshly generated route so a score is
+    # already sitting on the card in the admin panel's Pending tab, with no
+    # need to click "🤖 AI Check" manually. This only flags issues — it
+    # never approves/rejects/publishes anything; that's always Gerry's call.
+    try:
+        qc_result = ai_quality_check(itinerary)
+        database.save_quality_check(video_id, qc_result)
+        print(f"[QualityCheck] {video_id} → score={qc_result['score']} status={qc_result['status']}")
+    except Exception as e:
+        print(f"[QualityCheck] Failed (non-fatal): {e}")
 
     # Homepage-grid curation fields: price/tags come from the AI's own
     # estimate above; creator_handle comes from yt-dlp's "uploader" field
@@ -480,6 +493,27 @@ def admin_verify_locations(video_id: str, secret: str):
                 "confirmed": confirmed,
             })
     return {"results": results}
+
+
+@app.post("/admin/quality-check/{video_id}")
+def admin_quality_check(video_id: str, secret: str):
+    """
+    Runs (or re-runs) the AI Quality Check for one route on demand — the
+    admin panel's "🤖 AI Check" button. Uses Claude Haiku (~$0.001/check)
+    to flag generic stop names, thin days, missing hotel content, bad
+    coordinates, and missing photos.
+
+    This ONLY flags problems and saves the score/issues/suggestions to the
+    route — it never changes `status`. Approving or rejecting the route is
+    always a separate, manual action via /admin/approve or /admin/reject.
+    """
+    _check_admin_secret(secret)
+    itinerary = database.get_itinerary(video_id)
+    if itinerary is None:
+        raise HTTPException(404, "Route not found")
+    result = ai_quality_check(itinerary)
+    database.save_quality_check(video_id, result)
+    return result
 
 
 @app.get("/admin/pending")

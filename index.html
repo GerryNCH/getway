@@ -539,17 +539,24 @@
     </div>
   </div>
 
-  <!-- Route Map view — day tabs + Leaflet map with numbered stops.
-       Hidden entirely (see initAiRouteMap) when the itinerary has no
-       stop coordinates yet, e.g. cached routes generated before Stop.lat/
-       Stop.lng existed on the backend. -->
+  <!-- Route Map view — collapsed behind a toggle button by default (only
+       expands if the person actually wants to see it), day tabs + Leaflet
+       map with numbered stops. The toggle button itself only appears when
+       the itinerary has stop coordinates at all (see initAiRouteMap) —
+       e.g. cached routes generated before Stop.lat/Stop.lng existed on
+       the backend show neither the button nor the section. -->
+  <div id="ai-route-map-toggle-wrap" class="hidden px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-8 md:mb-10">
+    <button id="ai-route-map-toggle-btn" onclick="toggleAiRouteMap()" class="btn-interactive w-full sm:w-auto h-[46px] px-5 flex items-center justify-center gap-2 bg-white text-sm font-medium text-gray-700 rounded-2xl bento-card">
+      <i data-lucide="map" class="w-4 h-4 text-[#8B5CF6]"></i> <span id="ai-route-map-toggle-label">View route on map</span>
+    </button>
+  </div>
   <div id="ai-route-map-section" class="hidden px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-10 md:mb-14">
     <div class="flex items-center justify-between gap-3 mb-4 flex-wrap">
       <div class="font-serif-display text-2xl md:text-3xl">Map</div>
       <div id="ai-map-day-tabs" class="peek-scroll flex gap-1.5 overflow-x-auto"></div>
     </div>
     <div id="ai-route-map" class="w-full h-[340px] md:h-[440px] rounded-[26px] overflow-hidden bento-card"></div>
-    <div id="ai-map-stop-list" class="mt-4 space-y-2"></div>
+    <div id="ai-map-stop-list" class="mt-4 space-y-1.5"></div>
   </div>
 
   <!-- Always-shown hotel booking banner — independent of whether the AI
@@ -1860,8 +1867,8 @@
 
   // ── Route Map view (Leaflet) ─────────────────────────────────────────
   // Straight-line distance between two coordinates, in km. Used only to
-  // label "X km to next stop" in the map popup/list — never presented as
-  // a driving/walking time, since we don't have real routing data.
+  // label "X km to next stop" — never presented as a driving/walking
+  // time, since we don't have real routing data.
   function haversineKm(lat1, lon1, lat2, lon2) {
     const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -1870,38 +1877,93 @@
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
-  // Builds the day-tab row and shows the whole Map section, but only if
-  // at least one stop anywhere in the itinerary actually has coordinates.
+  // Real-world stops just a few hundred meters apart (very common — e.g.
+  // a landmark and the department store next door) render as perfectly
+  // overlapping pins at typical zoom levels, hiding every marker but the
+  // last one drawn. This spreads out any stop whose coordinates round to
+  // within ~110m of an already-placed stop in the same day, in a small
+  // spiral, so every pin stays visible and clickable. Only affects where
+  // the PIN is drawn — popups, distances, and the Google Maps directions
+  // link all keep using the stop's real, unmodified coordinates.
+  function dedupeMapPositions(stops) {
+    const seen = new Map(); // rounded "lat,lng" key → how many times seen
+    return stops.map((s) => {
+      const key = s.lat.toFixed(3) + ',' + s.lng.toFixed(3); // ~110m grid
+      const n = seen.get(key) || 0;
+      seen.set(key, n + 1);
+      if (n === 0) return { lat: s.lat, lng: s.lng };
+      const angle = n * 2.4; // golden-angle-ish spread so points don't line up
+      const radius = 0.0006 * Math.ceil((n + 1) / 2); // ~65m per ring
+      return { lat: s.lat + radius * Math.cos(angle), lng: s.lng + radius * Math.sin(angle) };
+    });
+  }
+
+  // Checks whether the itinerary has any usable coordinates at all and,
+  // if so, reveals only the "View route on map" toggle button — the
+  // Leaflet map itself isn't built until the person actually clicks it.
   // Itineraries generated before backend/models.py gained Stop.lat/lng
-  // (or where Google Places couldn't resolve a stop) simply won't show a
-  // map — better than showing an empty/broken one.
+  // (or where Google Places couldn't resolve a stop) show neither the
+  // button nor the section, rather than an empty/broken map.
   function initAiRouteMap(itinerary) {
+    const toggleWrap = document.getElementById('ai-route-map-toggle-wrap');
     const section = document.getElementById('ai-route-map-section');
-    if (!section) return;
+    if (!toggleWrap || !section) return;
+
+    // A fresh route render always starts collapsed, even if a previous
+    // route on this same screen had the map open.
+    section.classList.add('hidden');
+    const label = document.getElementById('ai-route-map-toggle-label');
+    if (label) label.textContent = 'View route on map';
+
     const hasCoords = (itinerary.days || []).some(d => d.stops.some(s => typeof s.lat === 'number' && typeof s.lng === 'number'));
     if (!hasCoords) {
-      section.classList.add('hidden');
+      toggleWrap.classList.add('hidden');
       window._aiRouteItineraryForMap = null;
       return;
     }
-    section.classList.remove('hidden');
+    toggleWrap.classList.remove('hidden');
     window._aiRouteItineraryForMap = itinerary;
+    window._aiRouteMapBuilt = false; // forces a fresh day-tab build on next expand
+  }
 
-    const tabsEl = document.getElementById('ai-map-day-tabs');
-    tabsEl.innerHTML = itinerary.days.map((day, i) => `
-      <button onclick="renderMapForDay(${i})" data-day-idx="${i}" class="map-day-tab flex-shrink-0 h-[32px] px-3.5 text-xs font-medium rounded-full whitespace-nowrap ${i === 0 ? 'bg-[#8B5CF6] text-white' : 'bg-white border border-gray-200 text-gray-600'}">Day ${day.day}</button>
-    `).join('');
+  // Expands/collapses the Map section. The Leaflet map + day tabs are only
+  // actually built the first time this opens for the current route — since
+  // the section is display:none until then, Leaflet would otherwise
+  // measure a 0×0 div and render broken.
+  function toggleAiRouteMap() {
+    const section = document.getElementById('ai-route-map-section');
+    const label = document.getElementById('ai-route-map-toggle-label');
+    if (!section) return;
+    const opening = section.classList.contains('hidden');
+    section.classList.toggle('hidden', !opening);
+    if (label) label.textContent = opening ? 'Hide map' : 'View route on map';
+    if (!opening) return;
 
-    let startDay = itinerary.days.findIndex(d => d.stops.some(s => typeof s.lat === 'number' && typeof s.lng === 'number'));
-    if (startDay < 0) startDay = 0;
-    renderMapForDay(startDay);
+    const itinerary = window._aiRouteItineraryForMap;
+    if (!itinerary) return;
+
+    if (!window._aiRouteMapBuilt) {
+      window._aiRouteMapBuilt = true;
+      const tabsEl = document.getElementById('ai-map-day-tabs');
+      tabsEl.innerHTML = itinerary.days.map((day, i) => `
+        <button onclick="renderMapForDay(${i})" data-day-idx="${i}" class="map-day-tab flex-shrink-0 h-[32px] px-3.5 text-xs font-medium rounded-full whitespace-nowrap ${i === 0 ? 'bg-[#8B5CF6] text-white' : 'bg-white border border-gray-200 text-gray-600'}">Day ${day.day}</button>
+      `).join('');
+      let startDay = itinerary.days.findIndex(d => d.stops.some(s => typeof s.lat === 'number' && typeof s.lng === 'number'));
+      if (startDay < 0) startDay = 0;
+      renderMapForDay(startDay);
+    } else if (window._aiRouteLeafletMap) {
+      setTimeout(() => window._aiRouteLeafletMap.invalidateSize(), 60);
+    }
+
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   // Renders the Leaflet map (created once, reused across day switches) for
-  // a single day: numbered purple pins in visit order, a connecting route
-  // line, and a tap/click popup with name + category + distance to the
-  // next stop. Also mirrors the same numbered list below the map so the
-  // stops are readable without needing to tap every pin on mobile.
+  // a single day: numbered purple pins in visit order on a clean light
+  // basemap, a connecting route line, a tap/click popup with name +
+  // category, and a persistent numbered list below the map — each row
+  // showing the straight-line distance to the next stop, so that info
+  // doesn't require tapping every pin on mobile.
   function renderMapForDay(dayIndex) {
     const itinerary = window._aiRouteItineraryForMap;
     if (!itinerary) return;
@@ -1932,8 +1994,13 @@
     if (!window._aiRouteLeafletMap) {
       mapEl.innerHTML = '';
       window._aiRouteLeafletMap = L.map(mapEl, { scrollWheelZoom: false });
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+      // CartoDB Positron: a clean, light, minimal-label basemap — the
+      // default OpenStreetMap tile style is busy and visually clashes
+      // with the rest of GetWay's design. Free, no API key, same OSM
+      // data underneath.
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
+        subdomains: 'abcd',
         maxZoom: 19
       }).addTo(window._aiRouteLeafletMap);
     }
@@ -1943,10 +2010,15 @@
     const layerGroup = L.layerGroup().addTo(map);
     window._aiRouteMapLayer = layerGroup;
 
-    const latlngs = [];
+    // Pin positions get a small de-overlap nudge (see dedupeMapPositions);
+    // everything else (popups, distances, directions) uses real coords.
+    const displayPositions = dedupeMapPositions(stopsWithCoords);
+    const drawnLatLngs = [];
+
     stopsWithCoords.forEach((s, seq) => {
-      const latlng = [s.lat, s.lng];
-      latlngs.push(latlng);
+      const pos = displayPositions[seq];
+      const latlng = [pos.lat, pos.lng];
+      drawnLatLngs.push(latlng);
       const icon = L.divIcon({
         className: '',
         html: `<div class="getway-map-pin">${seq + 1}</div>`,
@@ -1969,32 +2041,37 @@
       `);
     });
 
-    if (latlngs.length > 1) {
-      L.polyline(latlngs, { color: '#8B5CF6', weight: 3, opacity: 0.75 }).addTo(layerGroup);
+    if (drawnLatLngs.length > 1) {
+      L.polyline(drawnLatLngs, { color: '#8B5CF6', weight: 3, opacity: 0.75 }).addTo(layerGroup);
     }
 
-    map.fitBounds(latlngs.length > 1 ? latlngs : [latlngs[0], latlngs[0]], { padding: [36, 36], maxZoom: 16 });
+    map.fitBounds(drawnLatLngs.length > 1 ? drawnLatLngs : [drawnLatLngs[0], drawnLatLngs[0]], { padding: [36, 36], maxZoom: 16 });
     setTimeout(() => map.invalidateSize(), 60);
 
     // "Open in Google Maps" — a real, working multi-stop directions link
-    // (origin/waypoints/destination), which is more immediately useful
-    // than a fabricated "optimize route" feature we can't back with a
-    // real routing engine.
-    const coordPairs = latlngs.map(([lat, lng]) => `${lat},${lng}`);
-    const directionsUrl = coordPairs.length > 1
-      ? `https://www.google.com/maps/dir/?api=1&origin=${coordPairs[0]}&destination=${coordPairs[coordPairs.length - 1]}&waypoints=${coordPairs.slice(1, -1).join('|')}`
-      : `https://www.google.com/maps/search/?api=1&query=${coordPairs[0]}`;
+    // (origin/waypoints/destination). Uses the stops' REAL coordinates,
+    // not the nudged display positions, so directions stay accurate.
+    const realCoordPairs = stopsWithCoords.map(s => `${s.lat},${s.lng}`);
+    const directionsUrl = realCoordPairs.length > 1
+      ? `https://www.google.com/maps/dir/?api=1&origin=${realCoordPairs[0]}&destination=${realCoordPairs[realCoordPairs.length - 1]}&waypoints=${realCoordPairs.slice(1, -1).join('|')}`
+      : `https://www.google.com/maps/search/?api=1&query=${realCoordPairs[0]}`;
 
     listEl.innerHTML = `
       <a href="${directionsUrl}" target="_blank" rel="noopener" class="btn-interactive w-full h-[44px] flex items-center justify-center gap-1.5 bg-[#8B5CF6] text-white text-xs font-medium rounded-xl mb-3">
         <i data-lucide="navigation" class="w-3.5 h-3.5"></i> Open Day ${day.day} route in Google Maps
       </a>
-      ${stopsWithCoords.map((s, seq) => `
+      ${stopsWithCoords.map((s, seq) => {
+        const next = stopsWithCoords[seq + 1];
+        const distanceRow = next
+          ? `<div class="flex items-center gap-2.5 pl-[15px] py-1"><div class="w-px h-4 bg-gray-200 ml-[7px]"></div><div class="text-[10px] text-gray-400">${haversineKm(s.lat, s.lng, next.lat, next.lng).toFixed(1)} km to next stop</div></div>`
+          : '';
+        return `
         <div class="flex items-center gap-2.5 bg-white rounded-xl px-3.5 py-2.5 bento-card">
           <div class="getway-map-pin" style="flex-shrink:0;">${seq + 1}</div>
           <div class="text-xs font-medium">${escapeHtml(s.name)}</div>
         </div>
-      `).join('')}
+        ${distanceRow}`;
+      }).join('')}
     `;
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }

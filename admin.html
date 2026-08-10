@@ -261,7 +261,11 @@ async function loadTab(tab) {
       ]);
       DEST_COUNTS = {};
       [...pendingItems, ...approvedItems].forEach((it) => {
-        const key = (it.destination || "").trim().toLowerCase();
+        // Keyed by the source clip URL, not destination — two different
+        // creators covering the same city (e.g. two separate Paris clips)
+        // are NOT duplicates. Only the same underlying clip generating
+        // more than one route entry counts as a real duplicate.
+        const key = (it.url || "").trim().toLowerCase();
         if (!key) return;
         DEST_COUNTS[key] = (DEST_COUNTS[key] || 0) + 1;
       });
@@ -541,7 +545,7 @@ function buildCard(item, listType) {
   card.className = "bento-card p-6 mb-5";
   card.dataset.video = item.video_id;
 
-  const destKey = (item.destination || "").trim().toLowerCase();
+  const destKey = (item.url || "").trim().toLowerCase();
   const dupCount = DEST_COUNTS[destKey] || 0;
 
   const header = document.createElement("div");
@@ -556,7 +560,7 @@ function buildCard(item, listType) {
       <div class="font-serif-display text-xl flex items-center gap-2 flex-wrap">
         <span>${escapeHtml(item.destination)}</span>
         <span class="text-gray-400 font-sans text-sm font-normal">· ${escapeHtml(item.duration)}</span>
-        ${dupCount > 1 ? `<span class="text-[10px] font-semibold uppercase tracking-wide text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">Duplicate destination (${dupCount}×)</span>` : ""}
+        ${dupCount > 1 ? `<span class="text-[10px] font-semibold uppercase tracking-wide text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">Duplicate clip (${dupCount}×)</span>` : ""}
         <span class="qc-score-badge text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full hidden"></span>
       </div>
       <div class="text-[11px] text-gray-400 mt-0.5">

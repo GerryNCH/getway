@@ -557,6 +557,7 @@ function buildCard(item, listType) {
         <span>${escapeHtml(item.destination)}</span>
         <span class="text-gray-400 font-sans text-sm font-normal">· ${escapeHtml(item.duration)}</span>
         ${dupCount > 1 ? `<span class="text-[10px] font-semibold uppercase tracking-wide text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">Duplicate destination (${dupCount}×)</span>` : ""}
+        <span class="qc-score-badge text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full hidden"></span>
       </div>
       <div class="text-[11px] text-gray-400 mt-0.5">
         ${escapeHtml(item.video_id)} &nbsp;·&nbsp; ${escapeHtml((item.created_at || "").slice(0, 10))}
@@ -580,6 +581,7 @@ function buildCard(item, listType) {
   actions.appendChild(makePillBtn("Edit", "pill-gray", () => toggleEditor(card), editIconSvg()));
 
   if (listType === "pending") {
+    actions.appendChild(makePillBtn("🤖 AI Check", "pill-gray ai-check-btn", () => doAIQualityCheck(item.video_id, card)));
     actions.appendChild(makePillBtn("Approve", "pill-green", () => doApprove(item.video_id), checkIconSvg()));
     actions.appendChild(makePillBtn("Reject", "pill-red", () => doReject(item.video_id), xIconSvg()));
     actions.appendChild(makePillBtn("Clear cache", "pill-gray", () => doClearCache(item.video_id), refreshIconSvg()));
@@ -588,10 +590,22 @@ function buildCard(item, listType) {
     actions.appendChild(makePillBtn("Clear cache", "pill-red solid", () => doClearCache(item.video_id), refreshIconSvg()));
   }
 
+  // AI Quality Check result panel — populated automatically below if a
+  // check already ran (e.g. right after generation), or after the "🤖 AI
+  // Check" button is clicked. Never affects Approve/Reject — those stay
+  // fully manual regardless of what's shown here.
+  const qcPanel = document.createElement("div");
+  qcPanel.className = "qc-panel hidden mt-4 p-4 rounded-xl bg-gray-50 border border-gray-100";
+  card.appendChild(qcPanel);
+
   const editor = document.createElement("div");
   editor.className = "editor hidden mt-5 pt-5 border-t border-gray-100";
   editor.appendChild(buildEditorBody(item));
   card.appendChild(editor);
+
+  if (item.quality_check) {
+    renderQualityCheck(card, item.quality_check);
+  }
 
   return card;
 }
@@ -616,6 +630,74 @@ function playIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="non
 function plusIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>`; }
 
 function toggleEditor(card) { card.querySelector(".editor").classList.toggle("hidden"); }
+
+// ── AI Quality Check ─────────────────────────────────────────────────
+// Purely advisory: shows the Claude Haiku-generated score, issues, and
+// suggestions for a route. Approve/Reject stay separate, manual buttons —
+// this panel never triggers either of them.
+function qcStatusMeta(status) {
+  if (status === "good") return { emoji: "✅", label: "Добър маршрут", badgeCls: "text-emerald-700 bg-emerald-100" };
+  if (status === "needs_attention") return { emoji: "⚠️", label: "Има забележки", badgeCls: "text-amber-700 bg-amber-100" };
+  return { emoji: "🔴", label: "Слаб маршрут", badgeCls: "text-red-700 bg-red-100" };
+}
+
+function renderQualityCheck(card, result) {
+  const meta = qcStatusMeta(result.status);
+
+  const badge = card.querySelector(".qc-score-badge");
+  if (badge) {
+    badge.className = `qc-score-badge text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ${meta.badgeCls}`;
+    badge.textContent = `${meta.emoji} ${result.score}/100`;
+    badge.classList.remove("hidden");
+  }
+
+  const panel = card.querySelector(".qc-panel");
+  if (!panel) return;
+
+  const issues = result.issues || [];
+  const suggestions = result.suggestions || [];
+  const issuesHtml = issues.length
+    ? `<div class="mb-3">
+         <div class="text-[11px] uppercase tracking-wide text-gray-400 mb-1.5">⚠️ Проблеми</div>
+         <ul class="list-disc pl-5 text-sm text-gray-700 space-y-1">${issues.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>
+       </div>`
+    : "";
+  const suggestionsHtml = suggestions.length
+    ? `<div>
+         <div class="text-[11px] uppercase tracking-wide text-gray-400 mb-1.5">💡 Предложения</div>
+         <ul class="list-disc pl-5 text-sm text-gray-700 space-y-1">${suggestions.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ul>
+       </div>`
+    : "";
+  const emptyHtml = (!issuesHtml && !suggestionsHtml)
+    ? `<p class="text-sm text-gray-400">Няма забележки — маршрутът изглежда готов.</p>`
+    : "";
+
+  panel.innerHTML = `
+    <div class="flex items-center gap-2 mb-3">
+      <span class="text-lg leading-none">${meta.emoji}</span>
+      <span class="font-serif-display text-base">Score ${result.score}/100 — ${meta.label}</span>
+    </div>
+    ${issuesHtml}${suggestionsHtml}${emptyHtml}
+  `;
+  panel.classList.remove("hidden");
+}
+
+async function doAIQualityCheck(videoId, card) {
+  const btn = card.querySelector(".ai-check-btn");
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<span>Проверява…</span>`;
+  try {
+    const result = await apiPost(`/admin/quality-check/${encodeURIComponent(videoId)}`);
+    if (DATA[videoId]) DATA[videoId].quality_check = result;
+    renderQualityCheck(card, result);
+  } catch (e) {
+    alert("AI Check failed: " + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+  }
+}
 
 // ── Inline editor ──────────────────────────────────────────────────────
 function buildEditorBody(item) {

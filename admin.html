@@ -636,9 +636,9 @@ function toggleEditor(card) { card.querySelector(".editor").classList.toggle("hi
 // suggestions for a route. Approve/Reject stay separate, manual buttons —
 // this panel never triggers either of them.
 function qcStatusMeta(status) {
-  if (status === "good") return { emoji: "✅", label: "Добър маршрут", badgeCls: "text-emerald-700 bg-emerald-100" };
-  if (status === "needs_attention") return { emoji: "⚠️", label: "Има забележки", badgeCls: "text-amber-700 bg-amber-100" };
-  return { emoji: "🔴", label: "Слаб маршрут", badgeCls: "text-red-700 bg-red-100" };
+  if (status === "good") return { emoji: "✅", label: "Good route", badgeCls: "text-emerald-700 bg-emerald-100" };
+  if (status === "needs_attention") return { emoji: "⚠️", label: "Needs attention", badgeCls: "text-amber-700 bg-amber-100" };
+  return { emoji: "🔴", label: "Poor quality", badgeCls: "text-red-700 bg-red-100" };
 }
 
 function renderQualityCheck(card, result) {
@@ -658,18 +658,18 @@ function renderQualityCheck(card, result) {
   const suggestions = result.suggestions || [];
   const issuesHtml = issues.length
     ? `<div class="mb-3">
-         <div class="text-[11px] uppercase tracking-wide text-gray-400 mb-1.5">⚠️ Проблеми</div>
+         <div class="text-[11px] uppercase tracking-wide text-gray-400 mb-1.5">⚠️ Issues</div>
          <ul class="list-disc pl-5 text-sm text-gray-700 space-y-1">${issues.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>
        </div>`
     : "";
   const suggestionsHtml = suggestions.length
     ? `<div>
-         <div class="text-[11px] uppercase tracking-wide text-gray-400 mb-1.5">💡 Предложения</div>
+         <div class="text-[11px] uppercase tracking-wide text-gray-400 mb-1.5">💡 Suggestions</div>
          <ul class="list-disc pl-5 text-sm text-gray-700 space-y-1">${suggestions.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ul>
        </div>`
     : "";
   const emptyHtml = (!issuesHtml && !suggestionsHtml)
-    ? `<p class="text-sm text-gray-400">Няма забележки — маршрутът изглежда готов.</p>`
+    ? `<p class="text-sm text-gray-400">No issues — route looks ready.</p>`
     : "";
 
   panel.innerHTML = `
@@ -686,7 +686,7 @@ async function doAIQualityCheck(videoId, card) {
   const btn = card.querySelector(".ai-check-btn");
   const originalHtml = btn.innerHTML;
   btn.disabled = true;
-  btn.innerHTML = `<span>Проверява…</span>`;
+  btn.innerHTML = `<span>Checking…</span>`;
   try {
     const result = await apiPost(`/admin/quality-check/${encodeURIComponent(videoId)}`);
     if (DATA[videoId]) DATA[videoId].quality_check = result;

@@ -1877,6 +1877,24 @@
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
+  // Rough travel-time estimate from straight-line distance — no routing
+  // API involved, so these are approximations, not turn-by-turn times.
+  // Under ~1.5km assumes walking (~4.8 km/h, a relaxed sightseeing pace);
+  // beyond that assumes a car/taxi (~25 km/h average incl. city traffic
+  // and lights). Good enough for "should I walk or grab a cab" — not
+  // precise enough to promise as an exact ETA.
+  function estimateTravel(km) {
+    const isWalk = km <= 1.5;
+    const speedKmh = isWalk ? 4.8 : 25;
+    const mins = Math.max(1, Math.round((km / speedKmh) * 60));
+    return { mins, mode: isWalk ? 'walking' : 'by car' };
+  }
+
+  function travelLabel(km) {
+    const { mins, mode } = estimateTravel(km);
+    return `${mins} min ${mode} · ${km.toFixed(1)} km`;
+  }
+
   // Real-world stops just a few hundred meters apart (very common — e.g.
   // a landmark and the department store next door) render as perfectly
   // overlapping pins at typical zoom levels, hiding every marker but the
@@ -2030,7 +2048,7 @@
       const cfg = CAT_CONFIG[s.category] || { label: s.category, color: '#8B5CF6' };
       const next = stopsWithCoords[seq + 1];
       const distanceLine = next
-        ? `<div style="font-size:11px;color:#6b7280;margin-top:4px;">${haversineKm(s.lat, s.lng, next.lat, next.lng).toFixed(1)} km to next stop</div>`
+        ? `<div style="font-size:11px;color:#6b7280;margin-top:4px;">${travelLabel(haversineKm(s.lat, s.lng, next.lat, next.lng))} to next stop</div>`
         : '';
       marker.bindPopup(`
         <div style="font-family:'Inter',sans-serif;min-width:160px;">
@@ -2063,7 +2081,7 @@
       ${stopsWithCoords.map((s, seq) => {
         const next = stopsWithCoords[seq + 1];
         const distanceRow = next
-          ? `<div class="flex items-center gap-2.5 pl-[15px] py-1"><div class="w-px h-4 bg-gray-200 ml-[7px]"></div><div class="text-[10px] text-gray-400">${haversineKm(s.lat, s.lng, next.lat, next.lng).toFixed(1)} km to next stop</div></div>`
+          ? `<div class="flex items-center gap-2.5 pl-[15px] py-1"><div class="w-px h-4 bg-gray-200 ml-[7px]"></div><div class="text-[10px] text-gray-400">${travelLabel(haversineKm(s.lat, s.lng, next.lat, next.lng))} to next stop</div></div>`
           : '';
         return `
         <div class="flex items-center gap-2.5 bg-white rounded-xl px-3.5 py-2.5 bento-card">

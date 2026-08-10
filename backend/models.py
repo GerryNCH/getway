@@ -88,6 +88,16 @@ class Stop(BaseModel):
                                            # possible even though it's still
                                            # not confirmed as the exact one
                                            # shown in the video.
+    lat: Optional[float] = None  # Stop coordinates for the route Map view
+    lng: Optional[float] = None  # (Leaflet, index.html). Populated from
+                                   # Google Places' geometry.location when
+                                   # available — see places.py. None for
+                                   # itineraries cached before this field
+                                   # existed, or when Places couldn't
+                                   # resolve the stop; the frontend hides
+                                   # the Map view entirely for a day with
+                                   # no stop coordinates rather than
+                                   # showing a broken/empty map.
 
 
 class DayPlan(BaseModel):

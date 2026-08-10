@@ -52,11 +52,11 @@ You will receive a destination and a flat list of stops (day, stop_number, name,
 
 Reply with ONLY a JSON object, no preamble, no markdown fences:
 {
-  "generic_names": [{"day": 1, "stop_number": 1, "name": "...", "suggestion": "one short sentence in Bulgarian on what to fix"}],
-  "coordinate_issues": [{"day": 1, "stop_number": 1, "name": "...", "suggestion": "one short sentence in Bulgarian on what to fix"}]
+  "generic_names": [{"day": 1, "stop_number": 1, "name": "...", "suggestion": "one short sentence in English on what to fix"}],
+  "coordinate_issues": [{"day": 1, "stop_number": 1, "name": "...", "suggestion": "one short sentence in English on what to fix"}]
 }
 
-Both arrays can be empty. day/stop_number must exactly match the input. All "suggestion" text must be written in Bulgarian."""
+Both arrays can be empty. day/stop_number must exactly match the input. All "suggestion" text must be written in English."""
 
 
 def _is_placeholder_photo(url: str) -> bool:
@@ -86,7 +86,7 @@ def _deterministic_checks(itinerary: Itinerary) -> tuple[list[str], list[str], i
 
     for day in itinerary.days:
         if len(day.stops) < 3:
-            issues.append(f"Day {day.day}: Само {len(day.stops)} спирки (нужни поне 3)")
+            issues.append(f"Day {day.day}: Only {len(day.stops)} stops (need at least 3)")
             deduction += 10
 
         for i, stop in enumerate(day.stops, start=1):
@@ -95,27 +95,27 @@ def _deterministic_checks(itinerary: Itinerary) -> tuple[list[str], list[str], i
 
             if stop.lat is None or stop.lng is None:
                 missing_or_invalid_coords += 1
-                issues.append(f"Day {day.day}, Stop {i}: Липсват координати за '{stop.name}'")
+                issues.append(f"Day {day.day}, Stop {i}: Missing coordinates for '{stop.name}'")
                 deduction += 3
             elif not (-90 <= stop.lat <= 90) or not (-180 <= stop.lng <= 180):
                 missing_or_invalid_coords += 1
-                issues.append(f"Day {day.day}, Stop {i}: Невалидни координати за '{stop.name}'")
+                issues.append(f"Day {day.day}, Stop {i}: Invalid coordinates for '{stop.name}'")
                 deduction += 10
 
             if _is_placeholder_photo(stop.photo_url):
                 missing_photos += 1
-                issues.append(f"Day {day.day}, Stop {i}: Липсва снимка за спирка '{stop.name}'")
+                issues.append(f"Day {day.day}, Stop {i}: Missing photo for stop '{stop.name}'")
                 deduction += 5
 
     if not has_hotel:
-        issues.append("Липсва хотел спирка или hotel banner снимка за маршрута")
-        suggestions.append("Добави хотел спирка или качи hotel banner снимка за маршрута")
+        issues.append("Missing hotel stop or hotel banner photo for the route")
+        suggestions.append("Add a hotel stop or upload a hotel banner photo for the route")
         deduction += 15
 
     if missing_or_invalid_coords:
-        suggestions.append("Провери и коригирай координатите на маркираните спирки")
+        suggestions.append("Check and fix the coordinates on the flagged stops")
     if missing_photos:
-        suggestions.append("Добави липсващи снимки за маркираните спирки")
+        suggestions.append("Add missing photos for the flagged stops")
 
     return issues, suggestions, deduction
 
@@ -176,7 +176,7 @@ def _haiku_semantic_checks(itinerary: Itinerary) -> tuple[list[str], list[str], 
         for item in result.get("generic_names", []):
             day, num = item.get("day"), item.get("stop_number")
             name = item.get("name", "")
-            issues.append(f"Day {day}, Stop {num}: Неконкретно име — '{name}'")
+            issues.append(f"Day {day}, Stop {num}: Generic name — '{name}'")
             deduction += 15
             if item.get("suggestion"):
                 suggestions.append(item["suggestion"])
@@ -184,7 +184,7 @@ def _haiku_semantic_checks(itinerary: Itinerary) -> tuple[list[str], list[str], 
         for item in result.get("coordinate_issues", []):
             day, num = item.get("day"), item.get("stop_number")
             name = item.get("name", "")
-            issues.append(f"Day {day}, Stop {num}: Координатите не отговарят на дестинацията — '{name}'")
+            issues.append(f"Day {day}, Stop {num}: Coordinates don't match the destination — '{name}'")
             deduction += 10
             if item.get("suggestion"):
                 suggestions.append(item["suggestion"])
@@ -243,7 +243,7 @@ def ai_quality_check(itinerary: Itinerary) -> dict:
         return {
             "score": 0,
             "status": "poor",
-            "issues": [f"AI quality check не успя да се изпълни: {e}"],
-            "suggestions": ["Провери маршрута ръчно — автоматичната проверка гръмна."],
+            "issues": [f"AI quality check failed to run: {e}"],
+            "suggestions": ["Check the route manually — the automatic check crashed."],
             "cost_usd": 0.0,
         }

@@ -1128,6 +1128,9 @@
     }
 
     el.addEventListener('touchstart', (e) => {
+      // Don't hijack taps on real controls layered over the hero (back
+      // button, logo, save, TikTok credit link) — let them work normally.
+      if (e.target.closest('a, button')) { dragging = false; return; }
       const t = e.touches[0];
       start(t.clientX, t.clientY);
     }, { passive: true });
@@ -1141,6 +1144,7 @@
 
     // Desktop mouse-drag support
     el.addEventListener('mousedown', (e) => {
+      if (e.target.closest('a, button')) { dragging = false; return; }
       start(e.clientX, e.clientY);
       e.preventDefault();
     });
@@ -1152,14 +1156,21 @@
   }
 
   function initSwipeGalleries() {
+    // Attached to the outer hero wrapper (not the bg image element itself)
+    // because the gradient overlays and destination text sit as *sibling*
+    // absolutely-positioned layers on top of the bg image — a touch on
+    // those siblings never reaches the bg element directly, only their
+    // shared parent, which is what actually receives the tap on mobile.
+    const mallorcaHero = document.getElementById('mallorca-hero-media');
     attachSwipeGallery(
-      document.getElementById('mallorca-hero-media'),
+      mallorcaHero ? mallorcaHero.parentElement : null,
       () => window._mallorcaActiveIndex || 0,
       () => MEDIA.mallorca.gallery.length,
       selectGalleryItem
     );
+    const aiRouteHero = document.getElementById('ai-route-hero-bg');
     attachSwipeGallery(
-      document.getElementById('ai-route-hero-bg'),
+      aiRouteHero ? aiRouteHero.parentElement : null,
       () => window._aiRouteActiveIndex || 0,
       () => (window._aiRouteGallery || []).length,
       selectAiGalleryPhoto

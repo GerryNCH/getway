@@ -92,12 +92,19 @@
     width: 26px; height: 26px; border-radius: 50%;
     background: #8B5CF6; color: #fff; display: flex; align-items: center; justify-content: center;
     font-size: 11px; font-weight: 700; border: 2px solid #fff;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.28);
+    box-shadow: 0 2px 8px rgba(139,92,246,0.45);
     font-family: 'Inter', sans-serif;
   }
   .map-day-tab { transition: all 0.25s ease; cursor: pointer; }
   .leaflet-popup-content-wrapper { border-radius: 14px; }
   .leaflet-popup-content { margin: 10px 12px; }
+  /* Default browser focus rings are a harsh, off-brand blue — swap for a
+     soft purple ring that still satisfies accessibility (visible on
+     keyboard focus) without clashing with the site's palette. */
+  .btn-interactive:focus, .btn-interactive:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(139,92,246,0.30);
+  }
   #ai-route-map .leaflet-control-attribution { font-size: 9px; }
 </style>
 </head>
@@ -546,8 +553,15 @@
        e.g. cached routes generated before Stop.lat/Stop.lng existed on
        the backend show neither the button nor the section. -->
   <div id="ai-route-map-toggle-wrap" class="hidden px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-8 md:mb-10">
-    <button id="ai-route-map-toggle-btn" onclick="toggleAiRouteMap()" class="btn-interactive w-full sm:w-auto h-[46px] px-5 flex items-center justify-center gap-2 bg-white text-sm font-medium text-gray-700 rounded-2xl bento-card">
-      <i data-lucide="map" class="w-4 h-4 text-[#8B5CF6]"></i> <span id="ai-route-map-toggle-label">View route on map</span>
+    <button id="ai-route-map-toggle-btn" onclick="toggleAiRouteMap()" class="btn-interactive w-full flex items-center gap-4 bg-white rounded-[22px] p-4 md:p-5 bento-card text-left">
+      <div class="w-11 h-11 rounded-2xl bg-[#F1EEFF] flex items-center justify-center flex-shrink-0">
+        <i data-lucide="map" class="w-5 h-5 text-[#7C3AED]"></i>
+      </div>
+      <div class="flex-1 min-w-0">
+        <div id="ai-route-map-toggle-label" class="text-sm font-medium mb-0.5">View route on map</div>
+        <div class="text-xs text-gray-500">See every stop plotted, with walking &amp; driving times between them</div>
+      </div>
+      <i data-lucide="chevron-down" id="ai-route-map-toggle-chevron" class="w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-300"></i>
     </button>
   </div>
   <div id="ai-route-map-section" class="hidden px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-10 md:mb-14">
@@ -1951,10 +1965,12 @@
   function toggleAiRouteMap() {
     const section = document.getElementById('ai-route-map-section');
     const label = document.getElementById('ai-route-map-toggle-label');
+    const chevron = document.getElementById('ai-route-map-toggle-chevron');
     if (!section) return;
     const opening = section.classList.contains('hidden');
     section.classList.toggle('hidden', !opening);
     if (label) label.textContent = opening ? 'Hide map' : 'View route on map';
+    if (chevron) chevron.classList.toggle('rotate-180', opening);
     if (!opening) return;
 
     const itinerary = window._aiRouteItineraryForMap;
@@ -2012,11 +2028,11 @@
     if (!window._aiRouteLeafletMap) {
       mapEl.innerHTML = '';
       window._aiRouteLeafletMap = L.map(mapEl, { scrollWheelZoom: false });
-      // CartoDB Positron: a clean, light, minimal-label basemap — the
-      // default OpenStreetMap tile style is busy and visually clashes
-      // with the rest of GetWay's design. Free, no API key, same OSM
-      // data underneath.
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      // CartoDB Voyager: clean modern basemap with just enough color
+      // (soft greens for parks, blue water, warm road tints) to feel
+      // alive rather than flat — Positron (plain grayscale) read as dead
+      // and lifeless against the rest of GetWay's warm, colorful design.
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
         subdomains: 'abcd',
         maxZoom: 19
@@ -2032,6 +2048,7 @@
     // everything else (popups, distances, directions) uses real coords.
     const displayPositions = dedupeMapPositions(stopsWithCoords);
     const drawnLatLngs = [];
+    const markers = []; // indexed same as stopsWithCoords — lets a list row below open its own pin's popup
 
     stopsWithCoords.forEach((s, seq) => {
       const pos = displayPositions[seq];
@@ -2044,12 +2061,17 @@
         iconAnchor: [13, 13]
       });
       const marker = L.marker(latlng, { icon }).addTo(layerGroup);
+      markers.push(marker);
 
       const cfg = CAT_CONFIG[s.category] || { label: s.category, color: '#8B5CF6' };
       const next = stopsWithCoords[seq + 1];
-      const distanceLine = next
-        ? `<div style="font-size:11px;color:#6b7280;margin-top:4px;">${travelLabel(haversineKm(s.lat, s.lng, next.lat, next.lng))} to next stop</div>`
-        : '';
+      let distanceLine = '';
+      if (next) {
+        const km = haversineKm(s.lat, s.lng, next.lat, next.lng);
+        const { mins } = estimateTravel(km);
+        const modeIcon = km <= 1.5 ? 'footprints' : 'car';
+        distanceLine = `<div style="display:flex;align-items:center;gap:4px;font-size:11px;color:#6b7280;margin-top:4px;"><i data-lucide="${modeIcon}" style="width:11px;height:11px;"></i>${mins} min · ${km.toFixed(1)} km to next stop</div>`;
+      }
       marker.bindPopup(`
         <div style="font-family:'Inter',sans-serif;min-width:160px;">
           <div style="font-size:13px;font-weight:600;margin-bottom:2px;">${escapeHtml(s.name)}</div>
@@ -2057,7 +2079,12 @@
           ${distanceLine}
         </div>
       `);
+      // Leaflet injects popup HTML into the DOM only when it opens, after
+      // lucide.createIcons() already ran for the rest of the page — so the
+      // mode icon above needs its own trigger right when this popup shows.
+      marker.on('popupopen', () => { if (typeof lucide !== 'undefined') lucide.createIcons(); });
     });
+    window._aiRouteMapMarkers = markers;
 
     if (drawnLatLngs.length > 1) {
       L.polyline(drawnLatLngs, { color: '#8B5CF6', weight: 3, opacity: 0.75 }).addTo(layerGroup);
@@ -2079,19 +2106,41 @@
         <i data-lucide="navigation" class="w-3.5 h-3.5"></i> Open Day ${day.day} route in Google Maps
       </a>
       ${stopsWithCoords.map((s, seq) => {
+        const cfg = CAT_CONFIG[s.category] || { icon: 'map-pin', color: '#8B5CF6', label: s.category };
         const next = stopsWithCoords[seq + 1];
-        const distanceRow = next
-          ? `<div class="flex items-center gap-2.5 pl-[15px] py-1"><div class="w-px h-4 bg-gray-200 ml-[7px]"></div><div class="text-[10px] text-gray-400">${travelLabel(haversineKm(s.lat, s.lng, next.lat, next.lng))} to next stop</div></div>`
-          : '';
+        let distanceRow = '';
+        if (next) {
+          const km = haversineKm(s.lat, s.lng, next.lat, next.lng);
+          const { mins } = estimateTravel(km);
+          const modeIcon = km <= 1.5 ? 'footprints' : 'car';
+          distanceRow = `
+            <div class="flex items-center gap-2.5 pl-[15px] py-1.5">
+              <div class="w-px h-5 bg-gray-200 ml-[7px]"></div>
+              <i data-lucide="${modeIcon}" class="w-3 h-3 text-gray-400 flex-shrink-0"></i>
+              <div class="text-[10px] text-gray-400">${mins} min · ${km.toFixed(1)} km</div>
+            </div>`;
+        }
         return `
-        <div class="flex items-center gap-2.5 bg-white rounded-xl px-3.5 py-2.5 bento-card">
+        <button onclick="focusMapStop(${seq})" class="btn-interactive w-full flex items-center gap-2.5 bg-white rounded-xl px-3.5 py-2.5 bento-card text-left">
           <div class="getway-map-pin" style="flex-shrink:0;">${seq + 1}</div>
-          <div class="text-xs font-medium">${escapeHtml(s.name)}</div>
-        </div>
+          <i data-lucide="${cfg.icon}" class="w-3.5 h-3.5 flex-shrink-0" style="color:${cfg.color}"></i>
+          <div class="text-xs font-medium flex-1 min-w-0 truncate">${escapeHtml(s.name)}</div>
+        </button>
         ${distanceRow}`;
       }).join('')}
     `;
     if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+
+  // Lets a person tap a stop in the list below the map and have the map
+  // itself pan to that pin and pop its info bubble open — ties the two
+  // views together instead of leaving the list as a disconnected caption.
+  function focusMapStop(seq) {
+    const map = window._aiRouteLeafletMap;
+    const marker = (window._aiRouteMapMarkers || [])[seq];
+    if (!map || !marker) return;
+    map.flyTo(marker.getLatLng(), Math.max(map.getZoom(), 15), { duration: 0.6 });
+    marker.openPopup();
   }
 
   function renderAiRoute(itinerary, videoId, sourceUrl) {

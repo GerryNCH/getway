@@ -46,7 +46,7 @@ def _search_places(query: str, max_results: int = 1) -> list[dict]:
             headers={
                 "Content-Type": "application/json",
                 "X-Goog-Api-Key": PLACES_API_KEY,
-                "X-Goog-FieldMask": "places.photos,places.displayName",
+                "X-Goog-FieldMask": "places.photos,places.displayName,places.location",
             },
             timeout=6,
         )
@@ -76,43 +76,61 @@ def _names_plausibly_match(query_name: str, candidate_name: str) -> bool:
     return len(overlap) / len(q_words) >= 0.4
 
 
-def _get_place_photo_url(query: str, max_width: int = 800) -> str:
+def _location_from_place(place: dict) -> tuple[float, float] | None:
     """
-    Given a search query (e.g. "Cafe 67, Rome"), returns one photo URL or
-    "". Requests a few candidates and picks the first one whose name
-    plausibly matches what we searched for — Google's Text Search can
-    return an unrelated nearby business as the top hit for a loosely-worded
-    or partial-match query, which previously produced photos with nothing
-    to do with the actual stop (e.g. a convenience store for "Nile
-    Corniche"). If nothing matches confidently, returns "" rather than a
-    misleading photo.
+    Extracts (lat, lng) from a Places API (New) result's `location` field
+    (only present now that the field mask includes "places.location").
+    Returns None when absent rather than (0, 0), which would otherwise
+    silently plot a stop in the Gulf of Guinea on the route Map view.
+    """
+    loc = place.get("location") or {}
+    lat, lng = loc.get("latitude"), loc.get("longitude")
+    if lat is None or lng is None:
+        return None
+    return (lat, lng)
+
+
+def _get_place_photo_and_location(query: str, max_width: int = 800) -> tuple[str, tuple[float, float] | None]:
+    """
+    Same name-matching logic as _get_place_photo_url, but also returns the
+    matched place's (lat, lng) — used to populate Stop.lat/Stop.lng for the
+    route Map view (index.html). Costs no extra API call: the coordinates
+    ride along on the same Text Search response we already fetch for the
+    photo. Returns ("", None) when nothing confidently matches; returns
+    ("", location) when a confident name match has coordinates but no
+    usable photo — a stop can still get a map pin without a photo.
     """
     places = _search_places(query, max_results=3)
     if not places:
         print(f"[Places] No places found for '{query}'")
-        return ""
+        return "", None
 
     query_core = query.split(",")[0]  # drop the appended city for the name comparison
     for place in places:
         name = place.get("displayName", {}).get("text", "")
         if not _names_plausibly_match(query_core, name):
             continue
+        location = _location_from_place(place)
         photos = place.get("photos", [])
         if not photos:
-            continue
-        # Google returns photos in whatever order it ranks them internally
-        # — often a random guest close-up (a boat passing in the distance,
-        # a hallway) rather than a representative exterior/room shot.
-        # Preferring a landscape-oriented, higher-resolution photo among
-        # the first several is a free, cheap signal that tends to favor an
-        # actual establishing shot over a narrow detail crop.
+            return "", location
         candidates = photos[:5]
         landscape = [p for p in candidates if p.get("widthPx", 0) > p.get("heightPx", 0)]
         best = max(landscape or candidates, key=lambda p: p.get("widthPx", 0))
-        return _build_photo_url(best.get("name", ""), max_width)
+        return _build_photo_url(best.get("name", ""), max_width), location
 
     print(f"[Places] No confident name match for '{query}' — skipping photo rather than risk a wrong one")
-    return ""
+    return "", None
+
+
+def _get_place_photo_url(query: str, max_width: int = 800) -> str:
+    """
+    Given a search query (e.g. "Cafe 67, Rome"), returns one photo URL or
+    "". Thin wrapper around _get_place_photo_and_location for call sites
+    that only need the photo — kept so nothing else has to change.
+    """
+    url, _ = _get_place_photo_and_location(query, max_width)
+    return url
 
 
 def _unsplash_candidates(query: str, per_page: int = 6) -> list[dict]:
@@ -366,6 +384,11 @@ def enrich_itinerary_with_photos(itinerary) -> None:
                 stop.photo_url = cached["photo_url"]
                 if cached.get("maps_url_override"):
                     stop.maps_url_override = cached["maps_url_override"]
+                # Only present once database.py's get_cached_stop is updated
+                # to also select/return lat/lng — safe no-op until then.
+                if cached.get("lat") is not None and cached.get("lng") is not None:
+                    stop.lat = cached["lat"]
+                    stop.lng = cached["lng"]
                 print(f"[Cache] Reused saved photo for '{stop.name}' in {city}")
                 continue
 
@@ -391,7 +414,9 @@ def enrich_itinerary_with_photos(itinerary) -> None:
                         print(f"[Places] Upgraded unconfirmed hotel '{stop.name}' → real match '{real_name}'")
                         stop.name = real_name
                         stop.similar_hotel_is_real = True
-                        stop.photo_url = _get_place_photo_url(f"{real_name}, {city}")
+                        stop.photo_url, location = _get_place_photo_and_location(f"{real_name}, {city}")
+                        if location:
+                            stop.lat, stop.lng = location
                         booking_query = f"{real_name}, {city}"
                         stop.booking_url = _booking_affiliate_url(booking_query)
                         stop.expedia_url = _expedia_affiliate_url(booking_query)
@@ -401,8 +426,10 @@ def enrich_itinerary_with_photos(itinerary) -> None:
                 # the name (e.g. "Nile Corniche, Cairo") — searching
                 # "Nile Corniche, Cairo, Cairo & Luxor" is redundant and
                 # doesn't help Places match the right place.
-                stop.photo_url = _get_place_photo_url(name_query)  # Places photo — no Unsplash attribution needed
-                print(f"[Places] Stop: {name_query} → {bool(stop.photo_url)}")
+                stop.photo_url, location = _get_place_photo_and_location(name_query)  # Places photo — no Unsplash attribution needed
+                if location:
+                    stop.lat, stop.lng = location
+                print(f"[Places] Stop: {name_query} → photo={bool(stop.photo_url)} coords={bool(location)}")
 
             if not stop.photo_url and is_specific:
                 # Places had no listing/photo for this specific place (or no

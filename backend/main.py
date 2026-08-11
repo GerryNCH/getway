@@ -44,7 +44,7 @@ from ai_analyzer import analyse_frames
 from quality_check import ai_quality_check
 from places import (
     enrich_itinerary_with_photos, _unsplash_candidates, _attribution_from_candidate,
-    _trigger_unsplash_download, _search_places, _names_plausibly_match, _get_place_photo_and_location,
+    _trigger_unsplash_download, _get_place_photo_and_location,
 )
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -453,25 +453,39 @@ async def admin_upload_image(secret: str, file: UploadFile = File(...)):
     return {"url": result["data"]["url"]}
 
 
-@app.post("/admin/verify-locations/{video_id}")
-def admin_verify_locations(video_id: str, secret: str):
+@app.post("/admin/quality-check/{video_id}")
+def admin_quality_check(video_id: str, secret: str):
     """
-    Re-checks every stop against Google Places. For any stop Places CAN
-    confidently resolve, this also backfills whatever's missing on it
-    (coordinates and/or photo) and persists it — not just a flag anymore,
-    an actual fix. For stops Places still can't confidently match (usually
-    a generic name like "Trastevere neighbourhood" rather than a specific
-    place), nothing can be auto-fixed — those need a manual rename via
-    Edit, then a re-run of this same button.
+    The admin panel's ONLY "🤖 AI Check" button — does everything in one
+    click, one cost:
 
-    This costs one Places API call per stop (same API already used for
-    stop photos) — for a large route, that's a real number of calls, so
-    it's triggered on demand by a button rather than automatically.
+      1. Auto-fixes what can be fixed: for stops missing coordinates or a
+         real photo, re-runs Google Places and backfills whatever it can
+         confidently resolve. Only calls Places for BROKEN stops — a route
+         with no issues costs zero Places calls, and each fixable stop
+         costs exactly one call (not two, from folding the old separate
+         "confirm" + "fetch" steps into a single _get_place_photo_and_location
+         call).
+      2. Runs the quality check (Claude Haiku, ~$0.001) against the
+         now-updated data — generic names, coordinate/country plausibility,
+         plus the free deterministic checks.
+      3. Saves both the fixed stop data (days_json) and the check result
+         (qc_json).
 
-    Only touches days_json (via database.save_days) — never status,
-    qc_json, or any other admin-set field on the route.
+    This used to be two separate buttons/endpoints ("Verify & fix
+    locations" + "AI Check") — merged into one, since running them
+    separately just meant paying for two API round-trips to get one
+    useful answer. A stop Places still can't confidently match (usually a
+    genuinely generic name like "Trastevere neighbourhood" rather than a
+    specific place) can't be auto-fixed by any amount of re-running this —
+    it needs a manual rename via Edit, then one more click of this same
+    button.
 
-    Returns {results: [{day, stop_index, name, category, confirmed, fixed}], fixed_count}.
+    This ONLY flags/fixes location data — it never changes `status`.
+    Approving or rejecting the route is always a separate, manual action
+    via /admin/approve or /admin/reject.
+
+    Returns the same shape as ai_quality_check() plus "fixed_count".
     """
     _check_admin_secret(secret)
     itinerary = database.get_itinerary(video_id)
@@ -479,70 +493,35 @@ def admin_verify_locations(video_id: str, secret: str):
         raise HTTPException(404, "Route not found")
 
     city = itinerary.destination.split(",")[0].strip()
-    results = []
     fixed_count = 0
     changed = False
 
-    for day_idx, day in enumerate(itinerary.days):
-        for stop_idx, stop in enumerate(day.stops):
-            query = stop.name if city.lower() in stop.name.lower() else f"{stop.name}, {city}"
-            places = _search_places(query, max_results=1)
-            confirmed = bool(places) and _names_plausibly_match(
-                stop.name, places[0].get("displayName", {}).get("text", "")
-            )
-
-            fixed = False
+    for day in itinerary.days:
+        for stop in day.stops:
             needs_coords = stop.lat is None or stop.lng is None
             needs_photo = not stop.photo_url or "picsum.photos" in stop.photo_url.lower()
+            if not (needs_coords or needs_photo):
+                continue  # already fine — zero Places calls spent on it
 
-            if confirmed and (needs_coords or needs_photo):
-                # Places confirms this really is the place we asked for —
-                # fetch the full photo+location (rides on the same Text
-                # Search response, no extra API call) and backfill only
-                # what's actually missing, never overwriting good data.
-                photo_url, location = _get_place_photo_and_location(query)
-                if location and needs_coords:
-                    stop.lat, stop.lng = location
-                    fixed = True
-                if photo_url and needs_photo:
-                    stop.photo_url = photo_url
-                    fixed = True
-                if fixed:
-                    fixed_count += 1
-                    changed = True
+            query = stop.name if city.lower() in stop.name.lower() else f"{stop.name}, {city}"
+            photo_url, location = _get_place_photo_and_location(query)
 
-            results.append({
-                "day": day_idx,
-                "stop_index": stop_idx,
-                "name": stop.name,
-                "category": stop.category,
-                "confirmed": confirmed,
-                "fixed": fixed,
-            })
+            stop_fixed = False
+            if location and needs_coords:
+                stop.lat, stop.lng = location
+                stop_fixed = True
+            if photo_url and needs_photo:
+                stop.photo_url = photo_url
+                stop_fixed = True
+            if stop_fixed:
+                fixed_count += 1
+                changed = True
 
     if changed:
         database.save_days(video_id, itinerary.days)
 
-    return {"results": results, "fixed_count": fixed_count}
-
-
-@app.post("/admin/quality-check/{video_id}")
-def admin_quality_check(video_id: str, secret: str):
-    """
-    Runs (or re-runs) the AI Quality Check for one route on demand — the
-    admin panel's "🤖 AI Check" button. Uses Claude Haiku (~$0.001/check)
-    to flag generic stop names, thin days, missing hotel content, bad
-    coordinates, and missing photos.
-
-    This ONLY flags problems and saves the score/issues/suggestions to the
-    route — it never changes `status`. Approving or rejecting the route is
-    always a separate, manual action via /admin/approve or /admin/reject.
-    """
-    _check_admin_secret(secret)
-    itinerary = database.get_itinerary(video_id)
-    if itinerary is None:
-        raise HTTPException(404, "Route not found")
     result = ai_quality_check(itinerary)
+    result["fixed_count"] = fixed_count
     database.save_quality_check(video_id, result)
     return result
 

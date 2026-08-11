@@ -312,6 +312,24 @@ def save_quality_check(video_id: str, result: dict) -> bool:
     return cur.rowcount > 0
 
 
+def save_days(video_id: str, days: list) -> bool:
+    """
+    Updates ONLY the days_json column for an existing route — used by
+    /admin/verify-locations when it backfills a stop's coordinates/photo
+    after a fresh Places match. Deliberately narrower than save_itinerary(),
+    which does an INSERT OR REPLACE against a fixed column list that
+    doesn't include status/qc_json/view_count/etc. — calling that here
+    would silently reset a route's approval status and quality-check
+    result. Returns False if video_id doesn't exist.
+    """
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE itineraries SET days_json = ? WHERE video_id = ?",
+            (json.dumps([d.model_dump() for d in days]), video_id),
+        )
+    return cur.rowcount > 0
+
+
 def list_public_approved() -> list[dict]:
     """
     Lightweight summary of every approved route — everything the homepage

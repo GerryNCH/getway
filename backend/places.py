@@ -15,6 +15,7 @@ on the free Demo tier — plenty for this use case.
 
 import os
 import re
+import time
 import requests
 
 import database
@@ -35,28 +36,48 @@ def _build_photo_url(photo_name: str, max_width: int = 1600) -> str:
     )
 
 
-def _search_places(query: str, max_results: int = 1) -> list[dict]:
-    """Runs a Places Text Search and returns the raw places list (with photos field)."""
+def _search_places(query: str, max_results: int = 1, _retries: int = 2) -> list[dict]:
+    """
+    Runs a Places Text Search and returns the raw places list (with photos
+    field). Retries once on transient failures (timeout, connection error,
+    429, 5xx) before giving up — a single retry recovers most of these, and
+    the alternative is silently losing that stop's coordinates/photo
+    forever, since this same call is what populates Stop.lat/lng at
+    generation time. Does NOT retry genuine "not found" cases (a 200
+    response with an empty/non-matching result) — retrying an unresolvable
+    generic name just wastes calls.
+    """
     if not PLACES_API_KEY:
         return []
-    try:
-        resp = requests.post(
-            SEARCH_URL,
-            json={"textQuery": query, "maxResultCount": max_results},
-            headers={
-                "Content-Type": "application/json",
-                "X-Goog-Api-Key": PLACES_API_KEY,
-                "X-Goog-FieldMask": "places.photos,places.displayName,places.location",
-            },
-            timeout=6,
-        )
-        if resp.status_code != 200:
+    for attempt in range(_retries):
+        is_last_attempt = attempt == _retries - 1
+        try:
+            resp = requests.post(
+                SEARCH_URL,
+                json={"textQuery": query, "maxResultCount": max_results},
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Goog-Api-Key": PLACES_API_KEY,
+                    "X-Goog-FieldMask": "places.photos,places.displayName,places.location",
+                },
+                timeout=6,
+            )
+            if resp.status_code == 200:
+                return resp.json().get("places", [])
+            if resp.status_code == 429 or resp.status_code >= 500:
+                # Transient (rate limit / server-side) — worth a retry.
+                if not is_last_attempt:
+                    time.sleep(0.6)
+                    continue
             print(f"[Places] HTTP {resp.status_code} for '{query}': {resp.text[:300]}")
             return []
-        return resp.json().get("places", [])
-    except Exception as e:
-        print(f"[Places] Exception searching '{query}': {type(e).__name__}: {e}")
-        return []
+        except requests.exceptions.RequestException as e:
+            if not is_last_attempt:
+                time.sleep(0.6)
+                continue
+            print(f"[Places] Exception searching '{query}' after {_retries} attempts: {type(e).__name__}: {e}")
+            return []
+    return []
 
 
 def _names_plausibly_match(query_name: str, candidate_name: str) -> bool:

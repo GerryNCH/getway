@@ -658,6 +658,11 @@ function renderQualityCheck(card, result) {
   const panel = card.querySelector(".qc-panel");
   if (!panel) return;
 
+  const fixedCount = result.fixed_count || 0;
+  const fixedHtml = fixedCount
+    ? `<p class="text-sm text-emerald-700 mb-2">🔧 Auto-fixed ${fixedCount} stop(s) — coordinates/photo backfilled from Google Places.</p>`
+    : "";
+
   const issues = result.issues || [];
   const issuesHtml = issues.length
     ? `<div>
@@ -674,7 +679,7 @@ function renderQualityCheck(card, result) {
       <span class="text-lg leading-none">${meta.emoji}</span>
       <span class="font-serif-display text-base">Score ${result.score}/100 — ${meta.label}</span>
     </div>
-    ${issuesHtml}${emptyHtml}
+    ${fixedHtml}${issuesHtml}${emptyHtml}
   `;
   panel.classList.remove("hidden");
 }
@@ -683,7 +688,7 @@ async function doAIQualityCheck(videoId, card) {
   const btn = card.querySelector(".ai-check-btn");
   const originalHtml = btn.innerHTML;
   btn.disabled = true;
-  btn.innerHTML = `<span>Checking…</span>`;
+  btn.innerHTML = `<span>Checking & fixing…</span>`;
   try {
     const result = await apiPost(`/admin/quality-check/${encodeURIComponent(videoId)}`);
     if (DATA[videoId]) DATA[videoId].quality_check = result;
@@ -755,9 +760,7 @@ function buildEditorBody(item) {
 
   item.days.forEach((day, dayIdx) => wrap.appendChild(buildDayBlock(item.video_id, dayIdx)));
 
-  const verifyBtn = makePillBtn("Verify & fix locations", "pill-gray verify-locations-btn", () => doVerifyLocations(item.video_id, wrap), searchCheckIconSvg());
   const saveBtn = makePillBtn("Save changes", "pill-purple", () => doSave(item.video_id, wrap), saveIconSvg());
-  topActionsRow.appendChild(verifyBtn);
   topActionsRow.appendChild(saveBtn);
 
   return wrap;
@@ -1072,49 +1075,6 @@ function buildStopRow(videoId, dayIdx, stopIdx) {
 }
 
 // ── Actions ───────────────────────────────────────────────────────────
-async function doVerifyLocations(videoId, wrap) {
-  const btnEl = wrap.querySelector(".verify-locations-btn");
-  const btn = btnEl.querySelector("span");
-  const originalLabel = btn.textContent;
-  btnEl.disabled = true;
-  btn.textContent = "Checking & fixing… (this can take a moment for big routes)";
-
-  // Clear any previous verification banners before re-checking
-  wrap.querySelectorAll(".location-unconfirmed-banner").forEach((el) => el.remove());
-
-  try {
-    const data = await apiPost(`/admin/verify-locations/${encodeURIComponent(videoId)}`);
-    let unconfirmedCount = 0;
-    (data.results || []).forEach((r) => {
-      if (r.confirmed) return;
-      unconfirmedCount++;
-      const row = wrap.querySelector(`.day-block[data-day="${r.day}"] .stop-row[data-stop="${r.stop_index}"]`);
-      if (!row) return;
-      const banner = document.createElement("div");
-      banner.className = "location-unconfirmed-banner text-[11px] text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-3 flex items-center gap-1.5";
-      banner.innerHTML = `<i data-lucide="alert-triangle" class="w-3.5 h-3.5 flex-shrink-0"></i><span>Couldn't confirm this location on Google — double-check the name, add a Maps link override below, and check the photo.</span>`;
-      row.insertBefore(banner, row.firstChild);
-    });
-    if (typeof lucide !== "undefined") lucide.createIcons();
-    const fixedCount = data.fixed_count || 0;
-    const parts = [];
-    if (fixedCount) parts.push(`Fixed ${fixedCount} stop(s) ✓`);
-    parts.push(unconfirmedCount
-      ? `${unconfirmedCount} still need a look — see flagged stops below`
-      : "all locations confirmed");
-    btn.textContent = parts.join(" — ");
-    // Reload the pending/approved list in the background so the AI Check
-    // score badge (and any "missing coordinates" issues) reflect the fix
-    // without the admin having to manually refresh the page.
-    if (fixedCount) loadTab(ACTIVE_TAB);
-  } catch (e) {
-    alert("Verification failed: " + e.message);
-    btn.textContent = originalLabel;
-  } finally {
-    btnEl.disabled = false;
-  }
-}
-
 async function doSave(videoId, editorWrap) {
   const btn = editorWrap.querySelector(".pill-purple");
   btn.disabled = true;

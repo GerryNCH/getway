@@ -22,14 +22,24 @@ Split between two layers, on purpose:
   - Countable facts (coordinate RANGE validity, placeholder/missing
     photos) are checked in plain Python — free, exact, instant. No reason
     to spend a model call on arithmetic.
-  - Judgment calls (is this name a real specific place? do these
-    coordinates plausibly belong to this destination's country?) go to
-    Claude Haiku (claude-haiku-4-5-20251001) — cheap (~$0.001/check) and
-    fast, and this is exactly the kind of fuzzy judgment Haiku is good at.
+  - The one genuine judgment call (is this name a real, specific,
+    bookable place, or a vague placeholder?) goes to Claude Haiku
+    (claude-haiku-4-5-20251001) — cheap (~$0.001/check) and fast.
+
+This deliberately does NOT ask Haiku to judge whether coordinates
+plausibly belong to the destination's country/region. That check existed
+in an earlier version and was removed: Haiku has no real geocoding
+database, only its own approximate world knowledge, and for smaller or
+less-famous places (a village in Malta, a specific cathedral) it produced
+confident-sounding but wrong "coordinates don't match" flags — worse than
+not checking at all, since a wrong flag costs the admin's trust and time
+investigating a non-issue. Genuinely broken coordinates (out of the
+-90..90 / -180..180 range, or missing entirely) are still caught, for
+free, by the deterministic layer below.
 
 Both layers report per-stop, and are merged into ONE issue line per
-problematic stop (e.g. "generic name, missing photo" together) rather
-than one line per sub-problem — keeps the admin panel readable instead of
+problematic stop (e.g. "generic name, missing photo") rather than one
+line per sub-problem — keeps the admin panel readable instead of
 repeating the same stop three times.
 
 A Haiku failure (rate limit, bad JSON, network error, etc.) is non-fatal:
@@ -58,19 +68,25 @@ _PLACEHOLDER_PHOTO_MARKERS = ("picsum.photos",)
 
 _QUALITY_SYSTEM = """You are a travel-itinerary QA reviewer for GetWay, a TikTok-to-itinerary travel platform.
 
-You will receive a destination and a flat list of stops (day, stop_number, name, category, lat, lng). Judge ONLY two things:
+You will receive a destination and a flat list of stops (day, stop_number, name, category). Judge ONE thing only:
 
-1. GENERIC NAMES — does `name` identify one real, specific, bookable place? Reject vague placeholders such as "Restaurant near the Colosseum", "Hotel in Rome", "Unknown location", "Local cafe", "A beach in the south", "Cafe in Montmartre", "Place near city". Accept real proper names even if you cannot personally confirm they exist (e.g. "Ristorante Aroma", "Hotel Artemide", "Cala Llombards").
+GENERIC NAMES — does `name` identify one real, specific place, OR a real specific village/town/neighbourhood/district that is itself the intended stop (e.g. "explore this village")? Be conservative — when in doubt, do NOT flag it.
 
-2. COORDINATE PLAUSIBILITY — does (lat, lng) fall roughly within the country/region implied by the destination? Only flag stops that are CLEARLY wrong (e.g. a Rome stop with coordinates in another continent) — not small in-city imprecision. Skip stops where lat or lng is null.
+Reject only clear, vague placeholders that describe a TYPE of place instead of naming one: "Restaurant near the Colosseum", "Hotel in Rome", "Unknown location", "Local cafe", "A beach in the south", "Cafe in Montmartre", "Cosy dinner restaurant, St. Paul's Bay", "Place near city".
+
+Do NOT flag:
+- Real town/village/neighbourhood names, even paired with just the country/region — e.g. "Qrendi, Malta", "Żurrieq, Malta", "Trastevere, Rome" are real places and a legitimate whole-place stop, not placeholders.
+- Real named businesses, attractions, or landmarks, even ones you personally don't recognise — e.g. "The Limestone Heritage, Valletta", "Ristorante Aroma", "Cala Llombards" all name one specific place.
+- Anything that reads as a proper noun / capitalized specific name, as opposed to a generic noun phrase.
+
+If you are not highly confident a name is a vague category description rather than an actual specific place, leave it out.
 
 Reply with ONLY a JSON object, no preamble, no markdown fences:
 {
-  "generic_names": [{"day": 1, "stop_number": 1, "name": "...", "suggestion": "one short sentence in English on what to fix"}],
-  "coordinate_issues": [{"day": 1, "stop_number": 1, "name": "...", "suggestion": "one short sentence in English on what to fix"}]
+  "generic_names": [{"day": 1, "stop_number": 1, "name": "...", "suggestion": "one short sentence in English on what to fix"}]
 }
 
-Both arrays can be empty. day/stop_number must exactly match the input. All "suggestion" text must be written in English."""
+The array can be empty. day/stop_number must exactly match the input. All "suggestion" text must be written in English."""
 
 
 def _is_placeholder_photo(url: str) -> bool:
@@ -118,10 +134,10 @@ def _deterministic_stop_findings(itinerary: Itinerary) -> dict:
 
 def _haiku_stop_findings(itinerary: Itinerary) -> tuple[dict, float]:
     """
-    Claude Haiku's judgment on generic names and coordinate/country
-    plausibility — the two checks that need real reasoning, not just
-    arithmetic. Keyed by (day, stop_number), same shape as
-    _deterministic_stop_findings, plus an optional "suggestion" key.
+    Claude Haiku's judgment on generic vs. real specific stop names — the
+    one genuine judgment call in this file. Keyed by (day, stop_number),
+    same shape as _deterministic_stop_findings, plus an optional
+    "suggestion" key.
 
     Returns (findings, cost_usd). Never raises — on any failure (bad JSON,
     network, rate limit) returns ({}, 0.0) so the deterministic findings
@@ -135,8 +151,6 @@ def _haiku_stop_findings(itinerary: Itinerary) -> tuple[dict, float]:
                 "stop_number": i,
                 "name": stop.name,
                 "category": stop.category,
-                "lat": stop.lat,
-                "lng": stop.lng,
             })
 
     user_content = json.dumps({
@@ -168,19 +182,13 @@ def _haiku_stop_findings(itinerary: Itinerary) -> tuple[dict, float]:
             raw = re.sub(r"^```(json)?|```$", "", raw, flags=re.MULTILINE).strip()
         result = json.loads(raw)
 
-        def _add(item: dict, problem: str, deduction: int) -> None:
+        for item in result.get("generic_names", []):
             key = (item.get("day"), item.get("stop_number"))
             entry = findings.setdefault(key, {"name": item.get("name", ""), "problems": [], "deduction": 0})
-            entry["problems"].append(problem)
-            entry["deduction"] += deduction
+            entry["problems"].append("generic name")
+            entry["deduction"] += 15
             if item.get("suggestion"):
                 entry["suggestion"] = item["suggestion"]
-
-        for item in result.get("generic_names", []):
-            _add(item, "generic name", 15)
-
-        for item in result.get("coordinate_issues", []):
-            _add(item, "coordinates don't match the destination", 10)
 
     except Exception as e:
         # A failed QA pass must never block route generation — just log it

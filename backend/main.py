@@ -28,8 +28,11 @@ load_dotenv()
 
 import os
 
+import uuid
+
 from fastapi import FastAPI, HTTPException, File, UploadFile, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from models import ExtractRequest, ExtractResponse, Itinerary, Comment, ReviewCreate, Review, ReviewsResponse, RouteMeta, SiteSettings
 import database
@@ -50,6 +53,25 @@ from places import (
 # ── App setup ─────────────────────────────────────────────────────────────────
 
 app = FastAPI(title="GetWay Backend", version="0.2.0")
+
+# Admin-uploaded images (hero/gallery/stop photos) are stored directly on
+# Railway's persistent Volume — same one the database already lives on —
+# instead of a third-party host like imgbb. This survives redeploys (same
+# reason the DB was moved there) and means GetWay no longer depends on a
+# free external image host that can silently swap a missing photo for its
+# own "image not found" placeholder. See DATA_DIR in database.py for why
+# this path is safe to write to.
+IMAGES_DIR = database.DATA_DIR / "images"
+IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+
+# Public base URL this backend is reachable at — used to build the photo
+# URLs returned to the admin panel (e.g. "https://xxx.up.railway.app/uploads/abc.jpg").
+# Set BACKEND_BASE_URL in Railway → Variables if this ever changes.
+BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "https://getway-production.up.railway.app").rstrip("/")
+
+# Serves everything in IMAGES_DIR at /uploads/<filename> — this is what
+# turns an uploaded file into a working photo URL for the site.
+app.mount("/uploads", StaticFiles(directory=str(IMAGES_DIR)), name="uploads")
 
 app.add_middleware(
     CORSMiddleware,
@@ -303,7 +325,6 @@ def list_reviews(video_id: str):
 # ── Admin endpoints (basic — full panel comes later) ─────────────────────────
 
 ADMIN_SECRET = os.getenv("ADMIN_SECRET", "getway2026")
-IMGBB_API_KEY = os.getenv("IMGBB_API_KEY", "")
 
 
 @app.post("/admin/clear-cache")
@@ -412,45 +433,64 @@ def _check_admin_secret(secret: str) -> None:
         raise HTTPException(403, "Invalid admin secret")
 
 
+_ALLOWED_IMAGE_TYPES = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+}
+_MAX_UPLOAD_BYTES = 15 * 1024 * 1024  # 15MB — generous for a phone photo
+
+
 @app.post("/admin/upload-image")
 async def admin_upload_image(secret: str, file: UploadFile = File(...)):
     """
-    Uploads an image file (hero/gallery/stop photo) to imgbb and returns a
-    direct URL — lets the admin panel offer a real drag-and-drop/file-picker
-    upload instead of requiring Gerry to manually upload to imgbb.com and
-    paste the link. The imgbb API key stays server-side (never sent to the
-    browser) since exposing it client-side would let anyone steal it from
-    the page source and use up the account's quota.
+    Saves an uploaded image file (hero/gallery/stop photo) directly onto
+    Railway's persistent Volume and returns a direct URL served by this
+    same backend — lets the admin panel offer a real drag-and-drop/
+    file-picker upload without depending on a third-party host.
+
+    Previously this uploaded to imgbb.com. That's been retired: imgbb is a
+    free host with no reliability guarantee, and — worse — when an imgbb
+    image goes missing it doesn't return a 404, it silently serves back
+    its own "image not found" placeholder graphic with a 200 OK, so the
+    site's own broken-image fallback never even triggers. Storing files
+    ourselves removes that failure mode entirely: the photo is only ever
+    gone if this server's Volume is gone, same as the database already
+    depends on.
     """
     _check_admin_secret(secret)
-    if not IMGBB_API_KEY:
+
+    content_type = (file.content_type or "").lower()
+    extension = _ALLOWED_IMAGE_TYPES.get(content_type)
+    if not extension:
         raise HTTPException(
-            500,
-            "IMGBB_API_KEY is not set — get a free key at api.imgbb.com and "
-            "add it in Railway → Variables.",
+            415,
+            f"Unsupported file type '{content_type}'. "
+            f"Allowed: {', '.join(sorted(_ALLOWED_IMAGE_TYPES))}.",
         )
 
     contents = await file.read()
-    if len(contents) > 32 * 1024 * 1024:  # imgbb's own limit
-        raise HTTPException(413, "Image is larger than imgbb's 32MB limit.")
-
-    import base64
-    try:
-        resp = requests.post(
-            "https://api.imgbb.com/1/upload",
-            params={"key": IMGBB_API_KEY},
-            data={"image": base64.b64encode(contents).decode("utf-8")},
-            timeout=30,
+    if len(contents) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            413,
+            f"Image is larger than the {_MAX_UPLOAD_BYTES // (1024 * 1024)}MB limit.",
         )
-        resp.raise_for_status()
-        result = resp.json()
-    except requests.RequestException as e:
-        raise HTTPException(502, f"imgbb upload failed: {e}")
+    if not contents:
+        raise HTTPException(400, "Uploaded file is empty.")
 
-    if not result.get("success"):
-        raise HTTPException(502, f"imgbb rejected the upload: {result}")
+    # Random filename — never trust the original filename (path traversal,
+    # collisions, weird characters) — same principle as the slugify() rule
+    # already used elsewhere for route names.
+    filename = f"{uuid.uuid4().hex}{extension}"
+    file_path = IMAGES_DIR / filename
 
-    return {"url": result["data"]["url"]}
+    try:
+        file_path.write_bytes(contents)
+    except OSError as e:
+        raise HTTPException(500, f"Could not save image: {e}")
+
+    return {"url": f"{BACKEND_BASE_URL}/uploads/{filename}"}
 
 
 @app.post("/admin/quality-check/{video_id}")

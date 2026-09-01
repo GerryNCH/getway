@@ -14,12 +14,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="GetWay">
-<meta name="p:domain_verify" content="58901ae17324bb57c262632e7b28c6d3"/>
-  <meta property="og:title" content="GetWay — Turn TikTok trips into real itineraries">
-<meta property="og:description" content="Paste any TikTok or Instagram travel video and get a bookable route in 60 seconds — hotels, activities, and directions included.">
-<meta property="og:image" content="https://www.gogetway.com/icon-192.png">
-<meta property="og:url" content="https://www.gogetway.com/">
-<meta property="og:type" content="website">
+
 <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" crossorigin="anonymous"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
@@ -112,6 +107,25 @@
   }
   #ai-route-map .leaflet-control-attribution { font-size: 9px; }
 </style>
+
+<!-- Travelpayouts "Drive" widget — site verification / on-site conversion
+     tool tied to Gerry's Travelpayouts partner account (the same account
+     used for the Kiwi.com / Kiwitaxi / GetTransfer affiliate links). The
+     data-* flags just tell common caching/optimization plugins (WP Rocket,
+     Autoptimize, WP Fastest Cache, Cloudflare Rocket Loader, Seraphinite)
+     not to defer or rewrite this script — irrelevant here since GetWay
+     isn't on WordPress, kept only because it's part of Travelpayouts'
+     official snippet. Confirmed legitimate: tpembars.com resolves to
+     Travelpayouts' own infrastructure, not a third-party/unknown domain. -->
+<script nowprocket data-noptimize="1" data-cfasync="false" data-wpfc-render="false" seraph-accel-crit="1" data-no-defer="1" data-cmp-ab="2">
+  (function () {
+    var script = document.createElement("script");
+    script.async = 1;
+    script.setAttribute("data-cmp-ab","2");
+    script.src = 'https://tpembars.com/NTY4NjUy.js?t=568652';
+    document.head.appendChild(script);
+  })();
+</script>
 </head>
 <body class="text-[#111827] antialiased">
 
@@ -535,6 +549,11 @@
     <p id="ai-route-summary" class="max-w-2xl md:mx-auto text-center text-sm md:text-base text-gray-600 leading-relaxed"></p>
   </div>
 
+  <!-- "Do I need a visa?" banner — shown near the top of every route,
+       destination filled in automatically. Admin-toggleable, see
+       isAffiliateSectionEnabled('visa'). -->
+  <div id="ai-route-visa-banner" class="px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mt-6 md:mt-8"></div>
+
   <!-- Photo gallery thumbnails -->
   <div id="ai-route-gallery" class="flex justify-center gap-1.5 md:gap-3 px-4 pt-6 pb-2 md:pt-8"></div>
   <div id="ai-route-gallery-hint" class="hidden text-center px-4 pb-8 md:pb-10 text-[10px] md:text-xs text-gray-400">Tap a thumbnail to preview</div>
@@ -585,8 +604,17 @@
        shot at affiliate commission. -->
   <div id="ai-route-hotels-banner" class="px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-8 md:mb-10"></div>
 
-  <!-- Days + stops rendered here -->
+  <!-- "Find flights" banner — right under the hotel banner, on every
+       route. Admin-toggleable, see isAffiliateSectionEnabled('flights'). -->
+  <div id="ai-route-flights-banner" class="px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-8 md:mb-10"></div>
+
+  <!-- Days + stops rendered here (the Day 1 / arrival-day group also gets
+       an airport transfer banner injected inline — see renderAiRoute). -->
   <div id="ai-route-days" class="px-5 md:px-14 lg:px-24 pb-16 md:pb-24 max-w-4xl mx-auto"></div>
+
+  <!-- Travel insurance — small banner at the end of the route. Admin-
+       toggleable, see isAffiliateSectionEnabled('insurance'). -->
+  <div id="ai-route-insurance-banner" class="px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-6 md:mb-8"></div>
 
   <!-- Affiliate + AI accuracy disclosure — required for FTC/EU transparency,
        kept deliberately understated per product decision: plain small text,
@@ -752,6 +780,13 @@
   };
 
   const ROUTES = [];
+
+  // Admin-controlled settings (hero slides, featured routes, and the Phase
+  // 3 affiliate-partner config — markers/subids, per-section on-off
+  // switches, flights origin). Populated by loadSiteSettings() below;
+  // starts empty so anything reading it before that resolves just gets the
+  // safe "no marker set yet" defaults baked into each helper function.
+  let SITE_SETTINGS = {};
 
   const DAY1_STOPS = [
     { category: "sight", icon: "landmark", iconColor: "#57534E", name: "Palma cathedral & old town", typeLabel: "Sight", photo: "https://picsum.photos/seed/palma-cathedral/900/700", mapsUrl: "https://www.google.com/maps/search/?api=1&query=Palma+Cathedral", distance: "8 min walk from hotel", distanceType: "walk" },
@@ -965,7 +1000,8 @@
   }
 
   // Loads admin-controlled homepage settings (hero slides + featured
-  // routes). Hero slides re-render only if the admin actually set some;
+  // routes, plus the Phase 3 affiliate-partner config — see SITE_SETTINGS
+  // above). Hero slides re-render only if the admin actually set some;
   // featured-route curation is already handled server-side by /routes
   // (see main.py), so loadRealRoutes() doesn't need any extra logic here.
   async function loadSiteSettings() {
@@ -974,6 +1010,7 @@
       const res = await fetch(`${BACKEND_URL}/site-settings`);
       if (res.ok) {
         const settings = await res.json();
+        SITE_SETTINGS = settings || {};
         if (settings.hero_slides && settings.hero_slides.length) slides = settings.hero_slides;
       }
     } catch (err) {
@@ -1647,6 +1684,195 @@
     return `https://www.getyourguide.com/s/?q=${encodeURIComponent(city + ' car rental')}&partner_id=UC97KXN&utm_medium=online_publisher`;
   }
 
+  // ── New affiliate partners (Phase 3) — flights, travel insurance,
+  // airport transfers, visas ───────────────────────────────────────────
+  // Unlike Booking.com/Expedia/GetYourGuide above, none of these seven are
+  // registered/approved affiliate accounts yet — that has to happen first
+  // (Skyscanner, Kiwi.com, GetTransfer and Kiwitaxi run through affiliate
+  // networks like Travelpayouts; World Nomads through CJ; SafetyWing and
+  // iVisa through their own affiliate portals), and every one of those
+  // hands back a *different* tracking format — a marker/subid to drop into
+  // a specific template, not a single ID that's safe to guess (exactly why
+  // Expedia's real camref/creativeref/adref above are commented "confirmed
+  // via Link Builder, not guessed"). Guessing wrong here wouldn't just miss
+  // commission, it could send people to a broken link.
+  //
+  // So until Gerry is actually approved on each program: every link below
+  // goes straight to that partner's real, working page — fully functional
+  // today, just not yet earning commission. The moment he has a program's
+  // real tracking string from that program's own link-builder tool, it
+  // gets pasted into Admin → Affiliate partners and is appended to every
+  // link automatically, with zero code changes.
+  const SITE_SETTINGS_DEFAULT_AFFILIATE_MARKERS = {};
+
+  function affiliateMarker(key) {
+    const markers = (SITE_SETTINGS && SITE_SETTINGS.affiliate_markers) || SITE_SETTINGS_DEFAULT_AFFILIATE_MARKERS;
+    return (markers[key] || '').trim().replace(/^[?&]/, '');
+  }
+  function withAffiliateMarker(url, key) {
+    const suffix = affiliateMarker(key);
+    if (!suffix) return url;
+    return url + (url.includes('?') ? '&' : '?') + suffix;
+  }
+  // Admin can hide any of the 4 new sections without a code change
+  // (site_settings.affiliate_sections_enabled). Missing key = shown.
+  function isAffiliateSectionEnabled(key) {
+    const cfg = (SITE_SETTINGS && SITE_SETTINGS.affiliate_sections_enabled) || {};
+    return cfg[key] !== false;
+  }
+
+  // Flights — Skyscanner's own URL scheme (transport/flights/{origin}/{destination}/)
+  // needs both legs filled in to resolve a real search; GetWay only knows
+  // the trip's destination, not each visitor's home airport, so the origin
+  // comes from an admin-set "home base" city (site_settings.flights_origin).
+  // Left empty, this links to Skyscanner's homepage instead of a guessed
+  // (and possibly empty/invalid) path.
+  function skyscannerFlightsUrl(destination) {
+    const destSlug = slugify(destination);
+    const origin = (SITE_SETTINGS && SITE_SETTINGS.flights_origin || '').trim();
+    const base = origin
+      ? `https://www.skyscanner.net/transport/flights/${slugify(origin)}/${destSlug}/`
+      : `https://www.skyscanner.net/`;
+    return withAffiliateMarker(base, 'skyscanner');
+  }
+  // Kiwi.com's real deep-search link (kiwi.com/deep?from=IATA&to=IATA)
+  // needs airport codes, which a free-text destination string can't
+  // reliably provide — linking there with a mismatched/empty code would be
+  // worse than just sending people to Kiwi's own search homepage.
+  function kiwiFlightsUrl(destination) {
+    return withAffiliateMarker('https://www.kiwi.com/en/', 'kiwi');
+  }
+
+  // Travel insurance — neither needs a destination in the URL itself.
+  function safetyWingUrl() {
+    return withAffiliateMarker('https://safetywing.com/nomad-insurance/', 'safetywing');
+  }
+  function worldNomadsUrl() {
+    return withAffiliateMarker('https://www.worldnomads.com/travel-insurance', 'worldnomads');
+  }
+
+  // Airport transfers — both are real, working homepages; a true per-city
+  // deep link would need a confirmed country/city slug format from each
+  // partner's own docs, which isn't available yet.
+  function getTransferUrl(destination) {
+    return withAffiliateMarker('https://gettransfer.com/en', 'gettransfer');
+  }
+  function kiwitaxiUrl(destination) {
+    return withAffiliateMarker('https://kiwitaxi.com/en', 'kiwitaxi');
+  }
+
+  // Visas — iVisa's real site does have per-country landing pages
+  // (ivisa.com/{country}-visa), but GetWay's `destination` is often a city
+  // or region rather than the country name iVisa expects (e.g. "Mallorca"
+  // isn't "spain") — a guessed slug would 404 for most routes. The
+  // destination still appears in the banner's own text; the link itself
+  // goes to iVisa's real homepage/search.
+  function iVisaUrl(destination) {
+    return withAffiliateMarker('https://www.ivisa.com/', 'ivisa');
+  }
+
+  // "Find flights" — shown under the hotel banner on every route.
+  function buildFlightsBannerHtml(destination, videoId) {
+    const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim() || destination || '';
+    const skyscannerHref = skyscannerFlightsUrl(city);
+    const kiwiHref = kiwiFlightsUrl(city);
+    return `
+      <div class="bento-card bg-white rounded-[26px] p-4 md:p-6 flex items-center gap-4 md:gap-5">
+        <div class="w-11 h-11 md:w-12 md:h-12 rounded-2xl bg-[#F1EEFF] flex items-center justify-center flex-shrink-0">
+          <i data-lucide="plane" class="w-5 h-5 text-[#7C3AED]"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-medium mb-0.5">Find flights to ${escapeHtml(city)}</div>
+          <div class="text-xs text-gray-500 mb-3 md:mb-0">Compare fares before you book — opens in a new tab</div>
+          <div class="grid grid-cols-2 gap-2.5 md:hidden">
+            <a href="${skyscannerHref}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-outline-interactive h-[40px] flex items-center justify-center gap-1.5 bg-gray-50 text-gray-700 text-[11px] font-medium rounded-xl"><span>Skyscanner</span></a>
+            <a href="${kiwiHref}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-outline-interactive h-[40px] flex items-center justify-center gap-1.5 bg-gray-50 text-gray-700 text-[11px] font-medium rounded-xl"><span>Kiwi.com</span></a>
+          </div>
+        </div>
+        <div class="hidden md:grid grid-cols-2 gap-2.5 flex-shrink-0">
+          <a href="${skyscannerHref}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-outline-interactive h-[40px] px-4 flex items-center justify-center gap-1.5 bg-gray-50 text-gray-700 text-xs font-medium rounded-xl"><span>Skyscanner</span></a>
+          <a href="${kiwiHref}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-outline-interactive h-[40px] px-4 flex items-center justify-center gap-1.5 bg-gray-50 text-gray-700 text-xs font-medium rounded-xl"><span>Kiwi.com</span></a>
+        </div>
+      </div>`;
+  }
+  function renderFlightsBanner(destination, videoId) {
+    const container = document.getElementById('ai-route-flights-banner');
+    if (!container) return;
+    container.innerHTML = isAffiliateSectionEnabled('flights') ? buildFlightsBannerHtml(destination, videoId) : '';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+
+  // "Do I need a visa?" — shown near the top of every route.
+  function buildVisaBannerHtml(destination, videoId) {
+    const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim() || destination || '';
+    const href = iVisaUrl(city);
+    return `
+      <div class="bento-card bg-white rounded-[22px] p-4 md:p-5 flex items-center gap-4">
+        <div class="w-11 h-11 rounded-2xl bg-[#F1EEFF] flex items-center justify-center flex-shrink-0">
+          <i data-lucide="stamp" class="w-5 h-5 text-[#7C3AED]"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-medium mb-0.5">Do I need a visa for ${escapeHtml(city)}?</div>
+          <div class="text-xs text-gray-500">Check your eligibility and apply online via iVisa</div>
+        </div>
+        <a href="${href}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex-shrink-0 h-[38px] px-4 flex items-center justify-center gap-1.5 bg-gray-50 text-gray-700 text-xs font-medium rounded-xl whitespace-nowrap"><span>Check now</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
+      </div>`;
+  }
+  function renderVisaBanner(destination, videoId) {
+    const container = document.getElementById('ai-route-visa-banner');
+    if (!container) return;
+    container.innerHTML = isAffiliateSectionEnabled('visa') ? buildVisaBannerHtml(destination, videoId) : '';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+
+  // Travel insurance — small banner at the end of the route, near the
+  // affiliate disclosure text.
+  function buildInsuranceBannerHtml(destination, videoId) {
+    const safetyWingHref = safetyWingUrl();
+    const worldNomadsHref = worldNomadsUrl();
+    return `
+      <div class="bento-card bg-white rounded-[22px] p-4 md:p-5 flex items-center gap-4 flex-wrap md:flex-nowrap">
+        <div class="w-11 h-11 rounded-2xl bg-[#F1EEFF] flex items-center justify-center flex-shrink-0">
+          <i data-lucide="shield-check" class="w-5 h-5 text-[#7C3AED]"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-medium mb-0.5">Travel insurance</div>
+          <div class="text-xs text-gray-500">Cover this trip in case plans change</div>
+        </div>
+        <div class="flex gap-2.5 flex-shrink-0 w-full md:w-auto">
+          <a href="${safetyWingHref}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex-1 md:flex-none h-[38px] px-4 flex items-center justify-center gap-1.5 bg-gray-50 text-gray-700 text-xs font-medium rounded-xl whitespace-nowrap"><span>SafetyWing</span></a>
+          <a href="${worldNomadsHref}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex-1 md:flex-none h-[38px] px-4 flex items-center justify-center gap-1.5 bg-gray-50 text-gray-700 text-xs font-medium rounded-xl whitespace-nowrap"><span>World Nomads</span></a>
+        </div>
+      </div>`;
+  }
+  function renderInsuranceBanner(destination, videoId) {
+    const container = document.getElementById('ai-route-insurance-banner');
+    if (!container) return;
+    container.innerHTML = isAffiliateSectionEnabled('insurance') ? buildInsuranceBannerHtml(destination, videoId) : '';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+
+  // Airport transfer — shown only on Day 1 (arrival day) of the route.
+  function buildTransferBannerHtml(destination, videoId) {
+    const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim() || destination || '';
+    const getTransferHref = getTransferUrl(city);
+    const kiwitaxiHref = kiwitaxiUrl(city);
+    return `
+      <div class="bento-card bg-white rounded-[22px] p-4 md:p-5 mb-6 md:mb-8 flex items-center gap-4 flex-wrap md:flex-nowrap">
+        <div class="w-11 h-11 rounded-2xl bg-[#F1EEFF] flex items-center justify-center flex-shrink-0">
+          <i data-lucide="car-taxi-front" class="w-5 h-5 text-[#7C3AED]"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-medium mb-0.5">Book an airport transfer</div>
+          <div class="text-xs text-gray-500">Pre-book a ride from the airport in ${escapeHtml(city)}</div>
+        </div>
+        <div class="flex gap-2.5 flex-shrink-0 w-full md:w-auto">
+          <a href="${getTransferHref}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex-1 md:flex-none h-[38px] px-4 flex items-center justify-center gap-1.5 bg-gray-50 text-gray-700 text-xs font-medium rounded-xl whitespace-nowrap"><span>GetTransfer</span></a>
+          <a href="${kiwitaxiHref}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex-1 md:flex-none h-[38px] px-4 flex items-center justify-center gap-1.5 bg-gray-50 text-gray-700 text-xs font-medium rounded-xl whitespace-nowrap"><span>Kiwitaxi</span></a>
+        </div>
+      </div>`;
+  }
+
   // ── Admin panel (hidden — open getway-theta.vercel.app/#admin) ──────────
   // Lets Gerry clear the cached-routes table so old TikTok links regenerate
   // fresh (e.g. after a pricing/link-format change) without touching Railway
@@ -2281,18 +2507,30 @@
       hotelsBannerEl.insertAdjacentHTML('beforeend', buildCarRentalBannerHtml(itinerary.destination, videoId, itinerary.car_rental_note, itinerary.car_rental_photo_url));
       if (typeof lucide !== 'undefined') lucide.createIcons();
     }
+    // New affiliate partners (Phase 3) — visa + flights banners render
+    // into their own fixed slots (top of route, under the hotel banner);
+    // the airport transfer banner is built inline below since it belongs
+    // inside the Day 1 group, not a standalone slot.
+    renderVisaBanner(itinerary.destination, videoId);
+    renderFlightsBanner(itinerary.destination, videoId);
+    renderInsuranceBanner(itinerary.destination, videoId);
     renderAiRouteComments(itinerary.comments);
     initReviewsSection('ai-route', videoId);
 
     // Days
     const container = document.getElementById('ai-route-days');
-    container.innerHTML = itinerary.days.map(day => {
+    container.innerHTML = itinerary.days.map((day, dayIndex) => {
       const hotels = day.stops.filter(s => s.category === 'hotel');
       const others = day.stops.filter(s => s.category !== 'hotel');
+      // Airport transfer banner — arrival day only (the first day of the
+      // trip, regardless of what day.day is numbered), admin-toggleable.
+      const transferBanner = (dayIndex === 0 && isAffiliateSectionEnabled('transfer'))
+        ? buildTransferBannerHtml(itinerary.destination, videoId) : '';
       return `
         <div class="ai-day-group mb-10 md:mb-14">
           <div class="font-serif-display text-[26px] md:text-4xl leading-tight mb-1">Day ${day.day}</div>
           <div class="text-xs md:text-sm text-gray-500 mb-6 md:mb-8">${day.label} · ${day.stops.length} stop${day.stops.length !== 1 ? 's' : ''}</div>
+          ${transferBanner}
           ${hotels.map(h => renderAiStopCard(h, itinerary.destination, itinerary.creator_handle, videoId)).join('')}
           <div class="grid md:grid-cols-2 gap-4 md:gap-6">
             ${others.map(s => renderAiStopCard(s, itinerary.destination, itinerary.creator_handle, videoId)).join('')}

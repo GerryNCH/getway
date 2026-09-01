@@ -96,6 +96,10 @@
   }
   #site-nav.nav-scrolled .nav-logo { color: #111827; text-shadow: none; }
   #site-nav.nav-scrolled .nav-browse-btn { color: #6D28D9; border-color: rgba(139,92,246,0.35); }
+  .nav-link { color: rgba(255,255,255,0.85); text-shadow: 0 1px 8px rgba(0,0,0,0.3); transition: color 0.3s ease, text-shadow 0.3s ease; }
+  .nav-link:hover { color: #ffffff; }
+  #site-nav.nav-scrolled .nav-link { color: #4B5563; text-shadow: none; }
+  #site-nav.nav-scrolled .nav-link:hover { color: #111827; }
   /* ── Route Map view (Leaflet) ─────────────────────────────────────── */
   .getway-map-pin {
     width: 26px; height: 26px; border-radius: 50%;
@@ -142,6 +146,13 @@
 <div id="screen-home" class="screen active">
   <div id="site-nav" class="fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-6 md:px-14 py-6">
     <span class="nav-logo font-serif-display text-xl md:text-2xl text-white transition-colors duration-300" style="text-shadow: 0 1px 8px rgba(0,0,0,0.35);">GetWay<span class="text-[#C4B5FD]">.</span></span>
+    <div class="hidden md:flex items-center gap-6">
+      <button type="button" onclick="scrollToRoutes()" class="nav-link text-xs font-medium">Routes</button>
+      <button type="button" onclick="scrollToPopular()" class="nav-link text-xs font-medium">Popular</button>
+      <button type="button" onclick="openVibeQuiz()" class="nav-link text-xs font-medium">Find your vibe</button>
+      <button type="button" onclick="showScreen('route')" class="nav-link text-xs font-medium">Sample trip</button>
+      <button type="button" onclick="scrollToHowItWorks()" class="nav-link text-xs font-medium">How it works</button>
+    </div>
     <button onclick="scrollToRoutes()" class="nav-browse-btn btn-interactive text-[11px] md:text-xs font-medium text-white/90 border border-white/40 rounded-full px-3.5 py-1.5 md:px-5 md:py-2.5 transition-colors duration-300">Browse Routes</button>
   </div>
   <div class="relative h-[80vh] min-h-[520px] w-full overflow-hidden" style="background: linear-gradient(135deg, #1c2128 0%, #334155 55%, #15171A 100%);">
@@ -179,12 +190,14 @@
       <div>
         <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-3">Little game</div>
         <div class="font-serif-display text-3xl md:text-4xl mb-3">Find your travel vibe</div>
-        <div class="text-sm text-gray-600 leading-relaxed mb-6 max-w-md">Seven quick questions — more than a coin flip, less than a therapy session — matched against real destinations, not just the ones GetWay has already mapped.</div>
+        <div class="text-sm text-gray-600 leading-relaxed mb-6 max-w-md">Six quick questions — more than a coin flip, less than a therapy session — matched against the real routes GetWay already has.</div>
         <button onclick="startVibeQuiz()" class="btn-interactive inline-flex items-center gap-2 h-[46px] px-6 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">Take the quiz <i data-lucide="arrow-right" class="w-4 h-4"></i></button>
       </div>
       <div class="bg-[#F8F6FF] rounded-[24px] p-6 md:p-8">
         <div class="flex items-center gap-1.5 mb-5">
           <div class="h-1 flex-1 rounded-full bg-[#8B5CF6]"></div>
+          <div class="h-1 flex-1 rounded-full bg-[#E5E0FB]"></div>
+          <div class="h-1 flex-1 rounded-full bg-[#E5E0FB]"></div>
           <div class="h-1 flex-1 rounded-full bg-[#E5E0FB]"></div>
           <div class="h-1 flex-1 rounded-full bg-[#E5E0FB]"></div>
           <div class="h-1 flex-1 rounded-full bg-[#E5E0FB]"></div>
@@ -196,6 +209,15 @@
           <button type="button" onclick="startVibeQuiz()" class="btn-interactive bg-white rounded-2xl p-3 text-center border border-gray-100"><span class="text-xl block mb-1">🏙️</span><span class="text-[11px] font-medium">City energy</span></button>
         </div>
       </div>
+    </div>
+  </div>
+  <!-- ── Vibe Quiz modal — 6 real questions, matched against GetWay's own
+       currently-loaded routes (see openVibeQuiz()/renderVibeQuizResults()
+       below). Hidden by default. ──────────────────────────────────────── -->
+  <div id="vibe-quiz-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4" style="background: rgba(17,24,39,0.55);">
+    <div class="bg-white rounded-[28px] w-full max-w-lg max-h-[88vh] overflow-y-auto p-6 md:p-8 relative">
+      <button type="button" onclick="closeVibeQuiz()" class="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors"><i data-lucide="x" class="w-4 h-4"></i></button>
+      <div id="vibe-quiz-body"></div>
     </div>
   </div>
   <div class="h-8 md:h-12"></div>
@@ -251,40 +273,46 @@
     <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
       <div data-aos="fade-up">
         <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">Rankings</div>
-        <div class="font-serif-display text-3xl md:text-4xl">Most visited destinations worldwide</div>
+        <div class="flex items-center gap-2.5 flex-wrap">
+          <div class="font-serif-display text-3xl md:text-4xl">Most visited destinations worldwide</div>
+          <span class="text-[10px] font-medium text-[#6D28D9] bg-[#F1EEFF] px-2.5 py-1 rounded-full whitespace-nowrap">Latest edition · Dec 2025</span>
+        </div>
       </div>
-      <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 max-w-xs md:text-right">The world's actual most-visited cities in 2025 — not just what's popular on GetWay. Some already have a route here; some are still on the list to build.</div>
+      <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 max-w-xs md:text-right">The world's actual most-visited cities, from the latest published global index — not just what's popular on GetWay. Some already have a route here; some are still on the list to build.</div>
     </div>
     <div id="rankings-list" class="space-y-3"></div>
-    <div data-aos="fade-up" class="text-[11px] text-gray-400 mt-5">Source: <a href="https://www.euromonitor.com/article/top-100-city-destinations-index-2025-driving-growth-and-innovation" target="_blank" rel="noopener" class="underline hover:text-gray-600">Euromonitor International, Top 100 City Destinations Index 2025</a> · updated annually</div>
+    <div data-aos="fade-up" class="text-[11px] text-gray-400 mt-5">Source: <a href="https://www.euromonitor.com/article/top-100-city-destinations-index-2025-driving-growth-and-innovation" target="_blank" rel="noopener" class="underline hover:text-gray-600">Euromonitor International, Top 100 City Destinations Index</a> — 2025 edition, published December 2025 — the most recent one that exists; Euromonitor's next edition (covering 2026) isn't published until December 2026, so this is genuinely today's most current real data, not a stale number. Updated here annually.</div>
   </div>
   <!-- ── How it works ──────────────────────────────────────────────── -->
-  <div class="max-w-6xl mx-auto px-6 md:px-14 py-14 md:py-20">
-    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-10">
+  <div id="how-it-works-section" class="max-w-6xl mx-auto px-6 md:px-14 py-14 md:py-20">
+    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
       <div data-aos="fade-up">
         <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">How it works</div>
         <div class="font-serif-display text-3xl md:text-4xl">From a saved video to a booked trip</div>
       </div>
       <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 max-w-xs md:text-right">Three steps, one AI pass. No spreadsheets, no fifteen open tabs.</div>
     </div>
-    <div class="grid md:grid-cols-3 gap-5 md:gap-6">
-      <div data-aos="fade-up" class="bento-card bg-white rounded-[26px] p-6 md:p-7">
-        <div class="text-xs font-semibold text-[#8B5CF6] mb-4">01</div>
-        <div class="w-11 h-11 rounded-2xl bg-[#F1EEFF] flex items-center justify-center mb-4"><i data-lucide="music-2" class="w-5 h-5 text-[#7C3AED]"></i></div>
-        <div class="text-sm font-medium mb-1.5">Paste the link</div>
-        <div class="text-xs text-gray-500 leading-relaxed">Drop in any TikTok or Instagram clip you saved — a hidden café crawl, a 10-day backpacking route, one perfect viewpoint.</div>
+    <div class="grid sm:grid-cols-3 gap-3 md:gap-4">
+      <div data-aos="fade-up" class="bento-card bg-white rounded-2xl p-4 flex sm:block items-start gap-3">
+        <div class="w-9 h-9 rounded-xl bg-[#F1EEFF] flex items-center justify-center flex-shrink-0 sm:mb-3"><i data-lucide="music-2" class="w-4 h-4 text-[#7C3AED]"></i></div>
+        <div>
+          <div class="flex items-center gap-1.5 mb-0.5"><span class="text-[10px] font-semibold text-[#8B5CF6]">01</span><span class="text-sm font-medium">Paste the link</span></div>
+          <div class="text-[11px] text-gray-500 leading-snug">Drop in any TikTok or Instagram clip you saved.</div>
+        </div>
       </div>
-      <div data-aos="fade-up" data-aos-delay="100" class="bento-card bg-white rounded-[26px] p-6 md:p-7">
-        <div class="text-xs font-semibold text-[#8B5CF6] mb-4">02</div>
-        <div class="w-11 h-11 rounded-2xl bg-[#F1EEFF] flex items-center justify-center mb-4"><i data-lucide="sparkles" class="w-5 h-5 text-[#7C3AED]"></i></div>
-        <div class="text-sm font-medium mb-1.5">AI reads the video</div>
-        <div class="text-xs text-gray-500 leading-relaxed">GetWay identifies every place shown or mentioned, checks it's real and open, and orders it into a sensible route.</div>
+      <div data-aos="fade-up" data-aos-delay="100" class="bento-card bg-white rounded-2xl p-4 flex sm:block items-start gap-3">
+        <div class="w-9 h-9 rounded-xl bg-[#F1EEFF] flex items-center justify-center flex-shrink-0 sm:mb-3"><i data-lucide="sparkles" class="w-4 h-4 text-[#7C3AED]"></i></div>
+        <div>
+          <div class="flex items-center gap-1.5 mb-0.5"><span class="text-[10px] font-semibold text-[#8B5CF6]">02</span><span class="text-sm font-medium">AI reads the video</span></div>
+          <div class="text-[11px] text-gray-500 leading-snug">Every place shown or mentioned, checked and ordered into a route.</div>
+        </div>
       </div>
-      <div data-aos="fade-up" data-aos-delay="200" class="bento-card bg-white rounded-[26px] p-6 md:p-7">
-        <div class="text-xs font-semibold text-[#8B5CF6] mb-4">03</div>
-        <div class="w-11 h-11 rounded-2xl bg-[#F1EEFF] flex items-center justify-center mb-4"><i data-lucide="route" class="w-5 h-5 text-[#7C3AED]"></i></div>
-        <div class="text-sm font-medium mb-1.5">Get your route</div>
-        <div class="text-xs text-gray-500 leading-relaxed">A day-by-day plan lands with the map, hotel picks, restaurant picks, and booking buttons already attached.</div>
+      <div data-aos="fade-up" data-aos-delay="200" class="bento-card bg-white rounded-2xl p-4 flex sm:block items-start gap-3">
+        <div class="w-9 h-9 rounded-xl bg-[#F1EEFF] flex items-center justify-center flex-shrink-0 sm:mb-3"><i data-lucide="route" class="w-4 h-4 text-[#7C3AED]"></i></div>
+        <div>
+          <div class="flex items-center gap-1.5 mb-0.5"><span class="text-[10px] font-semibold text-[#8B5CF6]">03</span><span class="text-sm font-medium">Get your route</span></div>
+          <div class="text-[11px] text-gray-500 leading-snug">Map, hotel picks, restaurant picks, booking buttons — all attached.</div>
+        </div>
       </div>
     </div>
   </div>
@@ -1045,12 +1073,179 @@
     const input = document.getElementById('home-tiktok-url');
     if (input) setTimeout(() => input.focus(), 450);
   }
-  // Placeholder until the full vibe quiz (built separately) ships — lets
-  // the homepage teaser section be wired up and clickable today without
-  // linking to a page that doesn't exist yet.
-  function startVibeQuiz() {
-    alert("The vibe quiz is almost ready — it'll match you to a destination in about 90 seconds. For now, browse the routes below to get inspired!");
+  // ── Vibe Quiz: 6 real questions, matched against GetWay's own routes ──
+  // Every option casts one vote for a tag from the exact same universe
+  // already used everywhere else on the site (ROUTE_TAG_CONFIG /
+  // filterByCategory): most_popular, budget_friendly, luxury, exotic,
+  // mountain, city, beach. At the end, the tag(s) with the most votes are
+  // matched against the real, currently-loaded ROUTES — never an invented
+  // recommendation, and never a destination GetWay doesn't actually have a
+  // route for. Falls back to "most_popular" (then a plain browse-routes
+  // CTA) if nothing matches the top tag.
+  const VIBE_QUIZ_QUESTIONS = [
+    {
+      q: "What's calling you right now?",
+      options: [
+        { label: "Beach days", icon: "🏖️", tag: "beach" },
+        { label: "Mountain air", icon: "⛰️", tag: "mountain" },
+        { label: "City energy", icon: "🏙️", tag: "city" },
+        { label: "Somewhere far and different", icon: "🌴", tag: "exotic" },
+      ],
+    },
+    {
+      q: "Pick your pace",
+      options: [
+        { label: "Wander with no real plan", icon: "🚶", tag: "city" },
+        { label: "Hike, swim, keep moving", icon: "🥾", tag: "mountain" },
+        { label: "Do as little as possible", icon: "🛌", tag: "beach" },
+        { label: "See the iconic spots first", icon: "🗺️", tag: "most_popular" },
+      ],
+    },
+    {
+      q: "Your budget for this trip?",
+      options: [
+        { label: "As cheap as it gets", icon: "💸", tag: "budget_friendly" },
+        { label: "Treat myself, no limits", icon: "💎", tag: "luxury" },
+        { label: "Comfortably in between", icon: "💳", tag: "most_popular" },
+      ],
+    },
+    {
+      q: "What's on your plate?",
+      options: [
+        { label: "Street food & local markets", icon: "🍜", tag: "budget_friendly" },
+        { label: "Fine dining, the whole experience", icon: "🥂", tag: "luxury" },
+        { label: "Wherever looks good that day", icon: "🍽️", tag: "city" },
+      ],
+    },
+    {
+      q: "The photo you actually want to bring home",
+      options: [
+        { label: "A landmark everyone recognizes", icon: "🏛️", tag: "most_popular" },
+        { label: "Something almost nobody's seen", icon: "🐒", tag: "exotic" },
+        { label: "A view worth the climb", icon: "🌄", tag: "mountain" },
+        { label: "Turquoise water, obviously", icon: "🌊", tag: "beach" },
+      ],
+    },
+    {
+      q: "Be honest — how far will you go?",
+      options: [
+        { label: "Short flight, low effort", icon: "✈️", tag: "city" },
+        { label: "Across the world for the right spot", icon: "🌍", tag: "exotic" },
+        { label: "Wherever the mountains are best", icon: "🏔️", tag: "mountain" },
+        { label: "Wherever the beach is bluest", icon: "🏝️", tag: "beach" },
+      ],
+    },
+  ];
+  let vibeQuizStep = 0;
+  let vibeQuizAnswers = [];
+  function startVibeQuiz() { openVibeQuiz(); }
+  function openVibeQuiz() {
+    vibeQuizStep = 0;
+    vibeQuizAnswers = [];
+    document.getElementById('vibe-quiz-modal').classList.remove('hidden');
+    renderVibeQuizStep();
+  }
+  function closeVibeQuiz() {
+    document.getElementById('vibe-quiz-modal').classList.add('hidden');
+  }
+  function vibeQuizAnswer(tag) {
+    vibeQuizAnswers.push(tag);
+    vibeQuizStep++;
+    if (vibeQuizStep >= VIBE_QUIZ_QUESTIONS.length) {
+      renderVibeQuizResults();
+    } else {
+      renderVibeQuizStep();
+    }
+  }
+  function vibeQuizBack() {
+    if (vibeQuizStep === 0) return;
+    vibeQuizStep--;
+    vibeQuizAnswers.pop();
+    renderVibeQuizStep();
+  }
+  function renderVibeQuizStep() {
+    const question = VIBE_QUIZ_QUESTIONS[vibeQuizStep];
+    const body = document.getElementById('vibe-quiz-body');
+    body.innerHTML = `
+      <div class="flex items-center gap-1.5 mb-6">
+        ${VIBE_QUIZ_QUESTIONS.map((_, i) => `<div class="h-1 flex-1 rounded-full ${i <= vibeQuizStep ? 'bg-[#8B5CF6]' : 'bg-[#E5E0FB]'}"></div>`).join('')}
+      </div>
+      <div class="text-[11px] text-gray-400 mb-2">Question ${vibeQuizStep + 1} of ${VIBE_QUIZ_QUESTIONS.length}</div>
+      <div class="font-serif-display text-2xl mb-6">${escapeHtml(question.q)}</div>
+      <div class="grid grid-cols-2 gap-3 mb-4">
+        ${question.options.map((opt, i) => `
+          <button type="button" data-opt-index="${i}" class="vibe-quiz-option btn-interactive bg-[#F8F6FF] hover:bg-[#F1EEFF] rounded-2xl p-4 text-center border border-transparent transition-colors">
+            <span class="text-2xl block mb-1.5">${opt.icon}</span>
+            <span class="text-xs font-medium">${escapeHtml(opt.label)}</span>
+          </button>`).join('')}
+      </div>
+      ${vibeQuizStep > 0 ? `<button type="button" id="vibe-quiz-back-btn" class="text-xs text-gray-400 hover:text-gray-600">&larr; Back</button>` : ''}
+    `;
+    body.querySelectorAll('.vibe-quiz-option').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.optIndex, 10);
+        vibeQuizAnswer(question.options[idx].tag);
+      });
+    });
+    const backBtn = document.getElementById('vibe-quiz-back-btn');
+    if (backBtn) backBtn.addEventListener('click', vibeQuizBack);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+  function renderVibeQuizResults() {
+    const tally = {};
+    vibeQuizAnswers.forEach((tag) => { tally[tag] = (tally[tag] || 0) + 1; });
+    const ranked = Object.keys(tally).sort((a, b) => tally[b] - tally[a]);
+    const topTag = ranked[0] || 'most_popular';
+    const tagCfg = ROUTE_TAG_CONFIG[topTag];
+    const resultLabel = tagCfg ? tagCfg.label : 'Explorer';
+
+    let matches = ROUTES.filter(r => (r.tags || []).includes(topTag));
+    if (!matches.length && ranked[1]) matches = ROUTES.filter(r => (r.tags || []).includes(ranked[1]));
+    if (!matches.length) matches = ROUTES.filter(r => (r.tags || []).includes('most_popular'));
+    matches = matches.slice(0, 3);
+
+    const body = document.getElementById('vibe-quiz-body');
+    body.innerHTML = `
+      <div class="text-center mb-6">
+        <div class="text-[10px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">Your travel vibe</div>
+        <div class="font-serif-display text-3xl mb-2">${escapeHtml(resultLabel)}</div>
+        <div class="text-xs text-gray-500">Based on your answers — here's what actually matches on GetWay right now.</div>
+      </div>
+      <div class="space-y-3 mb-5">
+        ${matches.length ? matches.map(r => `
+          <button type="button" data-slug="${r.slug}" class="vibe-result-card btn-interactive w-full flex items-center gap-3 bg-[#F8F6FF] rounded-2xl p-3 text-left">
+            <div class="w-12 h-12 rounded-xl flex-shrink-0" style="background:${r.fallbackColor}"></div>
+            <div class="min-w-0">
+              <div class="text-sm font-medium truncate">${escapeHtml(r.destination)}</div>
+              <div class="text-[11px] text-gray-500">${escapeHtml(r.duration)} · ${r.stopCount} stops</div>
+            </div>
+          </button>`).join('') : `<div class="text-xs text-gray-500 text-center py-4">No matching route yet — but browse everything GetWay has so far.</div>`}
+      </div>
+      <button type="button" id="vibe-quiz-browse-btn" class="btn-interactive w-full h-[46px] bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl mb-2">Browse all ${escapeHtml(resultLabel)} routes</button>
+      <button type="button" id="vibe-quiz-retake-btn" class="w-full text-center text-xs text-gray-400 hover:text-gray-600">Retake the quiz</button>
+    `;
+    body.querySelectorAll('.vibe-result-card').forEach((card) => {
+      card.addEventListener('click', () => { closeVibeQuiz(); openRouteCard(card.dataset.slug); });
+    });
+    document.getElementById('vibe-quiz-browse-btn').addEventListener('click', () => {
+      closeVibeQuiz();
+      scrollToRoutes();
+      const btn = document.querySelector(`.category-chip[data-tag="${topTag}"]`);
+      if (btn) btn.click();
+    });
+    document.getElementById('vibe-quiz-retake-btn').addEventListener('click', () => {
+      vibeQuizStep = 0; vibeQuizAnswers = []; renderVibeQuizStep();
+    });
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+  function scrollToPopular() {
     scrollToRoutes();
+    const btn = document.querySelector('.category-chip[data-tag="most_popular"]');
+    if (btn) btn.click();
+  }
+  function scrollToHowItWorks() {
+    const el = document.getElementById('how-it-works-section');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
   function renderHeroMedia(slidesOverride) {
     const layer = document.getElementById('hero-media-layer');
@@ -1651,16 +1846,34 @@
   // numbers: only figures actually published by the source are shown.
   // Refresh this array once a year when a new edition is published.
   const GLOBAL_TOURISM_RANKINGS = [
-    { rank: 1, destination: "Paris, France", detail: "#1 city destination worldwide, 2025 index" },
-    { rank: 2, destination: "Madrid, Spain", detail: "#2 city destination worldwide, 2025 index" },
-    { rank: 3, destination: "Tokyo, Japan", detail: "#3 worldwide · Asia's top-ranked city destination" },
-    { rank: 4, destination: "Rome, Italy", detail: "#4 city destination worldwide, 2025 index" },
-    { rank: 5, destination: "Milan, Italy", detail: "#5 city destination worldwide, 2025 index" },
+    { rank: 1, destination: "Paris, France", detail: "#1 city destination worldwide, 2025 index", key: "paris-france" },
+    { rank: 2, destination: "Madrid, Spain", detail: "#2 city destination worldwide, 2025 index", key: "madrid-spain" },
+    { rank: 3, destination: "Tokyo, Japan", detail: "#3 worldwide · Asia's top-ranked city destination", key: "tokyo-japan" },
+    { rank: 4, destination: "Rome, Italy", detail: "#4 city destination worldwide, 2025 index", key: "rome-italy" },
+    { rank: 5, destination: "Milan, Italy", detail: "#5 city destination worldwide, 2025 index", key: "milan-italy" },
   ];
   const GLOBAL_TOURISM_VOLUME_HIGHLIGHT = {
     destination: "Bangkok, Thailand",
     detail: "Highest raw visitor count worldwide: 30.3M international arrivals in 2025",
+    key: "bangkok-thailand",
   };
+  // Real photos for the 6 cities above, fetched once from the backend
+  // (GET /demo/rankings-photos, which itself calls Unsplash server-side —
+  // see main.py). Populated by loadRankingPhotos(); renderRankings() falls
+  // back to a gradient placeholder for any city not yet loaded (or if the
+  // fetch fails — non-fatal, same pattern as every other photo source on
+  // this page).
+  let RANKING_PHOTOS = {};
+  async function loadRankingPhotos() {
+    try {
+      const res = await fetch(`${BACKEND_URL}/demo/rankings-photos`);
+      if (!res.ok) return;
+      RANKING_PHOTOS = await res.json();
+      renderRankings();
+    } catch (err) {
+      console.error('loadRankingPhotos failed (non-fatal, rankings keep gradient placeholders):', err);
+    }
+  }
   // Cross-references a ranking entry's city against GetWay's own loaded
   // routes (case-insensitive, matches either direction as a substring so
   // "Paris, France" matches a route destination of just "Paris").
@@ -1678,10 +1891,14 @@
     list.innerHTML = rows.map((item, i) => {
       const seed = 'ranking-' + slugify(item.destination);
       const routed = hasGetwayRoute(item.destination);
+      const photo = RANKING_PHOTOS[item.key] ? RANKING_PHOTOS[item.key].url : '';
+      const photoStyle = photo
+        ? `background-image:url('${photo}');background-size:cover;background-position:center;`
+        : `background:${gradientFor(seed)}`;
       return `
       <div data-aos="fade-up" data-aos-delay="${i * 40}" class="bento-card bg-white rounded-[22px] p-4 md:p-5 flex items-center gap-4 ${item.highlight ? 'border border-[#C4B5FD]' : ''}">
         <div class="font-serif-display text-xl md:text-2xl text-gray-300 w-8 flex-shrink-0">${item.rank ? String(item.rank).padStart(2, '0') : '★'}</div>
-        <div class="w-12 h-12 rounded-2xl flex-shrink-0" style="background:${gradientFor(seed)}"></div>
+        <div class="w-12 h-12 rounded-2xl flex-shrink-0" style="${photoStyle}"></div>
         <div class="flex-1 min-w-0">
           <div class="text-sm font-medium truncate">${escapeHtml(item.destination)}</div>
           <div class="text-xs text-gray-500 truncate">${escapeHtml(item.detail)}</div>
@@ -2897,6 +3114,7 @@
     safeRun('initAdminPanel', initAdminPanel);
     safeRun('initNavScroll', initNavScroll);
     safeRun('renderRankings (initial)', function () { renderRankings(); });
+    safeRun('loadRankingPhotos', function () { loadRankingPhotos(); });
     safeRun('lucide.createIcons', function () {
       if (typeof lucide !== 'undefined') { lucide.createIcons(); }
     });

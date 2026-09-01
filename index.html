@@ -8,7 +8,6 @@
      through Impact.com) — proves Gerry controls this domain. -->
 <meta name="impact-site-verification" value="5e4e629a-78c9-4ec5-a632-1b4b7b9a1295">
 <title>GetWay — Turn TikTok trips into real itineraries</title>
-
 <!-- PWA / "Add to Home Screen" support -->
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#8B5CF6">
@@ -18,7 +17,6 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="GetWay">
-
 <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" crossorigin="anonymous"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
@@ -40,7 +38,6 @@
   .screen.active { display: block; }
   ::-webkit-scrollbar { width: 0; height: 0; }
   img { color: transparent; }
-
   .glass-card {
     background: rgba(255,255,255,0.6);
     backdrop-filter: blur(20px) saturate(160%);
@@ -49,39 +46,31 @@
     box-shadow: 0 20px 50px rgba(0,0,0,0.10);
   }
   .bento-card { box-shadow: 0 2px 14px rgba(20,20,30,0.06); }
-
   .route-card { transition: transform 0.35s ease, box-shadow 0.35s ease; }
   .route-card:hover { transform: translateY(-8px); box-shadow: 0 28px 56px rgba(0,0,0,0.16); }
   .route-card-image { transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
   .route-card:hover .route-card-image { transform: scale(1.12); }
-
   .filter-chip, .route-filter-chip { transition: all 0.3s ease; cursor: pointer; }
   .filter-chip:hover, .route-filter-chip:hover { border-color: #8B5CF6; background: #F8F6FF; color: #6D28D9; }
   .filter-chip:active, .route-filter-chip:active { transform: scale(0.96); }
-
   .btn-interactive { transition: all 0.25s ease; }
   .btn-interactive:hover { filter: brightness(1.08); transform: translateY(-1px); }
   .btn-interactive:active { transform: translateY(0) scale(0.97); filter: brightness(0.96); }
-
   .btn-outline-interactive { transition: all 0.25s ease; }
   .btn-outline-interactive:hover { color: #6D28D9; background: #F8F6FF; }
   .btn-outline-interactive:active { transform: scale(0.97); }
-
   .hero-bottom-overlay {
     background: linear-gradient(to top, rgba(10,12,16,0.80), rgba(10,12,16,0.35) 45%, rgba(10,12,16,0.05) 75%, rgba(10,12,16,0) 100%);
   }
   .hero-top-overlay { background: linear-gradient(to bottom, rgba(0,0,0,0.45), rgba(0,0,0,0) 100%); }
   .hero-slide { position: absolute; inset: 0; opacity: 0; transition: opacity 1.4s ease; }
   .hero-slide.is-active { opacity: 1; }
-
   .peek-scroll { scroll-snap-type: x proximity; }
   .peek-scroll > * { scroll-snap-align: start; }
-
   .media-placeholder {
     display: flex; align-items: center; justify-content: center;
     background-image: repeating-linear-gradient(135deg, rgba(255,255,255,0.10) 0px, rgba(255,255,255,0.10) 2px, transparent 2px, transparent 14px);
   }
-
   /* Used by the in-route filter instead of Tailwind's `hidden` utility.
      `hidden` can be silently overridden by a responsive `md:flex`/`md:grid`
      declared on the SAME element, because Tailwind emits responsive
@@ -90,7 +79,23 @@
      here sidesteps that entirely regardless of what other display utility
      is on the element. */
   .filter-hidden { display: none !important; }
-
+  /* ── Sticky top nav (homepage) ───────────────────────────────────── */
+  /* Nav starts transparent over the dark hero; once the page scrolls past
+     it, .nav-scrolled swaps it to a light glass bar with dark text so it
+     stays readable over whatever content is underneath. Selectors are
+     nested two classes deep (.nav-scrolled .nav-logo) specifically so they
+     out-specificity the single-class Tailwind utilities (text-white etc.)
+     already on those elements, with no !important needed. */
+  #site-nav { transition: background-color 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease; }
+  #site-nav.nav-scrolled {
+    background: rgba(253,251,247,0.85);
+    backdrop-filter: blur(16px) saturate(160%);
+    -webkit-backdrop-filter: blur(16px) saturate(160%);
+    border-bottom: 1px solid rgba(17,24,39,0.06);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.05);
+  }
+  #site-nav.nav-scrolled .nav-logo { color: #111827; text-shadow: none; }
+  #site-nav.nav-scrolled .nav-browse-btn { color: #6D28D9; border-color: rgba(139,92,246,0.35); }
   /* ── Route Map view (Leaflet) ─────────────────────────────────────── */
   .getway-map-pin {
     width: 26px; height: 26px; border-radius: 50%;
@@ -111,7 +116,6 @@
   }
   #ai-route-map .leaflet-control-attribution { font-size: 9px; }
 </style>
-
 <!-- Travelpayouts "Drive" widget — site verification / on-site conversion
      tool tied to Gerry's Travelpayouts partner account (the same account
      used for the Kiwi.com / Kiwitaxi / GetTransfer affiliate links). The
@@ -132,17 +136,14 @@
 </script>
 </head>
 <body class="text-[#111827] antialiased">
-
 <!-- ====================================================================== -->
 <!-- SCREEN 1: HOMEPAGE                                                     -->
 <!-- ====================================================================== -->
 <div id="screen-home" class="screen active">
-
-  <div class="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-6 md:px-14 py-6">
-    <span class="font-serif-display text-xl md:text-2xl text-white" style="text-shadow: 0 1px 8px rgba(0,0,0,0.35);">GetWay<span class="text-[#C4B5FD]">.</span></span>
-    <button onclick="scrollToRoutes()" class="btn-interactive text-[11px] md:text-xs font-medium text-white/90 border border-white/40 rounded-full px-3.5 py-1.5 md:px-5 md:py-2.5">Browse Routes</button>
+  <div id="site-nav" class="fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-6 md:px-14 py-6">
+    <span class="nav-logo font-serif-display text-xl md:text-2xl text-white transition-colors duration-300" style="text-shadow: 0 1px 8px rgba(0,0,0,0.35);">GetWay<span class="text-[#C4B5FD]">.</span></span>
+    <button onclick="scrollToRoutes()" class="nav-browse-btn btn-interactive text-[11px] md:text-xs font-medium text-white/90 border border-white/40 rounded-full px-3.5 py-1.5 md:px-5 md:py-2.5 transition-colors duration-300">Browse Routes</button>
   </div>
-
   <div class="relative h-[80vh] min-h-[520px] w-full overflow-hidden" style="background: linear-gradient(135deg, #1c2128 0%, #334155 55%, #15171A 100%);">
     <div id="hero-media-layer" class="absolute inset-0"></div>
     <div class="absolute inset-0 hero-top-overlay h-40"></div>
@@ -152,38 +153,70 @@
       <div class="text-white/90 text-sm sm:text-base max-w-md" style="text-shadow: 0 1px 10px rgba(0,0,0,0.3);">Trip plans, straight from your For You page.<br>Turn TikTok & Instagram clips into real-world trips.</div>
     </div>
   </div>
-
   <div class="relative z-20 px-6 -mt-24 md:-mt-28">
-    <div class="glass-card max-w-xl mx-auto rounded-[28px] px-6 sm:px-10 py-9 md:py-10">
+    <div id="home-magicbox-card" class="glass-card max-w-xl mx-auto rounded-[28px] px-6 sm:px-10 py-9 md:py-10">
       <div class="text-center mb-6">
         <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">AI-Powered</div>
         <div class="font-serif-display text-2xl md:text-3xl mb-2">AI Magic Box</div>
         <div class="text-xs md:text-sm text-gray-600">Turn any TikTok or Instagram video into a ready-to-book route in 60 seconds.</div>
       </div>
-      <div class="flex items-center gap-2 sm:gap-2.5 h-[52px] px-3 sm:px-4 bg-white/70 border border-gray-200 rounded-2xl mb-3.5">
-        <i data-lucide="music-2" class="w-[18px] h-[18px] text-gray-500 flex-shrink-0"></i>
-        <input id="home-tiktok-url" type="text" placeholder="Paste a TikTok or Instagram link…" class="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-gray-400">
-        <button type="button" onclick="pasteFromClipboard('home-tiktok-url')" class="btn-interactive flex-shrink-0 w-9 h-9 sm:w-auto sm:h-8 sm:px-3 rounded-full bg-[#8B5CF6]/10 text-[#6D28D9] text-xs font-medium flex items-center justify-center gap-1"><i data-lucide="clipboard" class="w-3.5 h-3.5"></i><span class="hidden sm:inline">Paste</span></button>
+      <div class="flex items-center gap-2 sm:gap-2.5 mb-3.5">
+        <div class="flex-1 min-w-0 flex items-center gap-2 sm:gap-2.5 h-[52px] px-3 sm:px-4 bg-white/70 border border-gray-200 rounded-2xl">
+          <i data-lucide="music-2" class="w-[18px] h-[18px] text-gray-500 flex-shrink-0"></i>
+          <input id="home-tiktok-url" type="text" placeholder="Paste a TikTok or Instagram link…" class="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-gray-400">
+        </div>
+        <button type="button" onclick="pasteFromClipboard('home-tiktok-url')" class="btn-interactive flex-shrink-0 h-[52px] w-[52px] sm:w-auto sm:px-4 rounded-2xl bg-[#8B5CF6]/10 text-[#6D28D9] text-xs font-medium flex items-center justify-center gap-1 border border-[#8B5CF6]/15"><i data-lucide="clipboard" class="w-3.5 h-3.5"></i><span class="hidden sm:inline">Paste</span></button>
       </div>
       <button onclick="(function(){ var v=document.getElementById('home-tiktok-url').value.trim(); if(v){document.getElementById('tiktok-url').value=v;} showScreen('magicbox'); if(v){startMagicBox();} })()" class="btn-interactive w-full h-[50px] flex items-center justify-center gap-2 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">
         Build my route <i data-lucide="rocket" class="w-4 h-4"></i>
       </button>
     </div>
   </div>
-
-  <div class="h-20 md:h-28"></div>
-
+  <div class="h-16 md:h-20"></div>
+  <!-- ── Find your travel vibe (teaser for the vibe quiz) ─────────────── -->
+  <div class="max-w-6xl mx-auto px-6 md:px-14 mb-4 md:mb-8">
+    <div data-aos="fade-up" class="bento-card bg-white rounded-[32px] p-6 md:p-12 grid md:grid-cols-2 gap-8 md:gap-14 items-center">
+      <div>
+        <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-3">Little game</div>
+        <div class="font-serif-display text-3xl md:text-4xl mb-3">Find your travel vibe</div>
+        <div class="text-sm text-gray-600 leading-relaxed mb-6 max-w-md">Seven quick questions — more than a coin flip, less than a therapy session — matched against real destinations, not just the ones GetWay has already mapped.</div>
+        <button onclick="startVibeQuiz()" class="btn-interactive inline-flex items-center gap-2 h-[46px] px-6 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">Take the quiz <i data-lucide="arrow-right" class="w-4 h-4"></i></button>
+      </div>
+      <div class="bg-[#F8F6FF] rounded-[24px] p-6 md:p-8">
+        <div class="flex items-center gap-1.5 mb-5">
+          <div class="h-1 flex-1 rounded-full bg-[#8B5CF6]"></div>
+          <div class="h-1 flex-1 rounded-full bg-[#E5E0FB]"></div>
+          <div class="h-1 flex-1 rounded-full bg-[#E5E0FB]"></div>
+          <div class="h-1 flex-1 rounded-full bg-[#E5E0FB]"></div>
+        </div>
+        <div class="text-sm font-medium mb-4">Your dream day looks like…</div>
+        <div class="grid grid-cols-3 gap-2.5">
+          <button type="button" onclick="startVibeQuiz()" class="btn-interactive bg-white rounded-2xl p-3 text-center border border-gray-100"><span class="text-xl block mb-1">🏖️</span><span class="text-[11px] font-medium">Beach days</span></button>
+          <button type="button" onclick="startVibeQuiz()" class="btn-interactive bg-white rounded-2xl p-3 text-center border border-gray-100"><span class="text-xl block mb-1">⛰️</span><span class="text-[11px] font-medium">Mountain air</span></button>
+          <button type="button" onclick="startVibeQuiz()" class="btn-interactive bg-white rounded-2xl p-3 text-center border border-gray-100"><span class="text-xl block mb-1">🏙️</span><span class="text-[11px] font-medium">City energy</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="h-8 md:h-12"></div>
   <div id="routes-section" class="max-w-6xl mx-auto px-6 md:px-14 pt-4">
-    <div data-aos="fade-up" class="font-serif-display text-3xl md:text-4xl mb-2">Routes</div>
-    <div id="routes-count-label" class="text-xs md:text-sm text-gray-500 mb-6">More routes added weekly</div>
-
+    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
+      <div data-aos="fade-up">
+        <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">Routes</div>
+        <div class="font-serif-display text-3xl md:text-4xl mb-2">Most trending destinations right now</div>
+        <div class="text-xs md:text-sm text-gray-500 flex items-center gap-1.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-green-500 inline-block flex-shrink-0"></span>
+          <span id="routes-count-label">More routes added weekly</span>
+        </div>
+      </div>
+      <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 max-w-xs md:text-right">Every card below started life as a saved video — GetWay turned each one into a bookable, day-by-day route. Tap a card to open the full itinerary.</div>
+    </div>
     <!-- Destination search + Duration filter -->
     <div class="flex flex-col md:flex-row md:items-center gap-3 mb-5">
       <div class="relative max-w-md w-full">
         <i data-lucide="search" class="w-4 h-4 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2"></i>
         <input id="route-search" type="text" oninput="filterRoutesBySearch()" placeholder="Search destinations, e.g. Rome" class="w-full h-[44px] pl-11 pr-4 bg-white border border-gray-200 rounded-full text-sm outline-none placeholder:text-gray-400 focus:border-[#8B5CF6] shadow-sm">
       </div>
-
       <div class="flex items-center gap-1.5 flex-shrink-0">
         <span class="text-xs text-gray-400 mr-0.5 hidden md:inline">Duration</span>
         <button onclick="filterByDuration('any', this)" class="duration-chip is-active flex-shrink-0 h-[36px] px-3.5 text-xs font-medium rounded-full bg-[#8B5CF6] text-white whitespace-nowrap transition-colors">Any Days</button>
@@ -191,7 +224,6 @@
         <button onclick="filterByDuration('long', this)" class="duration-chip flex-shrink-0 h-[36px] px-3.5 text-xs font-medium rounded-full bg-white border border-gray-200 text-gray-600 whitespace-nowrap transition-colors">4+ Days</button>
       </div>
     </div>
-
     <div class="peek-scroll flex gap-2 pb-8 md:pb-10 overflow-x-auto pr-0 -mr-6 md:-mr-14">
       <button onclick="filterByCategory('all', this)" class="filter-chip category-chip is-active flex-shrink-0 h-[32px] px-3.5 flex items-center gap-1 text-xs font-medium border border-[#8B5CF6] bg-[#F1EEFF] text-[#6D28D9] whitespace-nowrap rounded-full" data-tag="all">All</button>
       <button onclick="filterByCategory('most_popular', this)" class="filter-chip category-chip flex-shrink-0 h-[32px] px-3.5 flex items-center gap-1 text-xs font-medium border border-gray-200 text-gray-700 whitespace-nowrap rounded-full bg-white/60" data-tag="most_popular"><i data-lucide="flame" class="w-3 h-3"></i>Most Popular</button>
@@ -203,11 +235,71 @@
       <button onclick="filterByCategory('beach', this)" class="filter-chip category-chip flex-shrink-0 h-[32px] px-3.5 flex items-center gap-1 text-xs font-medium border border-gray-200 text-gray-700 whitespace-nowrap rounded-full bg-white/60" data-tag="beach"><i data-lucide="waves" class="w-3 h-3"></i>Beach</button>
       <div class="flex-shrink-0 w-2"></div>
     </div>
-
     <div id="route-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-10 pb-16"></div>
     <div id="route-search-empty" class="hidden text-center text-sm text-gray-400 py-10">No destinations match your search.</div>
   </div>
-
+  <!-- ── Rankings: Most visited destinations worldwide ──────────────────
+       Real, sourced tourism data (Euromonitor International's Top 100 City
+       Destinations Index + reported arrival volumes), not GetWay's own
+       Magic Box usage. Published annually each December for the prior
+       year — there is no publicly available global "most visited
+       destinations" dataset at monthly granularity, so this section shows
+       the Year ranking only, with a visible source citation, rather than
+       a fake monthly tab. Update GLOBAL_TOURISM_RANKINGS below each time
+       Euromonitor (or another cited source) publishes a new edition. -->
+  <div id="rankings-section" class="max-w-6xl mx-auto px-6 md:px-14 py-14 md:py-20">
+    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
+      <div data-aos="fade-up">
+        <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">Rankings</div>
+        <div class="font-serif-display text-3xl md:text-4xl">Most visited destinations worldwide</div>
+      </div>
+      <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 max-w-xs md:text-right">The world's actual most-visited cities in 2025 — not just what's popular on GetWay. Some already have a route here; some are still on the list to build.</div>
+    </div>
+    <div id="rankings-list" class="space-y-3"></div>
+    <div data-aos="fade-up" class="text-[11px] text-gray-400 mt-5">Source: <a href="https://www.euromonitor.com/article/top-100-city-destinations-index-2025-driving-growth-and-innovation" target="_blank" rel="noopener" class="underline hover:text-gray-600">Euromonitor International, Top 100 City Destinations Index 2025</a> · updated annually</div>
+  </div>
+  <!-- ── How it works ──────────────────────────────────────────────── -->
+  <div class="max-w-6xl mx-auto px-6 md:px-14 py-14 md:py-20">
+    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-10">
+      <div data-aos="fade-up">
+        <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">How it works</div>
+        <div class="font-serif-display text-3xl md:text-4xl">From a saved video to a booked trip</div>
+      </div>
+      <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 max-w-xs md:text-right">Three steps, one AI pass. No spreadsheets, no fifteen open tabs.</div>
+    </div>
+    <div class="grid md:grid-cols-3 gap-5 md:gap-6">
+      <div data-aos="fade-up" class="bento-card bg-white rounded-[26px] p-6 md:p-7">
+        <div class="text-xs font-semibold text-[#8B5CF6] mb-4">01</div>
+        <div class="w-11 h-11 rounded-2xl bg-[#F1EEFF] flex items-center justify-center mb-4"><i data-lucide="music-2" class="w-5 h-5 text-[#7C3AED]"></i></div>
+        <div class="text-sm font-medium mb-1.5">Paste the link</div>
+        <div class="text-xs text-gray-500 leading-relaxed">Drop in any TikTok or Instagram clip you saved — a hidden café crawl, a 10-day backpacking route, one perfect viewpoint.</div>
+      </div>
+      <div data-aos="fade-up" data-aos-delay="100" class="bento-card bg-white rounded-[26px] p-6 md:p-7">
+        <div class="text-xs font-semibold text-[#8B5CF6] mb-4">02</div>
+        <div class="w-11 h-11 rounded-2xl bg-[#F1EEFF] flex items-center justify-center mb-4"><i data-lucide="sparkles" class="w-5 h-5 text-[#7C3AED]"></i></div>
+        <div class="text-sm font-medium mb-1.5">AI reads the video</div>
+        <div class="text-xs text-gray-500 leading-relaxed">GetWay identifies every place shown or mentioned, checks it's real and open, and orders it into a sensible route.</div>
+      </div>
+      <div data-aos="fade-up" data-aos-delay="200" class="bento-card bg-white rounded-[26px] p-6 md:p-7">
+        <div class="text-xs font-semibold text-[#8B5CF6] mb-4">03</div>
+        <div class="w-11 h-11 rounded-2xl bg-[#F1EEFF] flex items-center justify-center mb-4"><i data-lucide="route" class="w-5 h-5 text-[#7C3AED]"></i></div>
+        <div class="text-sm font-medium mb-1.5">Get your route</div>
+        <div class="text-xs text-gray-500 leading-relaxed">A day-by-day plan lands with the map, hotel picks, restaurant picks, and booking buttons already attached.</div>
+      </div>
+    </div>
+  </div>
+  <!-- ── Final CTA ─────────────────────────────────────────────────── -->
+  <div class="max-w-6xl mx-auto px-6 md:px-14 pb-14 md:pb-20">
+    <div data-aos="fade-up" class="rounded-[32px] px-6 md:px-16 py-14 md:py-20 text-center" style="background: linear-gradient(135deg, #1c2128 0%, #15171A 55%, #0c0d10 100%);">
+      <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#C4B5FD] uppercase mb-4">Free to try</div>
+      <div class="font-serif-display text-white text-3xl md:text-5xl leading-[1.1] mb-4">Stop screenshotting.<br>Start booking.</div>
+      <div class="text-white/70 text-sm md:text-base max-w-md mx-auto mb-8">Your next trip is already saved somewhere in your likes. Let GetWay find it and build the route.</div>
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+        <button onclick="scrollToMagicBox()" class="btn-interactive h-[48px] px-7 bg-[#8B5CF6] text-white text-sm font-medium rounded-full">Paste your link</button>
+        <button onclick="scrollToRoutes()" class="btn-outline-interactive h-[48px] px-7 border border-white/30 text-white text-sm font-medium rounded-full">Browse routes instead</button>
+      </div>
+    </div>
+  </div>
   <footer class="bg-[#15171A] text-white mt-8">
     <div class="max-w-6xl mx-auto px-6 md:px-14 py-14 md:py-16 grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-8">
       <div>
@@ -230,16 +322,13 @@
     </div>
     <div class="border-t border-white/10 py-5 text-center text-[11px] text-white/40">© 2026 GetWay. All rights reserved.</div>
   </footer>
-
 </div>
-
 <!-- ====================================================================== -->
 <!-- SCREEN 2: STANDALONE ROUTE PAGE (Mallorca)                             -->
 <!-- ====================================================================== -->
 <div id="screen-route" class="screen">
 <div class="min-h-screen">
 <div class="w-full max-w-[390px] md:max-w-none mx-auto">
-
   <div class="relative h-[320px] md:h-[64vh] md:min-h-[480px] w-full overflow-hidden" style="background: linear-gradient(135deg, #1c2128 0%, #15171A 55%, #0c0d10 100%);">
     <div id="mallorca-hero-media" class="absolute inset-0"></div>
     <div class="absolute inset-0 hero-top-overlay h-32 md:h-40"></div>
@@ -263,7 +352,6 @@
       <div id="mallorca-hero-credit" class="absolute right-5 md:right-14 bottom-[8px] md:bottom-[10px] text-[9px] md:text-[10px] text-white/60"></div>
     </div>
   </div>
-
   <div class="flex items-center justify-center py-6 md:py-8 border-b border-gray-100">
     <div class="flex items-center gap-1.5 px-5 md:px-10"><i data-lucide="map-pin" class="w-3.5 h-3.5 md:w-4 md:h-4 text-gray-400"></i><div><span class="text-base md:text-xl font-bold">14</span> <span class="text-[10px] md:text-xs text-gray-500">stops</span></div></div>
     <div class="w-px h-7 md:h-9 bg-gray-200"></div>
@@ -271,10 +359,8 @@
     <div class="w-px h-7 md:h-9 bg-gray-200"></div>
     <div class="flex items-center gap-1.5 px-5 md:px-10"><i data-lucide="calendar-days" class="w-3.5 h-3.5 md:w-4 md:h-4 text-gray-400"></i><div><span class="text-base md:text-xl font-bold">5</span> <span class="text-[10px] md:text-xs text-gray-500">days</span></div></div>
   </div>
-
   <div id="mallorca-thumbnails" class="flex justify-center gap-1.5 md:gap-3 px-4 pt-6 pb-2 md:pt-8"></div>
   <div class="text-center px-4 pb-8 md:pb-10 text-[10px] md:text-xs text-gray-400">Tap a thumbnail to preview · tap the video tile to resume the loop</div>
-
   <!-- In-route filters: premium centered pill toolbar -->
   <div class="px-5 md:px-14 lg:px-24 pb-10 md:pb-14">
     <div class="max-w-fit md:mx-auto bg-white/70 backdrop-blur-md border border-gray-200/80 rounded-full p-1.5 shadow-sm overflow-x-auto">
@@ -287,16 +373,13 @@
       </div>
     </div>
   </div>
-
   <!-- Chronological, day-by-day itinerary. mt-6 guarantees breathing room
        below the filter bar on mobile, independent of the filter bar's own
        bottom padding. -->
   <div class="px-5 md:px-14 lg:px-24 pb-12 md:pb-20 max-w-4xl mx-auto mt-6 md:mt-0">
-
     <div class="day-group" data-day="1">
     <div data-aos="fade-up" class="font-serif-display text-[26px] md:text-4xl leading-tight mb-1.5">Day 1</div>
     <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 mb-7 md:mb-9">Arrival & Palma old town · 3 stops</div>
-
     <div data-category="hotel" data-aos="fade-up" class="mb-7 md:mb-10 md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
       <div class="md:w-2/5 md:flex-shrink-0">
         <div id="mallorca-hotel1-photo" class="relative h-[140px] md:h-56 mb-3 md:mb-0 rounded-2xl overflow-hidden media-placeholder" style="background: linear-gradient(135deg, #8B5CF6, #6D28D9);">
@@ -329,10 +412,8 @@
         </div>
       </div>
     </div>
-
     <div id="day1-stops" class="grid md:grid-cols-2 gap-4 md:gap-6 mb-2"></div>
     </div>
-
     <div class="mt-12 md:mt-16"></div>
     <div class="day-group" data-day="2">
     <div data-aos="fade-up" class="font-serif-display text-[26px] md:text-4xl leading-tight mb-1.5">Day 2</div>
@@ -340,12 +421,10 @@
     <div data-aos="fade-up" class="flex items-center gap-1.5 text-[11px] md:text-xs text-gray-500 mb-5 md:mb-7"><i data-lucide="bed" class="w-3 h-3"></i>Staying at Ars Magna Bleisure (see Day 1)</div>
     <div id="day2-stops" class="grid md:grid-cols-2 gap-4 md:gap-6"></div>
     </div>
-
     <div class="mt-12 md:mt-16"></div>
     <div class="day-group" data-day="3-4">
     <div data-aos="fade-up" class="font-serif-display text-[26px] md:text-4xl leading-tight mb-1.5">Days 3-4</div>
     <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 mb-7 md:mb-9">Southeast beach hopping · 5 stops</div>
-
     <div data-category="hotel" data-aos="fade-up" class="mb-6 md:mb-8 md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
       <div class="md:w-2/5 md:flex-shrink-0">
         <div id="mallorca-hotel2-photo" class="relative h-[140px] md:h-56 mb-3 md:mb-0 rounded-2xl overflow-hidden media-placeholder" style="background: linear-gradient(135deg, #0E7490, #155E75);">
@@ -378,22 +457,17 @@
         </div>
       </div>
     </div>
-
     <div id="beach-list" class="grid md:grid-cols-2 gap-4 md:gap-6"></div>
     </div>
-
     <div class="mt-12 md:mt-16"></div>
     <div class="day-group" data-day="5">
     <div data-aos="fade-up" class="font-serif-display text-[26px] md:text-4xl leading-tight mb-1.5">Day 5</div>
     <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 mb-5 md:mb-7">West coast · 2 stops</div>
     <div id="day5-stops" class="grid md:grid-cols-2 gap-4 md:gap-6"></div>
     </div>
-
   </div>
-
   <!-- ================== Community Reviews (real — backend-driven) ================== -->
   <div id="mallorca-reviews-section"></div>
-
   <footer class="bg-[#15171A] text-white mt-4">
     <div class="max-w-6xl mx-auto px-6 md:px-14 py-14 md:py-16 grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-8">
       <div>
@@ -416,46 +490,40 @@
     </div>
     <div class="border-t border-white/10 py-5 text-center text-[11px] text-white/40">© 2026 GetWay. All rights reserved.</div>
   </footer>
-
 </div>
 </div>
 </div>
-
 <div id="lightbox" class="hidden fixed inset-0 z-[200] bg-black/90 items-center justify-center p-6" onclick="closeLightbox()">
   <img id="lightbox-img" src="" alt="" class="max-w-full max-h-full rounded-2xl object-contain">
   <button onclick="closeLightbox()" class="absolute top-6 right-6 w-10 h-10 rounded-full bg-white/15 flex items-center justify-center">
     <i data-lucide="x" class="w-5 h-5 text-white"></i>
   </button>
 </div>
-
 <!-- ====================================================================== -->
 <!-- SCREEN 3: AI MAGIC BOX                                                 -->
 <!-- ====================================================================== -->
 <div id="screen-magicbox" class="screen">
 <div class="flex justify-center min-h-screen">
 <div class="w-full max-w-[390px] md:max-w-xl">
-
   <div class="px-5 md:px-0 py-4 md:py-8 flex items-center justify-between">
     <button onclick="showScreen('home')" class="font-serif-display text-base md:text-xl">GetWay<span class="text-[#8B5CF6]">.</span></button>
   </div>
-
   <div id="magicbox-form" class="mx-5 md:mx-0 px-6 md:px-10 py-9 md:py-12 glass-card rounded-[28px]">
     <div class="text-center mb-7">
       <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">AI-Powered</div>
       <div class="font-serif-display text-[28px] md:text-4xl mb-2">AI Magic Box</div>
       <div class="text-xs md:text-sm text-gray-600 leading-relaxed px-2.5">Turn any TikTok or Instagram video into a ready-to-book route in 60 seconds.</div>
     </div>
-
-    <div class="flex items-center gap-2 sm:gap-2.5 h-[52px] px-3 sm:px-4 bg-white/70 border border-gray-200 rounded-2xl mb-3">
-      <i data-lucide="music-2" class="w-[18px] h-[18px] text-gray-500 flex-shrink-0"></i>
-      <input id="tiktok-url" type="text" placeholder="Paste a TikTok or Instagram link…" class="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-gray-400">
-      <button type="button" onclick="pasteFromClipboard('tiktok-url')" class="btn-interactive flex-shrink-0 w-9 h-9 sm:w-auto sm:h-8 sm:px-3 rounded-full bg-[#8B5CF6]/10 text-[#6D28D9] text-xs font-medium flex items-center justify-center gap-1"><i data-lucide="clipboard" class="w-3.5 h-3.5"></i><span class="hidden sm:inline">Paste</span></button>
+    <div class="flex items-center gap-2 sm:gap-2.5 mb-3">
+      <div class="flex-1 min-w-0 flex items-center gap-2 sm:gap-2.5 h-[52px] px-3 sm:px-4 bg-white/70 border border-gray-200 rounded-2xl">
+        <i data-lucide="music-2" class="w-[18px] h-[18px] text-gray-500 flex-shrink-0"></i>
+        <input id="tiktok-url" type="text" placeholder="Paste a TikTok or Instagram link…" class="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-gray-400">
+      </div>
+      <button type="button" onclick="pasteFromClipboard('tiktok-url')" class="btn-interactive flex-shrink-0 h-[52px] w-[52px] sm:w-auto sm:px-4 rounded-2xl bg-[#8B5CF6]/10 text-[#6D28D9] text-xs font-medium flex items-center justify-center gap-1 border border-[#8B5CF6]/15"><i data-lucide="clipboard" class="w-3.5 h-3.5"></i><span class="hidden sm:inline">Paste</span></button>
     </div>
-
     <button onclick="startMagicBox()" class="btn-interactive w-full h-[50px] flex items-center justify-center gap-2 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl mb-8">
       Build my route <i data-lucide="rocket" class="w-4 h-4"></i>
     </button>
-
     <div class="flex items-center justify-center gap-1.5">
       <div class="text-center flex-1">
         <div class="w-9 h-9 bg-[#F1EEFF] rounded-[12px] flex items-center justify-center mx-auto mb-1.5"><i data-lucide="link" class="w-4 h-4 text-[#7C3AED]"></i></div>
@@ -473,20 +541,24 @@
       </div>
     </div>
   </div>
-
+  <!-- Simplified loading state: one steady "Video is generating..." label
+       + a rotating "did you know" fact about a different country every
+       ~3s (see COUNTRY_FACTS + startMagicBox() below). No progress-stage
+       copy, no time estimate — kept deliberately quiet/minimal. -->
   <div id="magicbox-loading" class="hidden mx-5 md:mx-0 px-6 md:px-10 py-16 md:py-20 text-center glass-card rounded-[28px]">
     <div class="w-16 h-16 bg-[#F1EEFF] rounded-full flex items-center justify-center mx-auto mb-6">
       <i data-lucide="wand-2" class="w-6 h-6 text-[#8B5CF6] animate-pulse"></i>
     </div>
-    <div id="loading-text" class="text-sm font-medium mb-2">Scanning the video for locations...</div>
-    <div class="text-[11px] text-gray-500 mb-7">This usually takes about 30 seconds</div>
-    <div class="flex justify-center gap-1.5">
+    <div class="text-sm font-medium mb-6">Video is generating…</div>
+    <div class="min-h-[40px] flex items-center justify-center px-2">
+      <div id="loading-fact" class="text-[11px] text-gray-500 leading-relaxed max-w-xs transition-opacity duration-500"></div>
+    </div>
+    <div class="flex justify-center gap-1.5 mt-5">
       <div class="w-1.5 h-1.5 rounded-full bg-[#8B5CF6] animate-bounce" style="animation-delay:0ms"></div>
       <div class="w-1.5 h-1.5 rounded-full bg-[#D8CCFB] animate-bounce" style="animation-delay:150ms"></div>
       <div class="w-1.5 h-1.5 rounded-full bg-[#D8CCFB] animate-bounce" style="animation-delay:300ms"></div>
     </div>
   </div>
-
   <div id="magicbox-result" class="hidden mx-5 md:mx-0 px-6 md:px-10 py-10 glass-card rounded-[28px]">
     <div class="text-center mb-8">
       <div class="w-16 h-16 bg-[#E1F5EE] rounded-full flex items-center justify-center mx-auto mb-6">
@@ -500,18 +572,15 @@
       Back to routes
     </button>
   </div>
-
 </div>
 </div>
 </div>
-
 <!-- ====================================================================== -->
 <!-- SCREEN 6: AI-GENERATED ROUTE                                           -->
 <!-- ====================================================================== -->
 <div id="screen-ai-route" class="screen">
 <div class="min-h-screen">
 <div class="w-full max-w-[390px] md:max-w-none mx-auto">
-
   <!-- Hero -->
   <div class="relative h-[280px] md:h-[50vh] md:min-h-[400px] w-full overflow-hidden" style="background: linear-gradient(135deg, #1c2128 0%, #334155 55%, #15171A 100%);">
     <div id="ai-route-hero-bg" class="absolute inset-0 bg-cover bg-center" style="background-image:url('https://picsum.photos/seed/ai-route-hero/2000/1300');"></div>
@@ -538,7 +607,6 @@
       <div id="ai-route-hero-credit" class="absolute right-6 md:right-14 bottom-[6px] text-[9px] md:text-[10px] text-white/60"></div>
     </div>
   </div>
-
   <!-- Stats bar -->
   <div class="flex items-center justify-center py-5 md:py-7 border-b border-gray-100">
     <div class="flex items-center gap-1.5 px-5 md:px-10"><i data-lucide="map-pin" class="w-3.5 h-3.5 text-gray-400"></i><div><span id="ai-route-stop-count" class="text-base md:text-xl font-bold">0</span> <span class="text-[10px] md:text-xs text-gray-500">stops</span></div></div>
@@ -547,21 +615,17 @@
     <div class="w-px h-7 bg-gray-200"></div>
     <div class="flex items-center gap-1.5 px-5 md:px-10"><i data-lucide="sparkles" class="w-3.5 h-3.5 text-gray-400"></i><div class="text-[10px] md:text-xs text-gray-500">AI generated</div></div>
   </div>
-
   <!-- Destination + route summary -->
   <div id="ai-route-summary-wrap" class="hidden px-6 md:px-14 lg:px-24 pt-6 md:pt-8">
     <p id="ai-route-summary" class="max-w-2xl md:mx-auto text-center text-sm md:text-base text-gray-600 leading-relaxed"></p>
   </div>
-
   <!-- "Do I need a visa?" banner — shown near the top of every route,
        destination filled in automatically. Admin-toggleable, see
        isAffiliateSectionEnabled('visa'). -->
   <div id="ai-route-visa-banner" class="px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mt-6 md:mt-8"></div>
-
   <!-- Photo gallery thumbnails -->
   <div id="ai-route-gallery" class="flex justify-center gap-1.5 md:gap-3 px-4 pt-6 pb-2 md:pt-8"></div>
   <div id="ai-route-gallery-hint" class="hidden text-center px-4 pb-8 md:pb-10 text-[10px] md:text-xs text-gray-400">Tap a thumbnail to preview</div>
-
   <!-- In-route filters -->
   <div class="px-5 md:px-14 lg:px-24 py-6 md:py-8">
     <div class="max-w-fit md:mx-auto bg-white/70 backdrop-filter backdrop-blur border border-gray-200/80 rounded-full p-1.5 shadow-sm overflow-x-auto">
@@ -575,7 +639,6 @@
       </div>
     </div>
   </div>
-
   <!-- Route Map view — collapsed behind a toggle button by default (only
        expands if the person actually wants to see it), day tabs + Leaflet
        map with numbered stops. The toggle button itself only appears when
@@ -602,48 +665,38 @@
     <div id="ai-route-map" class="w-full h-[340px] md:h-[440px] rounded-[26px] overflow-hidden bento-card"></div>
     <div id="ai-map-stop-list" class="mt-4 space-y-1.5"></div>
   </div>
-
   <!-- Always-shown hotel booking banner — independent of whether the AI
        found a "hotel" stop in the video itself, so every route earns a
        shot at affiliate commission. -->
   <div id="ai-route-hotels-banner" class="px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-8 md:mb-10"></div>
-
   <!-- "Find flights" banner — right under the hotel banner, on every
        route. Admin-toggleable, see isAffiliateSectionEnabled('flights'). -->
   <div id="ai-route-flights-banner" class="px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-8 md:mb-10"></div>
-
   <!-- Days + stops rendered here (the Day 1 / arrival-day group also gets
        an airport transfer banner injected inline — see renderAiRoute). -->
   <div id="ai-route-days" class="px-5 md:px-14 lg:px-24 pb-16 md:pb-24 max-w-4xl mx-auto"></div>
-
   <!-- Travel insurance — small banner at the end of the route. Admin-
        toggleable, see isAffiliateSectionEnabled('insurance'). -->
   <div id="ai-route-insurance-banner" class="px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-6 md:mb-8"></div>
-
   <!-- Affiliate + AI accuracy disclosure — required for FTC/EU transparency,
        kept deliberately understated per product decision: plain small text,
        no colored callout box, placed after all stops rather than above them. -->
   <div class="px-5 md:px-14 lg:px-24 max-w-4xl mx-auto pb-6 md:pb-8">
     <p class="text-[10px] text-gray-400 leading-relaxed text-center">This itinerary was generated automatically from a public video using AI — please confirm hours, prices and availability before you travel. GetWay may earn a commission from bookings made through links on this page, at no extra cost to you. <a href="#" onclick="showScreen('terms'); return false;" class="underline">Learn more</a>.</p>
   </div>
-
   <!-- ================== TikTok Comments (real — fetched via Apify) ================== -->
   <div id="ai-route-comments-section"></div>
-
   <!-- ================== Community Reviews (real — backend-driven) ================== -->
   <div id="ai-route-reviews-section"></div>
-
   <footer class="bg-[#15171A] text-white mt-4">
     <div class="max-w-6xl mx-auto px-6 md:px-14 py-10 flex flex-col md:flex-row items-center justify-between gap-4">
       <div class="font-serif-display text-xl">GetWay<span class="text-[#C4B5FD]">.</span></div>
       <div class="text-xs text-white/40">© 2026 GetWay. All rights reserved.</div>
     </div>
   </footer>
-
 </div>
 </div>
 </div>
-
 <!-- ====================================================================== -->
 <!-- SCREEN 4 & 5: LEGAL PAGES                                              -->
 <!-- ====================================================================== -->
@@ -666,7 +719,6 @@
   </div>
 </div>
 </div>
-
 <div id="screen-terms" class="screen">
 <div class="max-w-3xl mx-auto px-6 md:px-0 py-10 md:py-16">
   <button onclick="showScreen('home')" class="font-serif-display text-base md:text-xl mb-10 inline-block">GetWay<span class="text-[#8B5CF6]">.</span></button>
@@ -687,11 +739,9 @@
   </div>
 </div>
 </div>
-
 <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" crossorigin="anonymous"></script>
-
 <!-- "Add to Home Screen" prompt — mobile only. Android/Chrome gets a real
      one-tap native install; iOS Safari has no equivalent API (Apple doesn't
      allow triggering the prompt programmatically), so it gets a short
@@ -710,7 +760,6 @@
     <button onclick="dismissInstallBanner()" class="flex-shrink-0 w-7 h-7 flex items-center justify-center text-gray-400"><i data-lucide="x" class="w-4 h-4"></i></button>
   </div>
 </div>
-
 <!-- iOS-only instructional overlay (no native install API exists on iOS Safari) -->
 <div id="ios-install-overlay" class="hidden fixed inset-0 z-[170] bg-black/50 flex items-end sm:items-center justify-center p-4" onclick="if(event.target===this) closeIosOverlay()">
   <div class="bento-card bg-white rounded-[22px] p-6 w-full max-w-sm">
@@ -733,8 +782,6 @@
     <button onclick="closeIosOverlay()" class="btn-interactive w-full h-11 flex items-center justify-center bg-[#8B5CF6] text-white text-sm font-medium rounded-xl">Got it</button>
   </div>
 </div>
-
-
 <button onclick="toggleSupportChat()" class="btn-interactive fixed bottom-6 right-6 z-[150] w-14 h-14 rounded-full bg-[#8B5CF6] shadow-xl flex items-center justify-center">
   <i data-lucide="message-circle" class="w-6 h-6 text-white"></i>
 </button>
@@ -751,7 +798,6 @@
     <a href="mailto:getway.smart@gmail.com" class="btn-interactive w-full h-11 flex items-center justify-center gap-2 bg-[#8B5CF6] text-white text-xs font-medium rounded-xl"><i data-lucide="mail" class="w-4 h-4"></i>Email us</a>
   </div>
 </div>
-
 <script>
   // ======================================================================
   // MEDIA CONFIG
@@ -782,16 +828,34 @@
       ]
     }
   };
-
   const ROUTES = [];
-
   // Admin-controlled settings (hero slides, featured routes, and the Phase
   // 3 affiliate-partner config — markers/subids, per-section on-off
   // switches, flights origin). Populated by loadSiteSettings() below;
   // starts empty so anything reading it before that resolves just gets the
   // safe "no marker set yet" defaults baked into each helper function.
   let SITE_SETTINGS = {};
-
+  // ── Category label above each route card's destination name ─────────
+  // Colored per category so "Most Popular" / "Budget Friendly" / "Luxury"
+  // etc. read at a glance, distinct from the neutral duration pill next to
+  // the destination name. Picks the first tag on the route that has a
+  // config entry (tags come from the backend / admin curation, see
+  // filterByCategory above and loadRealRoutes below).
+  const ROUTE_TAG_CONFIG = {
+    most_popular:    { label: 'Most Popular',    color: '#EA580C' },
+    budget_friendly: { label: 'Budget Friendly', color: '#16A34A' },
+    luxury:          { label: 'Luxury',          color: '#7C3AED' },
+    exotic:          { label: 'Exotic',          color: '#0E7490' },
+    mountain:        { label: 'Mountain',        color: '#57534E' },
+    city:            { label: 'City',            color: '#1D4ED8' },
+    beach:           { label: 'Beach',           color: '#0891B2' },
+  };
+  function primaryTagLabel(tags) {
+    for (const t of (tags || [])) {
+      if (ROUTE_TAG_CONFIG[t]) return ROUTE_TAG_CONFIG[t];
+    }
+    return null;
+  }
   const DAY1_STOPS = [
     { category: "sight", icon: "landmark", iconColor: "#57534E", name: "Palma cathedral & old town", typeLabel: "Sight", photo: "https://picsum.photos/seed/palma-cathedral/900/700", mapsUrl: "https://www.google.com/maps/search/?api=1&query=Palma+Cathedral", distance: "8 min walk from hotel", distanceType: "walk" },
     { category: "food", icon: "utensils", iconColor: "#16A34A", name: "Restaurant Illeta", badge: { icon: "anchor", text: "Boat transfer needed", color: "#1E40AF" }, photo: "https://picsum.photos/seed/restaurant-illeta/900/700", mapsUrl: "https://maps.google.com", distance: "20 min, incl. boat transfer", distanceType: "boat", reserveUrl: "#" }
@@ -809,7 +873,6 @@
     { category: "food", icon: "utensils", iconColor: "#16A34A", name: "Ca's Patro March", badge: { icon: "clock", text: "Book by 12:00 — fills fast", color: "#791F1F" }, forcePlaceholder: true, placeholderGradient: "linear-gradient(135deg, #C2603C, #92400E)", mapsUrl: "https://maps.google.com", distance: "30 min drive from hotel", distanceType: "drive", reserveUrl: "#" },
     { category: "sight", icon: "trees", iconColor: "#4D6B2E", name: "Deia village", typeLabel: "Village", photo: "https://picsum.photos/seed/deia/900/700", mapsUrl: "https://maps.google.com", distance: "35 min drive from hotel", distanceType: "drive" }
   ];
-
   const DISTANCE_ICONS = { walk: "footprints", boat: "sailboat", drive: "car" };
   const PLACEHOLDER_GRADIENTS = [
     "linear-gradient(135deg, #8B5CF6, #6D28D9)", "linear-gradient(135deg, #0E7490, #155E75)",
@@ -832,11 +895,9 @@
     if (imgEl.parentNode) imgEl.replaceWith(wrapper);
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
-
   // Fixed video_id used to key reviews for the static Mallorca demo route
   // (it has no real TikTok video behind it, so there's no natural video_id).
   const MALLORCA_DEMO_VIDEO_ID = 'mallorca-demo-route';
-
   // ── Real TikTok comments (from itinerary.comments, fetched via Apify) ───
   function formatCount(n) {
     n = Number(n) || 0;
@@ -844,7 +905,6 @@
     if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
     return String(n);
   }
-
   // ── Always-shown hotels banner (guaranteed affiliate opportunity) ───────
   // Shows a "Hotels in {destination}" card at the top of every AI-generated
   // route, regardless of whether the source video actually featured a
@@ -859,7 +919,6 @@
     container.innerHTML = buildHotelsBannerHtml(destination, galleryPhotos, videoId, bannerPhotoOverride);
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
-
   // Builds the generic "find hotels in [city]" card markup — used both for
   // the trip-start banner (renderHotelsBanner) and for inline banners
   // inserted between days when the trip moves to a new city that has no
@@ -870,7 +929,6 @@
     const expediaHref = expediaAffiliateSearchUrl(city);
     const photo = bannerPhotoOverride || ((galleryPhotos && galleryPhotos.length) ? galleryPhotos[galleryPhotos.length - 1] : '');
     const seed = 'hotels-banner-' + slugify(city);
-
     return `
       <div class="ai-stop-card mb-6 md:mb-8 md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
         <div class="md:w-2/5 md:flex-shrink-0">
@@ -891,12 +949,10 @@
         </div>
       </div>`;
   }
-
   // Falls back to a generic "car on a scenic road" Unsplash placeholder
   // when no admin-set or backend-provided photo is available, so the
   // "Rent a car" card never shows an empty/broken image.
   const CAR_RENTAL_PLACEHOLDER_PHOTO = 'https://source.unsplash.com/800x400/?car,travel,road';
-
   function buildCarRentalBannerHtml(destination, videoId, note, photo) {
     const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim() || destination || '';
     const bookingHref = bookingCarRentalUrl();
@@ -904,7 +960,6 @@
     const gygHref = gygCarRentalUrl(city);
     const seed = 'car-rental-' + slugify(city);
     const photoUrl = photo || CAR_RENTAL_PLACEHOLDER_PHOTO;
-
     return `
       <div class="ai-stop-card mb-6 md:mb-8 md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
         <div class="md:w-2/5 md:flex-shrink-0">
@@ -926,7 +981,6 @@
         </div>
       </div>`;
   }
-
   function renderAiRouteComments(comments) {
     const container = document.getElementById('ai-route-comments-section');
     if (!container) return;
@@ -956,7 +1010,6 @@
       </div>`;
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
-
   function showScreen(name) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     const target = document.getElementById('screen-' + name);
@@ -981,11 +1034,24 @@
       AOS.refreshHard();
     }
   }
-
   function scrollToRoutes() {
     document.getElementById('routes-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
-
+  // Scrolls to and focuses the homepage AI Magic Box — used by the final
+  // CTA's "Paste your link" button.
+  function scrollToMagicBox() {
+    const el = document.getElementById('home-magicbox-card');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const input = document.getElementById('home-tiktok-url');
+    if (input) setTimeout(() => input.focus(), 450);
+  }
+  // Placeholder until the full vibe quiz (built separately) ships — lets
+  // the homepage teaser section be wired up and clickable today without
+  // linking to a page that doesn't exist yet.
+  function startVibeQuiz() {
+    alert("The vibe quiz is almost ready — it'll match you to a destination in about 90 seconds. For now, browse the routes below to get inspired!");
+    scrollToRoutes();
+  }
   function renderHeroMedia(slidesOverride) {
     const layer = document.getElementById('hero-media-layer');
     const slides = (slidesOverride && slidesOverride.length) ? slidesOverride : MEDIA.hero.slides;
@@ -1002,7 +1068,6 @@
       }, MEDIA.hero.intervalMs);
     }
   }
-
   // Loads admin-controlled homepage settings (hero slides + featured
   // routes, plus the Phase 3 affiliate-partner config — see SITE_SETTINGS
   // above). Hero slides re-render only if the admin actually set some;
@@ -1022,10 +1087,8 @@
     }
     renderHeroMedia(slides);
   }
-
   let currentDurationFilter = 'any';
   let currentCategoryFilter = 'all';
-
   function filterByDuration(bucket, clickedBtn) {
     try {
       currentDurationFilter = bucket;
@@ -1038,7 +1101,6 @@
       applyRouteFilters();
     } catch (err) { console.error('filterByDuration failed:', err); }
   }
-
   function filterByCategory(tag, clickedBtn) {
     try {
       currentCategoryFilter = tag;
@@ -1051,29 +1113,23 @@
       applyRouteFilters();
     } catch (err) { console.error('filterByCategory failed:', err); }
   }
-
   function filterRoutesBySearch() {
     try { applyRouteFilters(); } catch (err) { console.error('filterRoutesBySearch failed:', err); }
   }
-
   function applyRouteFilters() {
     const searchEl = document.getElementById('route-search');
     const query = searchEl ? searchEl.value.trim().toLowerCase() : '';
     const cards = document.querySelectorAll('#route-grid [data-search]');
     let visibleCount = 0;
-
     cards.forEach(card => {
       const matchesSearch = query === '' || card.dataset.search.includes(query);
-
       const days = parseInt(card.dataset.days, 10);
       const matchesDuration =
         currentDurationFilter === 'any' ||
         (currentDurationFilter === 'short' && days <= 3) ||
         (currentDurationFilter === 'long' && days >= 4);
-
       const cardTags = (card.dataset.tags || '').split(',');
       const matchesCategory = currentCategoryFilter === 'all' || cardTags.includes(currentCategoryFilter);
-
       const matches = matchesSearch && matchesDuration && matchesCategory;
       const wasHidden = card.classList.contains('filter-hidden');
       card.classList.toggle('filter-hidden', !matches);
@@ -1082,19 +1138,18 @@
       }
       if (matches) visibleCount++;
     });
-
     const emptyEl = document.getElementById('route-search-empty');
     if (emptyEl) emptyEl.classList.toggle('hidden', visibleCount > 0);
-
     if (typeof AOS !== 'undefined') { AOS.refreshHard(); }
   }
-
   const STATIC_ROUTE_SLUGS = new Set([]);
-
   function renderRoutes() {
     const grid = document.getElementById('route-grid');
     grid.innerHTML = ROUTES.map((r, i) => {
       const photo = MEDIA.routes[r.slug] ? MEDIA.routes[r.slug].cardPhoto : "";
+      const tagCfg = primaryTagLabel(r.tags);
+      const tagLabelHtml = tagCfg ? `<div class="text-[10px] font-bold tracking-[0.14em] uppercase mb-1.5" style="color:${tagCfg.color}">${tagCfg.label}</div>` : '';
+      const funFactHtml = r.funFact ? `<div class="mt-3 flex items-start gap-1.5 bg-[#FAF8F3] rounded-xl px-3 py-2.5"><i data-lucide="lightbulb" class="w-3.5 h-3.5 text-[#8B5CF6] flex-shrink-0 mt-0.5"></i><span class="text-[11px] text-gray-600 italic leading-snug">${escapeHtml(r.funFact)}</span></div>` : '';
       return `
       <a href="#" data-slug="${r.slug}" data-search="${(r.destination + ' ' + r.creatorHandle).toLowerCase()}" data-days="${r.dayCount}" data-tags="${r.tags.join(',')}" data-aos="fade-up" data-aos-delay="${i * 80}" class="route-card group block bg-white rounded-[28px] overflow-hidden bento-card">
         <div class="h-52 md:h-60 relative overflow-hidden rounded-t-[28px]" style="background:${r.fallbackColor}">
@@ -1102,15 +1157,16 @@
           <div class="absolute top-3 right-3 bg-white/90 text-[10px] font-medium px-2.5 py-1 rounded-full">${r.priceCategory}</div>
         </div>
         <div class="p-6">
+          ${tagLabelHtml}
           <div class="flex items-center gap-2.5 mb-2 flex-wrap">
             <div class="text-lg md:text-xl font-bold tracking-tight uppercase">${r.destination}</div>
             <span class="text-[10px] font-medium text-[#6D28D9] bg-[#F1EEFF] px-2.5 py-1 rounded-full">${r.duration}</span>
           </div>
           <div class="text-[11px] md:text-xs text-gray-500">via ${r.creatorHandle} · ${r.stopCount} stops</div>
+          ${funFactHtml}
         </div>
       </a>`;
     }).join('');
-
     // Attach click handlers after the fact (never inline onclick with
     // dynamic text) — destination/creator names can contain apostrophes
     // that would otherwise break an inline onclick string.
@@ -1120,8 +1176,12 @@
         openRouteCard(card.dataset.slug);
       });
     });
+    // The fact-chip lightbulb icon above is only in the DOM after this
+    // innerHTML write, and renderRoutes() can re-run later (loadRealRoutes,
+    // filters) after the page-load lucide.createIcons() pass already ran —
+    // so it needs its own call here too, not just at DOMContentLoaded.
+    if (typeof lucide !== 'undefined') lucide.createIcons();
   }
-
   function openRouteCard(slug) {
     if (STATIC_ROUTE_SLUGS.has(slug)) {
       showScreen('route');
@@ -1132,7 +1192,6 @@
       .then(data => { renderAiRoute(data.itinerary, data.video_id, ''); showScreen('ai-route'); })
       .catch(err => { console.error('Could not open route "' + slug + '":', err); alert('Sorry, this route could not be loaded.'); });
   }
-
   // Fetches every approved AI-generated route from the backend and merges
   // it into the (otherwise hardcoded) ROUTES array so it shows up as a
   // real, clickable card on the homepage grid — this is what the admin
@@ -1154,10 +1213,16 @@
           stopCount: r.stop_count,
           fallbackColor: gradientFor(r.video_id),
           tags: r.tags || [],
+          // Optional — populate `fun_fact` on the backend's /routes response
+          // to have it show up as the fact chip on each card. Cards render
+          // fine without it (see funFactHtml above), so this is safe to add
+          // to the backend at any time with no frontend changes needed.
+          funFact: r.fun_fact || "",
         });
         MEDIA.routes[r.video_id] = { cardPhoto: r.hero_photo_url || "" };
       });
       renderRoutes();
+      if (typeof renderRankings === 'function') renderRankings(); // refresh "Has a route" badges now that real routes are in
       const countLabel = document.getElementById('routes-count-label');
       if (countLabel) {
         countLabel.textContent = ROUTES.length
@@ -1169,14 +1234,12 @@
       console.error('loadRealRoutes failed (non-fatal, homepage keeps static routes):', err);
     }
   }
-
   function renderMallorcaHero() {
     const mediaLayer = document.getElementById('mallorca-hero-media');
     mediaLayer.innerHTML = `<img id="mallorca-hero-photo" src="" class="absolute inset-0 w-full h-full object-cover" alt="" onerror="imgFallback(this,'image','mallorca-hero')">`;
     document.getElementById('mallorca-hero-photo').src = MEDIA.mallorca.gallery.find(g => g.type === 'photo').url;
     renderUnsplashCredit('mallorca-hero-credit', (window._mallorcaGalleryAttributions || [])[1]);
     window._mallorcaActiveIndex = MEDIA.mallorca.gallery.findIndex(g => g.type === 'photo');
-
     const thumbs = document.getElementById('mallorca-thumbnails');
     thumbs.innerHTML = MEDIA.mallorca.gallery.map((item, i) => {
       if (item.type === 'video') {
@@ -1185,7 +1248,6 @@
       return `<button onclick="selectGalleryItem(${i})" class="gallery-thumb flex-shrink-0 w-[54px] h-[54px] md:w-20 md:h-20 rounded-2xl overflow-hidden border-2 border-transparent"><img src="${item.url}" alt="" class="w-full h-full object-cover" onerror="imgFallback(this,'image','gthumb-${i}')"></button>`;
     }).join('');
   }
-
   function selectGalleryItem(index) {
     window._mallorcaActiveIndex = index;
     const item = MEDIA.mallorca.gallery[index];
@@ -1203,7 +1265,6 @@
     const counter = document.getElementById('mallorca-gallery-counter');
     if (counter) counter.textContent = (index + 1) + ' / ' + MEDIA.mallorca.gallery.length;
   }
-
   // ── Swipe / drag gallery navigation ─────────────────────────────────
   // Generic touch+mouse handler shared by both hero galleries (the static
   // Mallorca demo route and the AI-generated route). Wraps around at the
@@ -1214,7 +1275,6 @@
     el.dataset.swipeAttached = '1';
     const THRESHOLD = 40; // px — minimum horizontal drag to count as a swipe
     let startX = 0, startY = 0, dragging = false, moved = false;
-
     function start(x, y) { startX = x; startY = y; dragging = true; moved = false; }
     function move(x, y) {
       if (!dragging) return;
@@ -1231,7 +1291,6 @@
       const nextIdx = dx < 0 ? (idx + 1) % len : (idx - 1 + len) % len;
       onSelect(nextIdx);
     }
-
     el.addEventListener('touchstart', (e) => {
       // Don't hijack taps on real controls layered over the hero (back
       // button, logo, save, TikTok credit link) — let them work normally.
@@ -1246,7 +1305,6 @@
     el.addEventListener('touchend', (e) => {
       finish(e.changedTouches[0].clientX);
     });
-
     // Desktop mouse-drag support
     el.addEventListener('mousedown', (e) => {
       if (e.target.closest('a, button')) { dragging = false; return; }
@@ -1255,11 +1313,9 @@
     });
     document.addEventListener('mousemove', (e) => { if (dragging) move(e.clientX, e.clientY); });
     document.addEventListener('mouseup', (e) => { if (dragging) finish(e.clientX); });
-
     el.style.cursor = 'grab';
     el.style.touchAction = 'pan-y';
   }
-
   function initSwipeGalleries() {
     // Attached to the outer hero wrapper (not the bg image element itself)
     // because the gradient overlays and destination text sit as *sibling*
@@ -1281,27 +1337,22 @@
       selectAiGalleryPhoto
     );
   }
-
   function renderRouteMedia() {
     document.getElementById('mallorca-tiktok-link').href = MEDIA.mallorca.tiktokVideoUrl;
     document.getElementById('mallorca-tiktok-handle').textContent = MEDIA.mallorca.tiktokHandle;
   }
-
   function renderStopCard(stop) {
     const badgeOrType = stop.badge
       ? `<span class="inline-flex items-center gap-1 text-[10px]" style="color:${stop.badge.color}"><i data-lucide="${stop.badge.icon}" class="w-2.5 h-2.5"></i> ${stop.badge.text}</span>`
       : `<span class="text-[10px] uppercase tracking-wide" style="color:${stop.iconColor}">${stop.typeLabel || ''}</span>`;
-
     const actionBtn = stop.reserveUrl
       ? `<a href="${stop.reserveUrl}" class="btn-interactive inline-flex items-center gap-1 h-[30px] px-3 bg-[#8B5CF6] text-white text-[11px] font-medium rounded-lg mt-2"><i data-lucide="calendar" class="w-3 h-3"></i>Reserve</a>`
       : '';
-
     const photoBlock = stop.forcePlaceholder
       ? `<div onclick="event.stopPropagation();" class="w-14 h-14 md:w-full md:h-44 rounded-xl md:rounded-none flex-shrink-0 media-placeholder" style="background:${stop.placeholderGradient || gradientFor(stop.name)}"><i data-lucide="${stop.icon}" class="w-6 h-6 md:w-8 md:h-8 text-white/80"></i></div>`
       : `<img src="${stop.photo}" alt="" data-photo-url="${stop.photo}" onclick="openLightbox(this.dataset.photoUrl)"
              class="w-14 h-14 md:w-full md:h-44 rounded-xl md:rounded-none object-cover flex-shrink-0 cursor-pointer md:cursor-default"
              data-icon="${stop.icon}" data-seed="${stop.name}" onerror="imgFallback(this, this.dataset.icon, this.dataset.seed)">`;
-
     return `
       <div data-category="${stop.category}" data-aos="fade-up" class="bento-card bg-white rounded-[22px] overflow-hidden relative flex items-center gap-3 p-4 md:flex-col md:items-stretch md:p-0">
         <button data-maps-url="${stop.mapsUrl}" onclick="event.stopPropagation(); window.open(this.dataset.mapsUrl,'_blank')" class="btn-interactive absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-white shadow flex items-center justify-center">
@@ -1320,25 +1371,21 @@
         </div>
       </div>`;
   }
-
   function renderAllStops() {
     document.getElementById('day1-stops').innerHTML = DAY1_STOPS.map(renderStopCard).join('');
     document.getElementById('day2-stops').innerHTML = DAY2_STOPS.map(renderStopCard).join('');
     document.getElementById('beach-list').innerHTML = BEACH_STOPS.map(renderStopCard).join('');
     document.getElementById('day5-stops').innerHTML = DAY5_STOPS.map(renderStopCard).join('');
   }
-
   // ── Real reviews (backend-driven) ────────────────────────────────────────
   // Used for both the Mallorca demo route and every AI-generated route.
   // `prefix` namespaces DOM ids (e.g. "mallorca" / "ai-route") since both
   // screens can be in the DOM at once; `videoId` is the backend review key.
-
   function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str == null ? '' : String(str);
     return div.innerHTML;
   }
-
   // Turns a name into a safe id/seed for use inside inline onclick="..."
   // handlers and as an HTML id. Whitespace-only replacement (the old
   // approach) left apostrophes intact — a hotel like "S'Almunia Resort"
@@ -1352,7 +1399,6 @@
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '') || 'item';
   }
-
   // Required by Unsplash's API guidelines whenever a photo they returned
   // is displayed: credit the photographer by name, linked to their
   // profile, plus a link to Unsplash itself.
@@ -1368,47 +1414,39 @@
     const unsplashUrl = attribution.unsplash_url || 'https://unsplash.com';
     el.innerHTML = `Photo by <a href="${photographerUrl}" target="_blank" rel="noopener" class="underline hover:text-white">${name}</a> on <a href="${unsplashUrl}" target="_blank" rel="noopener" class="underline hover:text-white">Unsplash</a>`;
   }
-
   function reviewSectionHTML(prefix) {
     return `
     <div class="px-5 md:px-14 lg:px-24 pb-16 md:pb-24 max-w-6xl mx-auto">
       <div data-aos="fade-up" class="font-serif-display text-2xl md:text-3xl mb-2">Community Reviews</div>
       <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 mb-8">What travelers say about booking this route through GetWay</div>
-
       <div id="${prefix}-review-summary" class="hidden bento-card bg-white rounded-[26px] p-7 flex-col items-center justify-center text-center max-w-xs mx-auto mb-8 md:mb-10">
         <div id="${prefix}-review-avg" class="text-5xl font-bold font-serif-display mb-2">0</div>
         <div class="text-xs text-gray-400 mb-3">out of 5</div>
         <div id="${prefix}-review-avg-stars" class="flex gap-1 mb-3"></div>
         <div id="${prefix}-review-count" class="text-xs text-gray-500">Based on 0 reviews</div>
       </div>
-
       <div data-aos="fade-up" class="bento-card bg-white rounded-[28px] p-6 md:p-10 max-w-2xl mx-auto mb-10 md:mb-14">
         <div class="text-center mb-7">
           <div class="font-serif-display text-xl md:text-2xl mb-1.5">Leave a Review</div>
           <div class="text-xs md:text-sm text-gray-500">Tell other travelers how your GetWay booking went</div>
         </div>
-
         <form id="${prefix}-review-form" onsubmit="submitReview(event, '${prefix}')">
           <div id="${prefix}-review-form-fields">
             <div class="grid sm:grid-cols-2 gap-3.5 mb-3.5">
               <input id="${prefix}-review-name" type="text" required maxlength="100" placeholder="Your name" class="h-[46px] px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none placeholder:text-gray-400 focus:border-[#8B5CF6]">
               <input id="${prefix}-review-title" type="text" required maxlength="150" placeholder="Review title" class="h-[46px] px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none placeholder:text-gray-400 focus:border-[#8B5CF6]">
             </div>
-
             <div class="mb-3.5">
               <div class="text-xs text-gray-500 mb-2">Your rating</div>
               <div id="${prefix}-star-rating" class="flex gap-1.5"></div>
               <input type="hidden" id="${prefix}-review-rating" value="0">
             </div>
-
             <textarea id="${prefix}-review-text" required maxlength="2000" rows="4" placeholder="Share your experience with this route..." class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none placeholder:text-gray-400 focus:border-[#8B5CF6] resize-none mb-5"></textarea>
-
             <button type="submit" class="btn-interactive w-full sm:w-auto sm:mx-auto flex items-center justify-center gap-2 h-[48px] px-10 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl transition-transform hover:scale-[1.03] active:scale-[0.97]">
               <span>Submit Review</span> <i data-lucide="send" class="w-4 h-4"></i>
             </button>
             <div id="${prefix}-review-error" class="hidden text-center text-xs text-red-600 mt-3"></div>
           </div>
-
           <div id="${prefix}-review-form-success" class="hidden text-center py-6">
             <div class="w-14 h-14 bg-[#E1F5EE] rounded-full flex items-center justify-center mx-auto mb-4"><i data-lucide="check" class="w-6 h-6 text-[#085041]"></i></div>
             <div class="text-sm font-medium mb-1">Thanks for your review!</div>
@@ -1416,16 +1454,13 @@
           </div>
         </form>
       </div>
-
       <div id="${prefix}-reviews-empty" class="hidden text-center text-sm text-gray-400 pb-4">No reviews yet — be the first to share how your trip went.</div>
       <div class="grid md:grid-cols-3 gap-6 md:gap-8">
         <div id="${prefix}-reviews-grid" class="contents"></div>
       </div>
     </div>`;
   }
-
   const selectedRatings = {}; // per-prefix star rating state
-
   function initReviewsSection(prefix, videoId) {
     const container = document.getElementById(prefix + '-reviews-section');
     if (!container) return;
@@ -1436,7 +1471,6 @@
     if (typeof lucide !== 'undefined') lucide.createIcons();
     loadAndRenderReviews(prefix, videoId);
   }
-
   function renderStarRating(prefix) {
     const el = document.getElementById(prefix + '-star-rating');
     if (!el) return;
@@ -1447,7 +1481,6 @@
     `).join('');
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
-
   function previewStars(prefix, rating) {
     document.querySelectorAll('#' + prefix + '-star-rating .star-btn').forEach(btn => {
       const n = parseInt(btn.dataset.star, 10);
@@ -1462,27 +1495,23 @@
       }
     });
   }
-
   function selectStars(prefix, rating) {
     selectedRatings[prefix] = rating;
     document.getElementById(prefix + '-review-rating').value = rating;
     previewStars(prefix, rating);
   }
-
   async function submitReview(event, prefix) {
     event.preventDefault();
     const container = document.getElementById(prefix + '-reviews-section');
     const videoId = container ? container.dataset.videoId : '';
     const errorEl = document.getElementById(prefix + '-review-error');
     errorEl.classList.add('hidden');
-
     const rating = selectedRatings[prefix] || 0;
     if (rating === 0) {
       errorEl.textContent = 'Please select a star rating before submitting.';
       errorEl.classList.remove('hidden');
       return;
     }
-
     const payload = {
       video_id: videoId,
       name: document.getElementById(prefix + '-review-name').value.trim(),
@@ -1490,7 +1519,6 @@
       rating: rating,
       text: document.getElementById(prefix + '-review-text').value.trim(),
     };
-
     try {
       const res = await fetch(`${BACKEND_URL}/reviews`, {
         method: 'POST',
@@ -1510,7 +1538,6 @@
       errorEl.classList.remove('hidden');
     }
   }
-
   async function loadAndRenderReviews(prefix, videoId) {
     try {
       const res = await fetch(`${BACKEND_URL}/reviews/${encodeURIComponent(videoId)}`);
@@ -1521,21 +1548,18 @@
       console.error('loadAndRenderReviews failed:', e);
     }
   }
-
   function renderReviewsGrid(prefix, data) {
     const reviews = data.reviews || [];
     const summaryEl = document.getElementById(prefix + '-review-summary');
     const emptyEl = document.getElementById(prefix + '-reviews-empty');
     const gridEl = document.getElementById(prefix + '-reviews-grid');
     if (!gridEl) return;
-
     if (reviews.length === 0) {
       if (summaryEl) { summaryEl.classList.add('hidden'); summaryEl.classList.remove('flex'); }
       if (emptyEl) emptyEl.classList.remove('hidden');
       gridEl.innerHTML = '';
       return;
     }
-
     if (emptyEl) emptyEl.classList.add('hidden');
     if (summaryEl) {
       summaryEl.classList.remove('hidden');
@@ -1550,7 +1574,6 @@
         ).join('');
       }
     }
-
     gridEl.innerHTML = reviews.map((r, i) => `
       <div data-aos="fade-up" data-aos-delay="${i * 80}" class="bento-card bg-white rounded-[26px] p-7">
         <div class="flex gap-1 mb-4">
@@ -1561,11 +1584,9 @@
         <div class="text-xs font-medium text-gray-400">${escapeHtml(r.name)}</div>
       </div>
     `).join('');
-
     if (typeof lucide !== 'undefined') lucide.createIcons();
     if (typeof AOS !== 'undefined') AOS.refreshHard();
   }
-
   // In-route filtering. "All Stops" keeps the chronological day layout.
   // Any other filter hides non-matching cards via `.filter-hidden`
   // (NOT Tailwind's `hidden`, which a same-element `md:flex` can silently
@@ -1578,7 +1599,6 @@
     });
     clickedBtn.classList.add('is-active', 'bg-[#8B5CF6]', 'text-white');
     clickedBtn.classList.remove('text-gray-600');
-
     document.querySelectorAll('[data-category]').forEach(card => {
       const matches = category === 'all' || card.dataset.category === category;
       const wasHidden = card.classList.contains('filter-hidden');
@@ -1590,12 +1610,10 @@
         card.classList.remove('aos-animate');
       }
     });
-
     document.querySelectorAll('.day-group').forEach(group => {
       const hasVisibleCard = Array.from(group.querySelectorAll('[data-category]')).some(card => !card.classList.contains('filter-hidden'));
       group.classList.toggle('filter-hidden', !hasVisibleCard);
     });
-
     if (typeof lucide !== 'undefined') { lucide.createIcons(); }
     if (typeof AOS !== 'undefined') {
       // refreshHard() re-scans positions now that layout has changed AND
@@ -1605,11 +1623,9 @@
       AOS.refreshHard();
     }
   }
-
   function toggleHotelDropdown(id) {
     document.getElementById(id + '-menu').classList.toggle('hidden');
   }
-
   function openLightbox(url) {
     document.getElementById('lightbox-img').src = url;
     const lb = document.getElementById('lightbox');
@@ -1621,13 +1637,60 @@
     lb.classList.add('hidden');
     lb.classList.remove('flex');
   }
-
   function toggleSupportChat() {
     document.getElementById('support-chat-panel').classList.toggle('hidden');
   }
-
   const BACKEND_URL = "https://getway-production.up.railway.app";
-
+  // ── Rankings: Most visited destinations worldwide (real data) ────────
+  // Sourced from Euromonitor International's Top 100 City Destinations
+  // Index 2025 (press release, Dec 2025): Paris/Madrid/Tokyo/Rome/Milan
+  // are the published top-5 in the composite index; Bangkok is called out
+  // separately as the single highest-volume city by raw international
+  // arrivals (30.3M in 2025) — a different ranking basis, so it's shown as
+  // a highlight rather than folded into the ranked list. No fabricated
+  // numbers: only figures actually published by the source are shown.
+  // Refresh this array once a year when a new edition is published.
+  const GLOBAL_TOURISM_RANKINGS = [
+    { rank: 1, destination: "Paris, France", detail: "#1 city destination worldwide, 2025 index" },
+    { rank: 2, destination: "Madrid, Spain", detail: "#2 city destination worldwide, 2025 index" },
+    { rank: 3, destination: "Tokyo, Japan", detail: "#3 worldwide · Asia's top-ranked city destination" },
+    { rank: 4, destination: "Rome, Italy", detail: "#4 city destination worldwide, 2025 index" },
+    { rank: 5, destination: "Milan, Italy", detail: "#5 city destination worldwide, 2025 index" },
+  ];
+  const GLOBAL_TOURISM_VOLUME_HIGHLIGHT = {
+    destination: "Bangkok, Thailand",
+    detail: "Highest raw visitor count worldwide: 30.3M international arrivals in 2025",
+  };
+  // Cross-references a ranking entry's city against GetWay's own loaded
+  // routes (case-insensitive, matches either direction as a substring so
+  // "Paris, France" matches a route destination of just "Paris").
+  function hasGetwayRoute(destinationLabel) {
+    const city = destinationLabel.split(',')[0].trim().toLowerCase();
+    return ROUTES.some((r) => {
+      const d = (r.destination || '').toLowerCase();
+      return d && (d.includes(city) || city.includes(d));
+    });
+  }
+  function renderRankings() {
+    const list = document.getElementById('rankings-list');
+    if (!list) return;
+    const rows = [...GLOBAL_TOURISM_RANKINGS.map((item) => ({ ...item, highlight: false })), { ...GLOBAL_TOURISM_VOLUME_HIGHLIGHT, rank: null, highlight: true }];
+    list.innerHTML = rows.map((item, i) => {
+      const seed = 'ranking-' + slugify(item.destination);
+      const routed = hasGetwayRoute(item.destination);
+      return `
+      <div data-aos="fade-up" data-aos-delay="${i * 40}" class="bento-card bg-white rounded-[22px] p-4 md:p-5 flex items-center gap-4 ${item.highlight ? 'border border-[#C4B5FD]' : ''}">
+        <div class="font-serif-display text-xl md:text-2xl text-gray-300 w-8 flex-shrink-0">${item.rank ? String(item.rank).padStart(2, '0') : '★'}</div>
+        <div class="w-12 h-12 rounded-2xl flex-shrink-0" style="background:${gradientFor(seed)}"></div>
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-medium truncate">${escapeHtml(item.destination)}</div>
+          <div class="text-xs text-gray-500 truncate">${escapeHtml(item.detail)}</div>
+        </div>
+        <span class="flex-shrink-0 text-[11px] font-medium px-3 py-1.5 rounded-full ${routed ? 'bg-[#F1EEFF] text-[#6D28D9]' : 'bg-gray-100 text-gray-400'}">${routed ? 'Has a route' : 'No route yet'}</span>
+      </div>`;
+    }).join('');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
   // ── Affiliate config (Phase 2) ───────────────────────────────────────────
   // CJ Affiliate (Booking.com) — used as a fallback when a stop has no
   // server-generated booking_url (e.g. itineraries cached before Phase 2),
@@ -1638,7 +1701,6 @@
     const target = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(query)}`;
     return `${CJ_AFFILIATE_BASE}?url=${encodeURIComponent(target)}`;
   }
-
   // Expedia Group Travel Creator Program — approved July 2026. camref/
   // creativeref/adref are fixed identifiers tied to Gerry's account and
   // this link (confirmed via their Link Builder tool, not guessed); only
@@ -1657,7 +1719,6 @@
     });
     return `https://expedia.com/affiliate?${params.toString()}`;
   }
-
   // Car rental search links. CONFIRMED July 2026 (fetched both pages
   // directly): Booking.com's real car rental flow lives behind a
   // pickup/dropoff date + location picker — there is no documented
@@ -1687,7 +1748,6 @@
   function gygCarRentalUrl(city) {
     return `https://www.getyourguide.com/s/?q=${encodeURIComponent(city + ' car rental')}&partner_id=UC97KXN&utm_medium=online_publisher`;
   }
-
   // ── New affiliate partners (Phase 3) — flights, travel insurance,
   // airport transfers, visas ───────────────────────────────────────────
   // Unlike Booking.com/Expedia/GetYourGuide above, none of these seven are
@@ -1708,7 +1768,6 @@
   // gets pasted into Admin → Affiliate partners and is appended to every
   // link automatically, with zero code changes.
   const SITE_SETTINGS_DEFAULT_AFFILIATE_MARKERS = {};
-
   function affiliateMarker(key) {
     const markers = (SITE_SETTINGS && SITE_SETTINGS.affiliate_markers) || SITE_SETTINGS_DEFAULT_AFFILIATE_MARKERS;
     return (markers[key] || '').trim().replace(/^[?&]/, '');
@@ -1724,7 +1783,6 @@
     const cfg = (SITE_SETTINGS && SITE_SETTINGS.affiliate_sections_enabled) || {};
     return cfg[key] !== false;
   }
-
   // Flights — Skyscanner's own URL scheme (transport/flights/{origin}/{destination}/)
   // needs both legs filled in to resolve a real search; GetWay only knows
   // the trip's destination, not each visitor's home airport, so the origin
@@ -1746,7 +1804,6 @@
   function kiwiFlightsUrl(destination) {
     return withAffiliateMarker('https://www.kiwi.com/en/', 'kiwi');
   }
-
   // Travel insurance — neither needs a destination in the URL itself.
   function safetyWingUrl() {
     return withAffiliateMarker('https://safetywing.com/nomad-insurance/', 'safetywing');
@@ -1754,7 +1811,6 @@
   function worldNomadsUrl() {
     return withAffiliateMarker('https://www.worldnomads.com/travel-insurance', 'worldnomads');
   }
-
   // Airport transfers — both are real, working homepages; a true per-city
   // deep link would need a confirmed country/city slug format from each
   // partner's own docs, which isn't available yet.
@@ -1764,7 +1820,6 @@
   function kiwitaxiUrl(destination) {
     return withAffiliateMarker('https://kiwitaxi.com/en', 'kiwitaxi');
   }
-
   // Visas — iVisa's real site does have per-country landing pages
   // (ivisa.com/{country}-visa), but GetWay's `destination` is often a city
   // or region rather than the country name iVisa expects (e.g. "Mallorca"
@@ -1774,7 +1829,6 @@
   function iVisaUrl(destination) {
     return withAffiliateMarker('https://www.ivisa.com/', 'ivisa');
   }
-
   // "Find flights" — shown under the hotel banner on every route.
   function buildFlightsBannerHtml(destination, videoId) {
     const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim() || destination || '';
@@ -1805,7 +1859,6 @@
     container.innerHTML = isAffiliateSectionEnabled('flights') ? buildFlightsBannerHtml(destination, videoId) : '';
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
-
   // "Do I need a visa?" — shown near the top of every route.
   function buildVisaBannerHtml(destination, videoId) {
     const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim() || destination || '';
@@ -1828,7 +1881,6 @@
     container.innerHTML = isAffiliateSectionEnabled('visa') ? buildVisaBannerHtml(destination, videoId) : '';
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
-
   // Travel insurance — small banner at the end of the route, near the
   // affiliate disclosure text.
   function buildInsuranceBannerHtml(destination, videoId) {
@@ -1855,7 +1907,6 @@
     container.innerHTML = isAffiliateSectionEnabled('insurance') ? buildInsuranceBannerHtml(destination, videoId) : '';
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
-
   // Airport transfer — shown only on Day 1 (arrival day) of the route.
   function buildTransferBannerHtml(destination, videoId) {
     const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim() || destination || '';
@@ -1876,7 +1927,6 @@
         </div>
       </div>`;
   }
-
   // ── Admin panel (hidden — open getway-theta.vercel.app/#admin) ──────────
   // Lets Gerry clear the cached-routes table so old TikTok links regenerate
   // fresh (e.g. after a pricing/link-format change) without touching Railway
@@ -1884,7 +1934,6 @@
   // to a default if unset, so change it there for real security).
   function initAdminPanel() {
     if (window.location.hash !== '#admin') return;
-
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
     overlay.innerHTML = `
@@ -1897,9 +1946,7 @@
         <button id="admin-close-btn" style="width:100%;margin-top:10px;background:none;border:none;color:#9ca3af;font-size:12px;cursor:pointer;">Close</button>
       </div>`;
     document.body.appendChild(overlay);
-
     document.getElementById('admin-close-btn').onclick = () => overlay.remove();
-
     document.getElementById('admin-clear-btn').onclick = async () => {
       const secret = document.getElementById('admin-secret-input').value;
       const statusEl = document.getElementById('admin-status');
@@ -1921,7 +1968,6 @@
       }
     };
   }
-
   // ── Category config ──────────────────────────────────────────────────────
   const CAT_CONFIG = {
     hotel:    { icon: 'bed',      color: '#8B5CF6', label: 'Hotel' },
@@ -1931,12 +1977,10 @@
     activity: { icon: 'zap',      color: '#0E7490', label: 'Activity' },
     beach:    { icon: 'waves',    color: '#0E7490', label: 'Beach' },
   };
-
   function trackAffiliateClick(videoId) {
     if (!videoId) return;
     fetch(`${BACKEND_URL}/track/affiliate-click/${encodeURIComponent(videoId)}`, { method: 'POST' }).catch(() => {});
   }
-
   function renderAiStopCard(stop, destination, creatorHandle, videoId) {
     const cfg = CAT_CONFIG[stop.category] || { icon: 'map-pin', color: '#8B5CF6', label: stop.category };
     const seed = slugify(stop.name);
@@ -1957,15 +2001,12 @@
     const mapsUrl = override
       ? (override.startsWith('http') ? override : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(override)}`)
       : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`;
-
     // GetYourGuide fallback: routes generated before this feature existed
     // have no stop.booking_url for activity stops — built client-side here
     // so those already-published routes get a working button too, with no
     // need to regenerate them.
     const gygFallbackUrl = `https://www.getyourguide.com/s/?q=${encodeURIComponent(mapsQuery)}&partner_id=UC97KXN&utm_medium=online_publisher`;
-
     const isHotel = stop.category === 'hotel';
-
     if (isHotel) {
       // Prefer the AI's own is_specific_name flag — it's far more reliable
       // than guessing from the text. Older cached itineraries (generated
@@ -1978,7 +2019,6 @@
         const descriptionKeywords = ['hotel with', 'hotel near', 'design hotel', 'boutique hotel', 'modern hotel', 'luxury hotel', 'resort with', 'guesthouse with', 'airbnb with'];
         isDescriptionNotName = descriptionKeywords.some(kw => stop.name.toLowerCase().includes(kw)) || stop.name.includes(',');
       }
-
       // Location fallback for unconfirmed hotels: always use the trip's
       // actual known destination (cityForSearch, derived from `destination`
       // a few lines up) — NOT text parsed out of stop.name. stop.name is
@@ -1992,7 +2032,6 @@
       // to match its name). cityForSearch is always a real place.
       const locationForSearch = cityForSearch || stop.name.split(',').slice(-1)[0].trim() || stop.name;
       const searchQuery = isDescriptionNotName ? locationForSearch : stop.name;
-
       // For unconfirmed hotels, bias the "Similar" search using a couple of
       // descriptive words from the AI's own description (e.g. "pool",
       // "beachfront") instead of literally searching the made-up name —
@@ -2010,7 +2049,6 @@
       const similarQuery = isDescriptionNotName
         ? `${locationForSearch} ${extractDescriptiveKeywords(stop.description)}`.trim()
         : `${searchQuery} similar`;
-
       // Transparency note — shown only when we couldn't confirm the exact
       // property, so it's clear this isn't "the exact place from the
       // video" (which would be misleading). Two distinct cases:
@@ -2033,7 +2071,6 @@
            </div>`
         : '';
       const bookButtonLabel = isDescriptionNotName && !isRealSimilarHotel ? 'Find similar hotels' : 'Book this hotel';
-
       // For unconfirmed hotels, the MAIN button should do the best
       // "similar" search — using similarQuery (city + a couple of
       // descriptive keywords from the AI's own description, e.g. "caldera
@@ -2045,7 +2082,6 @@
       const primaryQuery = isDescriptionNotName ? similarQuery : searchQuery;
       const bookingHref = stop.booking_url || bookingAffiliateSearchUrl(primaryQuery);
       const expediaHref = stop.expedia_url || expediaAffiliateSearchUrl(primaryQuery);
-
       // Same dropdown UI either way — Booking.com and Expedia are both
       // legitimate options and the person should get to pick, whether we
       // have a specific hotel name or just the area to search in.
@@ -2061,7 +2097,6 @@
           </div>
         </div>
         <a href="https://www.airbnb.com/s/${encodeURIComponent(primaryQuery)}/homes" onclick="trackAffiliateClick('${videoId}')" target="_blank" class="btn-outline-interactive w-full h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="home" class="w-3.5 h-3.5"></i>Airbnb</a>`;
-
       return `
       <div data-category="hotel" class="ai-stop-card mb-6 md:mb-8 md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
         <div class="md:w-2/5 md:flex-shrink-0">
@@ -2084,7 +2119,6 @@
         </div>
       </div>`;
     }
-
     return `
     <div data-category="${stop.category}" class="ai-stop-card bento-card bg-white rounded-[22px] overflow-hidden relative flex items-center gap-3 p-4 md:flex-col md:items-stretch md:p-0">
       <button data-maps-url="${mapsUrl}" onclick="window.open(this.dataset.mapsUrl,'_blank')" class="btn-interactive absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-white shadow flex items-center justify-center">
@@ -2111,11 +2145,9 @@
       </div>
     </div>`;
   }
-
   function toggleAiHotelDropdown(seed) {
     document.getElementById('aihotel-' + seed).classList.toggle('hidden');
   }
-
   // ── Route Map view (Leaflet) ─────────────────────────────────────────
   // Straight-line distance between two coordinates, in km. Used only to
   // label "X km to next stop" — never presented as a driving/walking
@@ -2127,7 +2159,6 @@
     const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
-
   // Rough travel-time estimate from straight-line distance — no routing
   // API involved, so these are approximations, not turn-by-turn times.
   // Under ~1.5km assumes walking (~4.8 km/h, a relaxed sightseeing pace);
@@ -2140,12 +2171,10 @@
     const mins = Math.max(1, Math.round((km / speedKmh) * 60));
     return { mins, mode: isWalk ? 'walking' : 'by car' };
   }
-
   function travelLabel(km) {
     const { mins, mode } = estimateTravel(km);
     return `${mins} min ${mode} · ${km.toFixed(1)} km`;
   }
-
   // Real-world stops just a few hundred meters apart (very common — e.g.
   // a landmark and the department store next door) render as perfectly
   // overlapping pins at typical zoom levels, hiding every marker but the
@@ -2166,7 +2195,6 @@
       return { lat: s.lat + radius * Math.cos(angle), lng: s.lng + radius * Math.sin(angle) };
     });
   }
-
   // Checks whether the itinerary has any usable coordinates at all and,
   // if so, reveals only the "View route on map" toggle button — the
   // Leaflet map itself isn't built until the person actually clicks it.
@@ -2177,13 +2205,11 @@
     const toggleWrap = document.getElementById('ai-route-map-toggle-wrap');
     const section = document.getElementById('ai-route-map-section');
     if (!toggleWrap || !section) return;
-
     // A fresh route render always starts collapsed, even if a previous
     // route on this same screen had the map open.
     section.classList.add('hidden');
     const label = document.getElementById('ai-route-map-toggle-label');
     if (label) label.textContent = 'View route on map';
-
     const hasCoords = (itinerary.days || []).some(d => d.stops.some(s => typeof s.lat === 'number' && typeof s.lng === 'number'));
     if (!hasCoords) {
       toggleWrap.classList.add('hidden');
@@ -2194,7 +2220,6 @@
     window._aiRouteItineraryForMap = itinerary;
     window._aiRouteMapBuilt = false; // forces a fresh day-tab build on next expand
   }
-
   // Expands/collapses the Map section. The Leaflet map + day tabs are only
   // actually built the first time this opens for the current route — since
   // the section is display:none until then, Leaflet would otherwise
@@ -2209,10 +2234,8 @@
     if (label) label.textContent = opening ? 'Hide map' : 'View route on map';
     if (chevron) chevron.classList.toggle('rotate-180', opening);
     if (!opening) return;
-
     const itinerary = window._aiRouteItineraryForMap;
     if (!itinerary) return;
-
     if (!window._aiRouteMapBuilt) {
       window._aiRouteMapBuilt = true;
       const tabsEl = document.getElementById('ai-map-day-tabs');
@@ -2225,10 +2248,8 @@
     } else if (window._aiRouteLeafletMap) {
       setTimeout(() => window._aiRouteLeafletMap.invalidateSize(), 60);
     }
-
     section.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
-
   // Renders the Leaflet map (created once, reused across day switches) for
   // a single day: numbered purple pins in visit order on a clean light
   // basemap, a connecting route line, a tap/click popup with name +
@@ -2240,7 +2261,6 @@
     if (!itinerary) return;
     const day = itinerary.days[dayIndex];
     if (!day) return;
-
     document.querySelectorAll('.map-day-tab').forEach(btn => {
       const active = parseInt(btn.dataset.dayIdx, 10) === dayIndex;
       btn.classList.toggle('bg-[#8B5CF6]', active);
@@ -2250,18 +2270,15 @@
       btn.classList.toggle('border-gray-200', !active);
       btn.classList.toggle('text-gray-600', !active);
     });
-
     const stopsWithCoords = day.stops.filter(s => typeof s.lat === 'number' && typeof s.lng === 'number');
     const mapEl = document.getElementById('ai-route-map');
     const listEl = document.getElementById('ai-map-stop-list');
-
     if (stopsWithCoords.length === 0) {
       if (window._aiRouteMapLayer) { window._aiRouteMapLayer.remove(); window._aiRouteMapLayer = null; }
       mapEl.innerHTML = '<div class="w-full h-full flex items-center justify-center text-xs text-gray-400 px-6 text-center">No map coordinates for this day yet.</div>';
       listEl.innerHTML = '';
       return;
     }
-
     if (!window._aiRouteLeafletMap) {
       mapEl.innerHTML = '';
       window._aiRouteLeafletMap = L.map(mapEl, { scrollWheelZoom: false });
@@ -2276,17 +2293,14 @@
       }).addTo(window._aiRouteLeafletMap);
     }
     const map = window._aiRouteLeafletMap;
-
     if (window._aiRouteMapLayer) { window._aiRouteMapLayer.remove(); }
     const layerGroup = L.layerGroup().addTo(map);
     window._aiRouteMapLayer = layerGroup;
-
     // Pin positions get a small de-overlap nudge (see dedupeMapPositions);
     // everything else (popups, distances, directions) uses real coords.
     const displayPositions = dedupeMapPositions(stopsWithCoords);
     const drawnLatLngs = [];
     const markers = []; // indexed same as stopsWithCoords — lets a list row below open its own pin's popup
-
     stopsWithCoords.forEach((s, seq) => {
       const pos = displayPositions[seq];
       const latlng = [pos.lat, pos.lng];
@@ -2299,7 +2313,6 @@
       });
       const marker = L.marker(latlng, { icon }).addTo(layerGroup);
       markers.push(marker);
-
       const cfg = CAT_CONFIG[s.category] || { label: s.category, color: '#8B5CF6' };
       const next = stopsWithCoords[seq + 1];
       let distanceLine = '';
@@ -2322,14 +2335,11 @@
       marker.on('popupopen', () => { if (typeof lucide !== 'undefined') lucide.createIcons(); });
     });
     window._aiRouteMapMarkers = markers;
-
     if (drawnLatLngs.length > 1) {
       L.polyline(drawnLatLngs, { color: '#8B5CF6', weight: 3, opacity: 0.75 }).addTo(layerGroup);
     }
-
     map.fitBounds(drawnLatLngs.length > 1 ? drawnLatLngs : [drawnLatLngs[0], drawnLatLngs[0]], { padding: [36, 36], maxZoom: 16 });
     setTimeout(() => map.invalidateSize(), 60);
-
     // "Open in Google Maps" — a real, working multi-stop directions link
     // (origin/waypoints/destination). Uses the stops' REAL coordinates,
     // not the nudged display positions, so directions stay accurate.
@@ -2337,7 +2347,6 @@
     const directionsUrl = realCoordPairs.length > 1
       ? `https://www.google.com/maps/dir/?api=1&origin=${realCoordPairs[0]}&destination=${realCoordPairs[realCoordPairs.length - 1]}&waypoints=${realCoordPairs.slice(1, -1).join('|')}`
       : `https://www.google.com/maps/search/?api=1&query=${realCoordPairs[0]}`;
-
     listEl.innerHTML = `
       <a href="${directionsUrl}" target="_blank" rel="noopener" class="btn-interactive w-full h-[44px] flex items-center justify-center gap-1.5 bg-[#8B5CF6] text-white text-xs font-medium rounded-xl mb-3">
         <i data-lucide="navigation" class="w-3.5 h-3.5"></i> Open Day ${day.day} route in Google Maps
@@ -2368,7 +2377,6 @@
     `;
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
-
   // Lets a person tap a stop in the list below the map and have the map
   // itself pan to that pin and pop its info bubble open — ties the two
   // views together instead of leaving the list as a disconnected caption.
@@ -2379,18 +2387,15 @@
     map.flyTo(marker.getLatLng(), Math.max(map.getZoom(), 15), { duration: 0.6 });
     marker.openPopup();
   }
-
   function renderAiRoute(itinerary, videoId, sourceUrl) {
     // Fire-and-forget view tracking — never blocks rendering, never
     // surfaces an error to the visitor if it fails.
     if (videoId) {
       fetch(`${BACKEND_URL}/track/view/${encodeURIComponent(videoId)}`, { method: 'POST' }).catch(() => {});
     }
-
     // Hero
     const dest = itinerary.destination.split(',')[0].toUpperCase();
     document.getElementById('ai-route-destination').textContent = dest;
-
     const pricePill = document.getElementById('ai-route-price-pill');
     if (itinerary.price_category && itinerary.price_category.trim()) {
       pricePill.textContent = itinerary.price_category.trim();
@@ -2398,7 +2403,6 @@
     } else {
       pricePill.classList.add('hidden');
     }
-
     const sourceBadge = document.getElementById('ai-route-source-badge');
     const handle = (itinerary.creator_handle || '').trim();
     const profileUrl = handle ? `https://www.tiktok.com/${handle.startsWith('@') ? handle : '@' + handle}` : '';
@@ -2408,7 +2412,6 @@
     // original clip URL on the itinerary object under any of these common
     // field names, use it instead of the (possibly empty) parameter.
     sourceUrl = sourceUrl || itinerary.source_url || itinerary.video_url || itinerary.tiktok_url || itinerary.original_url || itinerary.clip_url || '';
-
     if (handle) {
       const clipLink = sourceUrl ? ` · <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-white">watch clip ↗</a>` : '';
       const reportLink = ` <a href="mailto:getway.smart@gmail.com?subject=Removal request&body=Route: ${encodeURIComponent(window.location.href)}" class="text-white/35 hover:text-white/70 text-[10px] no-underline ml-1.5">report</a>`;
@@ -2418,7 +2421,6 @@
     } else {
       sourceBadge.innerHTML = '<i data-lucide="music-2" class="w-3 h-3"></i><span>via AI Magic Box</span>';
     }
-
     // Stats
     const totalStops = itinerary.days.reduce((n, d) => n + d.stops.length, 0);
     const totalDays = itinerary.days.length;
@@ -2427,7 +2429,6 @@
     // duration from API is e.g. "1 day" — strip the leading number to avoid "1 1 day"
     const durText = itinerary.duration || (totalDays === 1 ? 'day' : 'days');
     document.getElementById('ai-route-duration-label').textContent = durText.replace(/^\d+\s*/, '');
-
     // Destination + route summary (hidden entirely for older cached
     // itineraries generated before this field existed)
     const summaryWrap = document.getElementById('ai-route-summary-wrap');
@@ -2437,7 +2438,6 @@
     } else {
       summaryWrap.classList.add('hidden');
     }
-
     // Dynamic hero bg — use the backend's curated Unsplash gallery when
     // available. If it's empty (no Unsplash key set, or every query
     // failed), fall back to a plain gradient rather than a random photo —
@@ -2468,7 +2468,6 @@
       heroBg.style.opacity = '1';
     }
     renderUnsplashCredit('ai-route-hero-credit', itinerary.hero_attribution);
-
     // Gallery thumbnails — click to swap the hero photo
     const galleryEl = document.getElementById('ai-route-gallery');
     const galleryHint = document.getElementById('ai-route-gallery-hint');
@@ -2485,7 +2484,6 @@
     window._aiRouteGallery = gallery;
     window._aiRouteGalleryAttributions = galleryAttributions;
     window._aiRouteActiveIndex = 0;
-
     // Store for sharing
     window._aiRouteVideoId = videoId;
     initAiRouteMap(itinerary);
@@ -2520,7 +2518,6 @@
     renderInsuranceBanner(itinerary.destination, videoId);
     renderAiRouteComments(itinerary.comments);
     initReviewsSection('ai-route', videoId);
-
     // Days
     const container = document.getElementById('ai-route-days');
     container.innerHTML = itinerary.days.map((day, dayIndex) => {
@@ -2541,11 +2538,9 @@
           </div>
         </div>`;
     }).join('');
-
     if (typeof lucide !== 'undefined') { lucide.createIcons(); }
     if (typeof AOS !== 'undefined') { AOS.refreshHard(); }
   }
-
   function selectAiGalleryPhoto(index) {
     const gallery = window._aiRouteGallery || [];
     const url = gallery[index];
@@ -2560,7 +2555,6 @@
     const attributions = window._aiRouteGalleryAttributions || [];
     renderUnsplashCredit('ai-route-hero-credit', attributions[index]);
   }
-
   function filterAiStops(category, clickedBtn) {
     document.querySelectorAll('.ai-filter-chip').forEach(chip => {
       chip.classList.remove('is-active', 'bg-[#8B5CF6]', 'text-white');
@@ -2568,20 +2562,16 @@
     });
     clickedBtn.classList.add('is-active', 'bg-[#8B5CF6]', 'text-white');
     clickedBtn.classList.remove('text-gray-600');
-
     document.querySelectorAll('.ai-stop-card').forEach(card => {
       const matches = category === 'all' || card.dataset.category === category;
       card.classList.toggle('filter-hidden', !matches);
     });
-
     document.querySelectorAll('.ai-day-group').forEach(group => {
       const hasVisible = Array.from(group.querySelectorAll('.ai-stop-card')).some(c => !c.classList.contains('filter-hidden'));
       group.classList.toggle('filter-hidden', !hasVisible);
     });
-
     if (typeof lucide !== 'undefined') { lucide.createIcons(); }
   }
-
   function copyAiRouteLink() {
     const id = window._aiRouteVideoId;
     const url = id ? `${location.origin}${location.pathname}?route=${id}` : location.href;
@@ -2591,7 +2581,6 @@
       prompt('Copy this link to save your route:', url);
     });
   }
-
   async function pasteFromClipboard(inputId) {
     const input = document.getElementById(inputId);
     try {
@@ -2607,41 +2596,67 @@
       input.focus();
     }
   }
-
+  // Rotating "did you know" facts shown during the Magic Box loading state
+  // (see #loading-fact in screen-magicbox above) — general country trivia,
+  // unrelated to the specific link being processed, just something light
+  // to read for the ~30s the AI needs.
+  const COUNTRY_FACTS = [
+    "Did you know? Japan has over 6,800 islands, but only around 430 are inhabited.",
+    "Did you know? Iceland has no mosquitoes — one of the only places on Earth without them.",
+    "Did you know? France is the most visited country in the world, welcoming over 100 million tourists a year.",
+    "Did you know? In Switzerland, it's said to be illegal to own just one guinea pig — they're social animals and get lonely.",
+    "Did you know? Bhutan measures its progress using Gross National Happiness instead of GDP.",
+    "Did you know? The Sahara Desert was a lush, green savanna just a few thousand years ago.",
+    "Did you know? New Zealand was the first country to give women the right to vote, in 1893.",
+    "Did you know? There are more than 7,000 languages spoken around the world today.",
+    "Did you know? Finland is home to more saunas than cars.",
+    "Did you know? Venice is built on more than 100 small islands connected by canals and bridges.",
+    "Did you know? Thailand was never colonized by a European power — the only Southeast Asian country that can say that.",
+    "Did you know? Denmark's flag, the Dannebrog, is the oldest continuously used national flag in the world.",
+  ];
+  function startMagicBoxFactRotation() {
+    const factEl = document.getElementById('loading-fact');
+    if (!factEl) return null;
+    let factIndex = Math.floor(Math.random() * COUNTRY_FACTS.length);
+    function showFact(idx) {
+      factEl.style.opacity = '0';
+      setTimeout(() => {
+        factEl.textContent = COUNTRY_FACTS[idx];
+        factEl.style.opacity = '1';
+      }, 250);
+    }
+    showFact(factIndex);
+    return setInterval(() => {
+      factIndex = (factIndex + 1) % COUNTRY_FACTS.length;
+      showFact(factIndex);
+    }, 3200);
+  }
   async function startMagicBox() {
     const url = document.getElementById('tiktok-url').value.trim();
     if (!url) {
       alert('Please paste a TikTok or Instagram Reel link first.');
       return;
     }
-
     document.getElementById('magicbox-form').classList.add('hidden');
     document.getElementById('magicbox-loading').classList.remove('hidden');
     if (typeof lucide !== 'undefined') { lucide.createIcons(); }
-
-    const messages = ["Downloading the video...", "Extracting frames...", "AI is analysing locations...", "Building your route..."];
-    let i = 0;
-    const interval = setInterval(() => {
-      i = (i + 1) % messages.length;
-      document.getElementById('loading-text').textContent = messages[i];
-    }, 1800);
-
+    // Simplified loading state: a steady "Video is generating…" label
+    // (static, set in the HTML) plus a rotating country fact below it —
+    // see COUNTRY_FACTS + startMagicBoxFactRotation() above. No stage-by-
+    // stage progress copy, no time estimate.
+    const interval = startMagicBoxFactRotation();
     try {
       const res = await fetch(`${BACKEND_URL}/extract`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: url, max_frames: 8 })
       });
-
       clearInterval(interval);
-
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.detail || 'Server error');
       }
-
       const data = await res.json();
-
       // Reset AI route filters to "All"
       document.querySelectorAll('.ai-filter-chip').forEach(c => {
         c.classList.remove('is-active','bg-[#8B5CF6]','text-white');
@@ -2649,10 +2664,8 @@
       });
       const allChip = document.querySelector('.ai-filter-chip');
       if (allChip) { allChip.classList.add('is-active','bg-[#8B5CF6]','text-white'); allChip.classList.remove('text-gray-600'); }
-
       renderAiRoute(data.itinerary, data.video_id, url);
       showScreen('ai-route');
-
     } catch (err) {
       clearInterval(interval);
       document.getElementById('magicbox-loading').classList.add('hidden');
@@ -2660,8 +2673,6 @@
       alert('Something went wrong: ' + err.message + '\n\nMake sure you pasted a valid TikTok or YouTube link.');
     }
   }
-
-
   // Restores a shared route from the URL's ?route= param on page load.
   // Two cases:
   //   1. A known static demo route slug (e.g. ?route=mallorca-5-days)
@@ -2671,12 +2682,10 @@
     const params = new URLSearchParams(location.search);
     const routeParam = params.get('route');
     if (!routeParam) return;
-
     if (STATIC_ROUTE_SLUGS.has(routeParam)) {
       showScreen('route');
       return;
     }
-
     fetch(`${BACKEND_URL}/itinerary/${encodeURIComponent(routeParam)}`)
       .then(res => {
         if (!res.ok) throw new Error('Route not found: ' + res.status);
@@ -2690,7 +2699,6 @@
         console.error('Could not restore shared route "' + routeParam + '":', err);
       });
   }
-
   // Runs a single init step in isolation: if it throws, log it and move on
   // instead of letting one bad step take down everything after it.
   function safeRun(label, fn) {
@@ -2700,7 +2708,19 @@
       console.error('GetWay init step failed: ' + label, err);
     }
   }
-
+  // ── Sticky nav background swap on scroll ──────────────────────────────
+  // #site-nav starts transparent over the dark hero; past ~40px of scroll
+  // it swaps to a light glass bar with dark text via the .nav-scrolled
+  // class (see CSS at the top of the file), and back again near the top.
+  function initNavScroll() {
+    const nav = document.getElementById('site-nav');
+    if (!nav) return;
+    function update() {
+      nav.classList.toggle('nav-scrolled', window.scrollY > 40);
+    }
+    window.addEventListener('scroll', update, { passive: true });
+    update();
+  }
   // ── Wire real affiliate links into the static Mallorca demo hotel cards ──
   // These two cards were built with href="#" placeholders that were never
   // filled in — clicking "Book this hotel" just reloaded the page instead
@@ -2719,7 +2739,6 @@
       set(`${prefix}-airbnb-link`, `https://www.airbnb.com/s/${encodeURIComponent('Mallorca')}/homes`);
     });
   }
-
   // ── Real photos for the static Mallorca demo (replaces Picsum placeholders) ──
   // Fetched server-side (keeps the Unsplash key off the client) and swapped
   // in after the initial render, so the page never blocks on this — cards
@@ -2731,7 +2750,6 @@
       const p = await res.json();
       const urlOf = (key) => (p[key] && p[key].url) || '';
       const attrOf = (key) => (p[key] && p[key].attribution) || null;
-
       // gallery[0] is the video placeholder; gallery[1..4] are the 4 photo
       // slots, and gallery[1] doubles as the default hero (see
       // renderMallorcaHero, which shows the first photo-type entry).
@@ -2754,25 +2772,21 @@
         MEDIA.mallorca.gallery[4].url = urlOf('gallery3');
         window._mallorcaGalleryAttributions[4] = attrOf('gallery3');
       }
-
       // The "Discover Routes" grid card also used a Picsum placeholder —
       // reuse the hero shot so the card thumbnail actually shows Mallorca.
       if (urlOf('hero') && MEDIA.routes['mallorca-5-days']) {
         MEDIA.routes['mallorca-5-days'].cardPhoto = urlOf('hero');
         renderRoutes();
       }
-
       if (urlOf('palma_cathedral')) DAY1_STOPS[0].photo = urlOf('palma_cathedral');
       if (urlOf('restaurant_illeta')) DAY1_STOPS[1].photo = urlOf('restaurant_illeta');
       if (urlOf('valldemossa')) DAY2_STOPS[0].photo = urlOf('valldemossa');
       if (urlOf('deia')) DAY5_STOPS[1].photo = urlOf('deia');
-
       const beachPhotoKeys = ['beach_calo_del_moro', 'beach_salmunia', 'beach_cala_llombards', 'beach_platja_santanyi'];
       BEACH_STOPS.forEach((stop, i) => {
         const key = beachPhotoKeys[i];
         if (key && urlOf(key)) stop.photo = urlOf(key);
       });
-
       // The two demo hotel cards use static placeholder divs (not a JS
       // array), so swap their backgrounds directly.
       const hotel1El = document.getElementById('mallorca-hotel1-photo');
@@ -2787,7 +2801,6 @@
         hotel2El.classList.remove('media-placeholder');
         hotel2El.innerHTML = '';
       }
-
       // Re-render with the now-populated photo URLs
       renderMallorcaHero();
       renderAllStops();
@@ -2796,12 +2809,10 @@
       console.error('loadMallorcaRealPhotos failed (non-fatal, keeping placeholders):', e);
     }
   }
-
   // ── "Add to Home Screen" prompt ───────────────────────────────────────
   let deferredInstallPrompt = null;
   const DISMISS_KEY = 'getway_install_dismissed_at';
   const DISMISS_DAYS = 14;
-
   function isStandaloneAlready() {
     return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   }
@@ -2822,7 +2833,6 @@
     const at = parseInt(localStorage.getItem(DISMISS_KEY) || '0', 10);
     return at && (Date.now() - at) < DISMISS_DAYS * 24 * 60 * 60 * 1000;
   }
-
   // Android/Chrome fires this when the site qualifies for installation —
   // we intercept it so OUR banner (not the browser's own mini-toast, which
   // most people miss or ignore) triggers the real native prompt.
@@ -2831,7 +2841,6 @@
     deferredInstallPrompt = e;
     maybeShowInstallBanner();
   });
-
   function maybeShowInstallBanner() {
     if (isStandaloneAlready() || wasRecentlyDismissed()) return;
     if (window.innerWidth >= 640) return; // mobile only
@@ -2852,7 +2861,6 @@
       }, 3500);
     }
   }
-
   function handleInstallClick() {
     if (deferredInstallPrompt) {
       deferredInstallPrompt.prompt();
@@ -2879,7 +2887,6 @@
     if (el) el.classList.add('hidden');
     if (startCooldown !== false) localStorage.setItem(DISMISS_KEY, String(Date.now()));
   }
-
   document.addEventListener('DOMContentLoaded', function () {
     if (isIOS()) maybeShowInstallBanner(); // Android waits for beforeinstallprompt instead
     safeRun('renderRoutes', renderRoutes);
@@ -2888,6 +2895,8 @@
     safeRun('renderAllStops', renderAllStops);
     safeRun('initReviewsSection (mallorca)', function () { initReviewsSection('mallorca', MALLORCA_DEMO_VIDEO_ID); });
     safeRun('initAdminPanel', initAdminPanel);
+    safeRun('initNavScroll', initNavScroll);
+    safeRun('renderRankings (initial)', function () { renderRankings(); });
     safeRun('lucide.createIcons', function () {
       if (typeof lucide !== 'undefined') { lucide.createIcons(); }
     });
@@ -2901,13 +2910,11 @@
     loadRealRoutes();
     loadSiteSettings();
   });
-
   // Last-resort diagnostic: log the real error instead of letting it
   // surface only as an opaque "Script error" with no details.
   window.addEventListener('error', function (e) {
     console.error('Unhandled error:', e.message, 'at', e.filename + ':' + e.lineno);
   });
 </script>
-
 </body>
 </html>

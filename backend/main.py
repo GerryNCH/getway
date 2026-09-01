@@ -826,6 +826,62 @@ def get_mallorca_demo_photos():
     return result
 
 
+# ── Rankings section photos (homepage "Most visited destinations") ────────
+
+_RANKING_PHOTO_QUERIES = {
+    # Keys match the `key` field on each entry in index.html's
+    # GLOBAL_TOURISM_RANKINGS / GLOBAL_TOURISM_VOLUME_HIGHLIGHT — this is
+    # fixed editorial content (the Rankings list), refreshed by hand once a
+    # year alongside the ranking data itself, not a live per-visitor search.
+    "paris-france": "Paris Eiffel Tower cityscape",
+    "madrid-spain": "Madrid Gran Via street",
+    "tokyo-japan": "Tokyo Shibuya crossing skyline",
+    "rome-italy": "Rome Colosseum aerial",
+    "milan-italy": "Milan Duomo cathedral",
+    "bangkok-thailand": "Bangkok Wat Arun temple skyline",
+}
+
+_ranking_photos_cache: dict | None = None
+
+
+@app.get("/demo/rankings-photos")
+def get_rankings_photos():
+    """
+    Real photos for the homepage Rankings section's fixed city list,
+    fetched from Unsplash server-side — same pattern as
+    /demo/mallorca-photos (keeps the API key off the client, cached in
+    memory after the first mostly-successful call since this is fixed
+    editorial content, not a live search).
+    """
+    global _ranking_photos_cache
+    if _ranking_photos_cache is not None:
+        return _ranking_photos_cache
+
+    result = {}
+    for key, query in _RANKING_PHOTO_QUERIES.items():
+        candidates = sorted(
+            _unsplash_candidates(query, per_page=10),
+            key=lambda r: r.get("likes", 0), reverse=True,
+        )
+        if candidates:
+            best = candidates[0]
+            _trigger_unsplash_download(best)
+            result[key] = {
+                "url": best.get("urls", {}).get("regular", ""),
+                "attribution": _attribution_from_candidate(best),
+            }
+        else:
+            result[key] = {"url": "", "attribution": None}
+
+    found = sum(1 for v in result.values() if v.get("url"))
+    if found >= len(_RANKING_PHOTO_QUERIES) // 2:
+        _ranking_photos_cache = result
+    else:
+        print(f"[Demo] Only found {found}/{len(_RANKING_PHOTO_QUERIES)} ranking photos — not caching, will retry next request")
+
+    return result
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

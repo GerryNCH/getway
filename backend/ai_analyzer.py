@@ -24,6 +24,12 @@ _client = anthropic.Anthropic()
 _SONNET_INPUT_PER_MTOK = 3.00
 _SONNET_OUTPUT_PER_MTOK = 15.00
 
+# Claude Haiku 4.5 standard rate, $ per million tokens — same figures used
+# in quality_check.py and troll_filter.py. Only used here by
+# generate_fun_fact() (the backfill path), never by the main Sonnet pass.
+_HAIKU_INPUT_PER_MTOK = 1.00
+_HAIKU_OUTPUT_PER_MTOK = 5.00
+
 # ── Affiliate link config (Phase 2) ──────────────────────────────────────────
 # CJ Affiliate account — Gerry's Publisher ID + Booking.com's Advertiser/Link
 # ID. Booking.com North America approval covers the deep-link format below.
@@ -154,6 +160,7 @@ Schema:
   "destination": "City, Country",
   "duration": "X days",
   "summary": "2-3 sentence intro: what makes this destination special, and what this specific route covers (e.g. its vibe, standout stops, or theme)",
+  "fun_fact": "One genuinely true, specific, well-known fun fact about the destination itself (the city/region/country) — NOT about any specific stop in this route. One sentence, max ~20 words.",
   "price_category": "€ | €€ | €€€",
   "tags": ["0-3 of: most_popular, luxury, budget_friendly, exotic, mountain, city, beach"],
   "car_rental_recommended": true,
@@ -177,6 +184,15 @@ Schema:
     }
   ]
 }
+
+"fun_fact" — one REAL, verifiable fact about the destination itself (the
+city/region/country as a whole), never about a specific stop in this
+itinerary. Never invent or guess one — if you aren't confident a fact is
+actually true, write a more general but definitely-true fact instead
+(e.g. fall back to something well-established like a geographic or
+historical fact rather than a specific, possibly-wrong statistic). One
+sentence, engaging and specific — not generic filler like "has beautiful
+beaches". No source citation needed, just the fact itself.
 
 "price_category" — your best estimate of the overall trip's price level based
 on what's actually visible: budget hostel/guesthouse, street food, public
@@ -385,4 +401,53 @@ def analyse_frames(frame_paths: list[str], comments: list[dict] | None = None) -
             + usage.output_tokens * _SONNET_OUTPUT_PER_MTOK
         ) / 1_000_000
 
+    data["fun_fact"] = str(data.get("fun_fact") or "").strip()
+
     return Itinerary(**data), price_category, tags, cost_usd
+
+
+_FUN_FACT_SYSTEM = """You write one short, genuinely true, well-known fun fact about a travel destination for a travel app's homepage.
+
+Rules:
+- Must be a REAL, verifiable fact — never invent or guess. If you are not confident a fact is true, write a more general but still definitely-true fact instead.
+- About the destination itself (the city/region/country) — not about any specific hotel, restaurant, or attraction.
+- One sentence, max ~20 words, engaging and specific — not generic filler like "has beautiful beaches".
+- No markdown, no surrounding quotes — just the sentence itself.
+
+Reply with ONLY the fact sentence, nothing else."""
+
+
+def generate_fun_fact(destination: str) -> tuple[str, float]:
+    """
+    Cheap, standalone Haiku call that returns one real, general-knowledge
+    fun fact about `destination` (e.g. "Rome, Italy") — used to backfill
+    `fun_fact` on routes that were generated before that field existed,
+    without re-running the full (much more expensive) Sonnet video
+    analysis. Brand-new routes get their fun_fact for free as part of the
+    same analyse_frames() call above — this function exists only for that
+    backfill path (see main.py's startup backfill + /admin/backfill-fun-facts).
+
+    Returns (fact, cost_usd). Never raises — returns ("", 0.0) on any
+    failure (rate limit, bad response, network error) so a backfill run
+    over many routes can skip this one and keep going rather than aborting
+    the whole batch.
+    """
+    try:
+        response = _client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=120,
+            system=_FUN_FACT_SYSTEM,
+            messages=[{"role": "user", "content": f"Destination: {destination}"}],
+        )
+        usage = getattr(response, "usage", None)
+        cost_usd = 0.0
+        if usage:
+            cost_usd = (
+                usage.input_tokens * _HAIKU_INPUT_PER_MTOK
+                + usage.output_tokens * _HAIKU_OUTPUT_PER_MTOK
+            ) / 1_000_000
+        fact = response.content[0].text.strip().strip('"').strip()
+        return fact, cost_usd
+    except Exception as e:
+        print(f"[FunFact] generate_fun_fact failed for '{destination}': {e}")
+        return "", 0.0

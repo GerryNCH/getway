@@ -168,6 +168,20 @@ class Itinerary(BaseModel):
                                    # Empty for itineraries cached before this
                                    # field existed, or if the fetch failed
                                    # (non-fatal — see extractor.py).
+    fun_fact: str = ""  # One short, real, verifiable fact about the
+                          # destination itself (not the specific stops) —
+                          # e.g. "Rome has more fountains than any other
+                          # city in the world." Written by Claude: for new
+                          # routes it comes free as part of the same
+                          # multimodal analysis call (see ai_analyzer.py's
+                          # SYSTEM_PROMPT); for routes generated before this
+                          # field existed, it's backfilled with a separate,
+                          # cheap Haiku call (ai_analyzer.generate_fun_fact),
+                          # which main.py runs automatically once at startup
+                          # and can also be re-triggered manually via
+                          # POST /admin/backfill-fun-facts. Empty until
+                          # filled — the homepage fact chip (index.html)
+                          # just doesn't render for that route until it is.
 
 
 class RouteMeta(BaseModel):

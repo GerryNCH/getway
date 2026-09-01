@@ -140,6 +140,13 @@ def init_db() -> None:
             # Purely informational for the admin panel — never affects
             # status (pending/approved/rejected), which stays a manual call.
             conn.execute("ALTER TABLE itineraries ADD COLUMN qc_json TEXT DEFAULT NULL")
+        if "fun_fact" not in existing_cols:
+            # One real, verifiable fact about the destination itself — see
+            # models.Itinerary.fun_fact for the full explanation. New rows
+            # get it from the same Sonnet call that generates the rest of
+            # the itinerary; existing rows start empty and are backfilled
+            # by main.py's startup task / POST /admin/backfill-fun-facts.
+            conn.execute("ALTER TABLE itineraries ADD COLUMN fun_fact TEXT DEFAULT ''")
 
         # Seed the singleton site_settings row once, with the hero slides
         # that were previously hardcoded in index.html — so nothing changes
@@ -193,6 +200,7 @@ def get_itinerary(video_id: str) -> Itinerary | None:
         gallery_photo_urls=gallery_urls,
         gallery_attributions=gallery_attributions,
         comments=comments,
+        fun_fact=row["fun_fact"] or "",
     )
 
 
@@ -217,8 +225,9 @@ def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
                (video_id, url, destination, duration, days_json, created_at,
                 hero_photo_url, gallery_photo_urls_json, comments_json,
                 hero_attribution_json, gallery_attributions_json, summary,
-                generation_cost_usd, car_rental_recommended, car_rental_note)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                generation_cost_usd, car_rental_recommended, car_rental_note,
+                fun_fact)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 video_id,
                 url,
@@ -235,6 +244,7 @@ def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
                 itinerary.generation_cost_usd,
                 int(itinerary.car_rental_recommended),
                 itinerary.car_rental_note,
+                itinerary.fun_fact,
             ),
         )
     print(f"[DB] Saved itinerary for {video_id} ({itinerary.destination})")
@@ -277,6 +287,7 @@ def _row_to_admin_dict(row: sqlite3.Row) -> dict:
         "car_rental_recommended": bool(row["car_rental_recommended"]),
         "car_rental_note": row["car_rental_note"] or "",
         "quality_check": json.loads(row["qc_json"]) if row["qc_json"] else None,
+        "fun_fact": row["fun_fact"] or "",
     }
 
 
@@ -330,6 +341,38 @@ def save_days(video_id: str, days: list) -> bool:
     return cur.rowcount > 0
 
 
+def set_fun_fact(video_id: str, fun_fact: str) -> bool:
+    """
+    Updates ONLY the fun_fact column for an existing route — used by the
+    backfill path (main.py's startup task and POST /admin/backfill-fun-facts)
+    to fill in a fact for a route that was generated before this field
+    existed, without touching anything else about the route. Returns False
+    if video_id doesn't exist.
+    """
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE itineraries SET fun_fact = ? WHERE video_id = ?",
+            (fun_fact, video_id),
+        )
+    return cur.rowcount > 0
+
+
+def list_approved_missing_fun_fact() -> list[dict]:
+    """
+    Returns [{"video_id": ..., "destination": ...}, ...] for every approved
+    route whose fun_fact is still empty — exactly the set the backfill
+    path needs to fill in. Only approved routes, since those are the only
+    ones the public /routes endpoint (and therefore the homepage fact
+    chip) actually shows.
+    """
+    with _conn() as conn:
+        rows = conn.execute(
+            """SELECT video_id, destination FROM itineraries
+               WHERE status = 'approved' AND (fun_fact IS NULL OR fun_fact = '')"""
+        ).fetchall()
+    return [{"video_id": r["video_id"], "destination": r["destination"]} for r in rows]
+
+
 def list_public_approved() -> list[dict]:
     """
     Lightweight summary of every approved route — everything the homepage
@@ -339,7 +382,7 @@ def list_public_approved() -> list[dict]:
     with _conn() as conn:
         rows = conn.execute(
             """SELECT video_id, destination, duration, days_json, hero_photo_url,
-                      price_category, tags_json, creator_handle, summary
+                      price_category, tags_json, creator_handle, summary, fun_fact
                FROM itineraries WHERE status = 'approved' ORDER BY created_at DESC"""
         ).fetchall()
     result = []
@@ -357,6 +400,7 @@ def list_public_approved() -> list[dict]:
             "tags": json.loads(r["tags_json"] or "[]"),
             "creator_handle": r["creator_handle"] or "",
             "summary": r["summary"] or "",
+            "fun_fact": r["fun_fact"] or "",
         })
     return result
 
@@ -401,7 +445,7 @@ def update_itinerary_content(video_id: str, itinerary: Itinerary) -> bool:
                SET destination = ?, duration = ?, days_json = ?,
                    hero_photo_url = ?, gallery_photo_urls_json = ?, summary = ?,
                    hotel_banner_photo_url = ?, car_rental_recommended = ?,
-                   car_rental_note = ?
+                   car_rental_note = ?, fun_fact = ?
                WHERE video_id = ?""",
             (
                 itinerary.destination,
@@ -413,6 +457,7 @@ def update_itinerary_content(video_id: str, itinerary: Itinerary) -> bool:
                 itinerary.hotel_banner_photo_url,
                 int(itinerary.car_rental_recommended),
                 itinerary.car_rental_note,
+                itinerary.fun_fact,
                 video_id,
             ),
         )

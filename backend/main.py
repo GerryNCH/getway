@@ -18,6 +18,7 @@ Run locally:
 
 import json
 import tempfile
+import threading
 from datetime import datetime, timezone
 
 import requests
@@ -43,7 +44,7 @@ from extractor import (
     download_instagram_video, resolve_canonical_url,
 )
 from troll_filter import check_is_travel
-from ai_analyzer import analyse_frames
+from ai_analyzer import analyse_frames, generate_fun_fact
 from quality_check import ai_quality_check
 from places import (
     enrich_itinerary_with_photos, _unsplash_candidates, _attribution_from_candidate,
@@ -88,10 +89,41 @@ app.add_middleware(
 )
 
 
+def _backfill_fun_facts_background():
+    """
+    Fills `fun_fact` (see models.Itinerary.fun_fact) for every already-
+    approved route that doesn't have one yet, so the homepage fact chip
+    (index.html) starts showing up on existing routes without needing to
+    re-run the full video analysis. Runs once at every startup, in a
+    background thread, so it never delays the app becoming ready to serve
+    requests. Cheap (one Haiku call per missing route — a few cents total
+    for a small catalog) and safe to run on every restart: already-filled
+    routes are skipped by list_approved_missing_fun_fact(), so once the
+    catalog is fully backfilled this becomes a fast no-op on later starts.
+    New routes never need this — they get their fun_fact for free as part
+    of the normal Sonnet analysis pass (analyse_frames in ai_analyzer.py).
+    """
+    try:
+        targets = database.list_approved_missing_fun_fact()
+        if not targets:
+            return
+        print(f"[FunFact] Backfilling {len(targets)} route(s) missing a fun_fact...")
+        filled = 0
+        for row in targets:
+            fact, _cost = generate_fun_fact(row["destination"])
+            if fact:
+                database.set_fun_fact(row["video_id"], fact)
+                filled += 1
+        print(f"[FunFact] Backfill done — {filled}/{len(targets)} filled")
+    except Exception as e:
+        print(f"[FunFact] Background backfill crashed (non-fatal): {e}")
+
+
 @app.on_event("startup")
 def startup():
     database.init_db()
     print("[Startup] GetWay backend ready")
+    threading.Thread(target=_backfill_fun_facts_background, daemon=True).start()
 
 
 # ── Main extraction endpoint ──────────────────────────────────────────────────
@@ -564,6 +596,30 @@ def admin_quality_check(video_id: str, secret: str):
     result["fixed_count"] = fixed_count
     database.save_quality_check(video_id, result)
     return result
+
+
+@app.post("/admin/backfill-fun-facts")
+def admin_backfill_fun_facts(secret: str):
+    """
+    Manually re-triggers the same fun_fact backfill that already runs
+    automatically at every startup (see _backfill_fun_facts_background) —
+    useful to get an immediate result/count right after approving a batch
+    of new routes, instead of waiting for the next deploy/restart. Safe to
+    call any time; routes that already have a fun_fact are skipped.
+    Returns how many were checked, how many got filled, and the real
+    Anthropic cost of this run.
+    """
+    _check_admin_secret(secret)
+    targets = database.list_approved_missing_fun_fact()
+    filled = 0
+    total_cost = 0.0
+    for row in targets:
+        fact, cost = generate_fun_fact(row["destination"])
+        total_cost += cost
+        if fact:
+            database.set_fun_fact(row["video_id"], fact)
+            filled += 1
+    return {"status": "ok", "checked": len(targets), "filled": filled, "cost_usd": round(total_cost, 6)}
 
 
 @app.get("/admin/pending")

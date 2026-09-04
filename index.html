@@ -3070,12 +3070,24 @@
     map.flyTo(marker.getLatLng(), Math.max(map.getZoom(), 15), { duration: 0.6 });
     marker.openPopup();
   }
-  function renderAiRoute(itinerary, videoId, sourceUrl) {
+  function renderAiRoute(itinerary, videoId, sourceUrl, skipViewTracking) {
     // Fire-and-forget view tracking — never blocks rendering, never
-    // surfaces an error to the visitor if it fails.
-    if (videoId) {
+    // surfaces an error to the visitor if it fails. skipViewTracking is
+    // set by in-page re-renders that reuse this same function for a
+    // partial update (e.g. useRouteHotelReplacement below) — POST
+    // /track/view just increments a plain counter with no idempotency,
+    // so calling renderAiRoute again for the SAME already-counted page
+    // view must not inflate it a second time.
+    if (videoId && !skipViewTracking) {
       fetch(`${BACKEND_URL}/track/view/${encodeURIComponent(videoId)}`, { method: 'POST' }).catch(() => {});
     }
+    // Unconditional (unlike window._aiRouteItineraryForMap, which stays
+    // null when the itinerary has no coordinates at all — see
+    // initAiRouteMap) so hotelSearch* below can always mutate-and-rerender
+    // this same object, including the case where adding a real hotel via
+    // search is what GIVES the itinerary its first usable coordinates.
+    window._aiRouteFullItinerary = itinerary;
+    window._aiRouteSourceUrl = sourceUrl || '';
     // Hero
     const dest = itinerary.destination.split(',')[0].toUpperCase();
     document.getElementById('ai-route-destination').textContent = dest;
@@ -3206,12 +3218,30 @@
       // trip, regardless of what day.day is numbered), admin-toggleable.
       const transferBanner = (dayIndex === 0 && isAffiliateSectionEnabled('transfer'))
         ? buildTransferBannerHtml(itinerary.destination, videoId) : '';
+      // Lets a traveler who booked a DIFFERENT hotel than the one shown
+      // (or no hotel was ever confirmed at all) plug the real one in, so
+      // the map/distances reflect where they're actually staying — see
+      // openHotelReplaceSearch(). Day 1 only: the itinerary's hotel is
+      // always placed there (see backend assemble_days), so that's the
+      // only day this is ever relevant for.
+      const hotelReplaceBlock = dayIndex === 0 ? `
+        <div class="mb-4">
+          <button type="button" onclick="openHotelReplaceSearch()" class="text-xs font-medium text-[#6D28D9] hover:underline">${hotels.length ? 'Booked a different hotel?' : 'Booked a hotel already?'} Add it to the map →</button>
+          <div id="ai-route-hotel-search-panel" class="hidden mt-3 bg-white bento-card rounded-2xl p-3">
+            <div class="flex gap-2 mb-2">
+              <input id="ai-route-hotel-search-input" type="text" placeholder="Hotel name…" class="flex-1 h-10 px-3 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#8B5CF6]">
+              <button type="button" onclick="searchRouteHotelReplacement()" class="btn-interactive h-10 px-4 bg-[#8B5CF6] text-white text-xs font-medium rounded-xl">Search</button>
+            </div>
+            <div id="ai-route-hotel-search-results" class="flex flex-col gap-2"></div>
+          </div>
+        </div>` : '';
       return `
         <div class="ai-day-group mb-10 md:mb-14">
           <div class="font-serif-display text-[26px] md:text-4xl leading-tight mb-1">Day ${day.day}</div>
           <div class="text-xs md:text-sm text-gray-500 mb-6 md:mb-8">${day.label} · ${day.stops.length} stop${day.stops.length !== 1 ? 's' : ''}</div>
           ${transferBanner}
           ${hotels.map(h => renderAiStopCard(h, itinerary.destination, itinerary.creator_handle, videoId)).join('')}
+          ${hotelReplaceBlock}
           <div class="grid md:grid-cols-2 gap-4 md:gap-6">
             ${others.map(s => renderAiStopCard(s, itinerary.destination, itinerary.creator_handle, videoId)).join('')}
           </div>
@@ -3327,6 +3357,97 @@
       toggleAiRouteMap();
     }
     if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  // ── "Booked a different hotel?" — lets a traveler plug in the REAL
+  // hotel they're staying at (GetWay has no way to know which hotel an
+  // outbound Booking.com/Expedia click actually turned into a booking —
+  // that would need a real affiliate postback integration, a partnership
+  // question, not a code one) so the map/distances reflect reality
+  // instead of whatever hotel the AI guessed or the generic city-wide
+  // banner. Same search-and-confirm pattern as Build Your Own Trip's
+  // manual search-and-add (searchBuildTripPlace) — same endpoint
+  // (POST /trip/search-place), same Places-backed real-result guarantee.
+  // Client-side only: updates THIS view's map/itinerary for the current
+  // visitor, same as any other in-page filter — it doesn't get saved back
+  // to the shared route (video routes have no visitor-facing save at
+  // all; a custom-built trip already has its own explicit Save button
+  // for that).
+  function openHotelReplaceSearch() {
+    const panel = document.getElementById('ai-route-hotel-search-panel');
+    if (!panel) return;
+    panel.classList.toggle('hidden');
+    if (!panel.classList.contains('hidden')) {
+      const input = document.getElementById('ai-route-hotel-search-input');
+      if (input) input.focus();
+    }
+  }
+  async function searchRouteHotelReplacement() {
+    const itinerary = window._aiRouteFullItinerary;
+    const input = document.getElementById('ai-route-hotel-search-input');
+    const resultsEl = document.getElementById('ai-route-hotel-search-results');
+    const query = (input && input.value || '').trim();
+    if (!itinerary || !query || !resultsEl) return;
+    resultsEl.innerHTML = '<div class="text-xs text-gray-400 py-2">Searching…</div>';
+    try {
+      const res = await fetch(`${BACKEND_URL}/trip/search-place`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ destination: itinerary.destination, query })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Server error');
+      }
+      const data = await res.json();
+      const results = data.candidates || [];
+      window._aiRouteHotelSearchResults = results;
+      if (!results.length) {
+        resultsEl.innerHTML = '<div class="text-xs text-gray-400 py-2">Nothing found for that — try a different search.</div>';
+        return;
+      }
+      resultsEl.innerHTML = results.map((c, i) => `
+        <div class="flex items-center gap-3 bg-[#FAF8F3] rounded-xl p-2.5">
+          <div class="w-12 h-12 rounded-lg flex-shrink-0 overflow-hidden relative" style="background:${gradientFor(slugify(c.name || ('hotel-' + i)))}">
+            <img src="${c.photo_url || ''}" alt="" class="absolute inset-0 w-full h-full object-cover" onerror="imgFallback(this,'bed','${slugify(c.name || ('hotel-' + i))}')">
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-xs font-medium truncate">${escapeHtml(c.name || '')}</div>
+            <div class="text-[10px] text-gray-500 truncate">${escapeHtml(c.description || '')}</div>
+          </div>
+          <button type="button" onclick="useRouteHotelReplacement(${i})" class="btn-interactive flex-shrink-0 h-8 px-3 bg-[#8B5CF6] text-white text-[11px] font-medium rounded-lg">Use this</button>
+        </div>`).join('');
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    } catch (err) {
+      resultsEl.innerHTML = `<div class="text-xs text-red-500 py-2">Something went wrong: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+  function useRouteHotelReplacement(i) {
+    const itinerary = window._aiRouteFullItinerary;
+    const results = window._aiRouteHotelSearchResults || [];
+    const candidate = results[i];
+    if (!itinerary || !candidate || !itinerary.days.length) return;
+    const hotelStop = {
+      name: candidate.name || '',
+      category: 'hotel',
+      description: candidate.description || '',
+      photo_url: candidate.photo_url || '',
+      is_specific_name: true,
+      lat: candidate.lat,
+      lng: candidate.lng,
+      is_free: false,
+      estimated_price: candidate.estimated_price || '',
+      is_full_day: false,
+    };
+    // Replaces whatever hotel (real or generic-fallback) Day 1 had, if
+    // any — a route only ever has one "home base" hotel, so this swaps
+    // it rather than adding a second one alongside it.
+    itinerary.days[0].stops = [hotelStop, ...itinerary.days[0].stops.filter(s => s.category !== 'hotel')];
+    // renderAiRoute already re-runs initAiRouteMap internally, which is
+    // exactly what reveals the map toggle for the first time if this
+    // hotel is the itinerary's FIRST stop with real coordinates (e.g. it
+    // previously only had the generic no-hotel-found banner, no hotel
+    // Stop at all).
+    renderAiRoute(itinerary, window._aiRouteVideoId, window._aiRouteSourceUrl, true);
   }
   function copyAiRouteLink() {
     const id = window._aiRouteVideoId;

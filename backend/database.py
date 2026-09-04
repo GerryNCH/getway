@@ -226,6 +226,26 @@ def init_db() -> None:
             )
             print(f"[DB] One-time migration: cleared {cleared} stale trip_candidates_cache row(s)")
 
+        # Second one-time migration, same reasoning/pattern as above under a
+        # NEW key so it runs again: is_free now comes from the AI curation
+        # pass's own per-candidate judgment (previously only the blunt
+        # Places-type heuristic), and category/section assignment for
+        # activity-type-search results now reflects what the place actually
+        # IS rather than which search found it. Rows cached before this
+        # would keep showing the old, wrong is_free/category values on a
+        # cache HIT.
+        _CACHE_RESET_MIGRATION_2 = "clear_trip_candidates_cache_for_ai_is_free_and_content_based_category"
+        already_applied_2 = conn.execute(
+            "SELECT 1 FROM _schema_migrations WHERE name = ?", (_CACHE_RESET_MIGRATION_2,)
+        ).fetchone()
+        if not already_applied_2:
+            cleared_2 = conn.execute("DELETE FROM trip_candidates_cache").rowcount
+            conn.execute(
+                "INSERT INTO _schema_migrations (name, applied_at) VALUES (?, ?)",
+                (_CACHE_RESET_MIGRATION_2, datetime.utcnow().isoformat()),
+            )
+            print(f"[DB] One-time migration: cleared {cleared_2} stale trip_candidates_cache row(s) (is_free/category fix)")
+
         # Seed the singleton site_settings row once, with the hero slides
         # that were previously hardcoded in index.html — so nothing changes
         # visually on the homepage until an admin actually edits them.

@@ -233,3 +233,36 @@ class ReviewsResponse(BaseModel):
     reviews: list[Review]
     average_rating: float = 0.0
     count: int = 0
+
+
+# ── Build Your Own Trip (Phase A: candidate search) ─────────────────────────
+
+class TripCandidate(BaseModel):
+    name: str
+    description: str
+    category: str  # sight | food | activity | beach | village — same values
+                    # as Stop.category; never "hotel" (hotels are handled
+                    # separately, by locked logic — see trip_builder.py).
+    photo_url: str = ""
+    rating: float = 0.0
+    user_rating_count: int = 0
+    price_level: str = ""  # Google's raw Places priceLevel enum, e.g.
+                             # "PRICE_LEVEL_MODERATE" — empty if Google has
+                             # no price signal for this place.
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    is_famous: bool = False  # True = included regardless of budget tier
+                               # (see trip_builder.fits_budget) because it's
+                               # a must-see by rating x review count.
+
+
+class TripCandidatesRequest(BaseModel):
+    destination: str
+    budget: str  # cheap | mid | luxury
+
+
+class TripCandidatesResponse(BaseModel):
+    destination: str
+    budget: str
+    candidates: list[TripCandidate]
+    cached: bool = False

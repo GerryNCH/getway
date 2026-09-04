@@ -80,6 +80,66 @@ def _search_places(query: str, max_results: int = 1, _retries: int = 2) -> list[
     return []
 
 
+# Field mask for the BROAD "Build Your Own Trip" candidate search
+# (search_attractions_broad) — separate from _search_places' minimal mask
+# above (photos/displayName/location only, tuned for confirming ONE named
+# place already known to exist). This one needs the extra signal fields
+# Build Your Own Trip's budget classification and AI curation pass depend
+# on (see trip_builder.py): priceLevel (paid-tier classification),
+# rating/userRatingCount (famous-place override + curation input), types
+# (free-by-type classification + junk filtering), businessStatus (drop
+# permanently/temporarily closed places).
+_ATTRACTION_SEARCH_FIELD_MASK = (
+    "places.displayName,places.location,places.photos,places.priceLevel,"
+    "places.rating,places.userRatingCount,places.types,places.businessStatus"
+)
+
+
+def search_attractions_broad(city: str, max_results: int = 20, _retries: int = 2) -> list[dict]:
+    """
+    Broad Google Places Text Search for "Build Your Own Trip" candidate
+    attractions in `city` (e.g. "top attractions and things to do in
+    Lisbon, Portugal"). Returns the raw places list with the expanded
+    field mask above — unclassified and uncurated; see trip_builder.py for
+    budget classification and the AI curation pass.
+
+    max_results=20 is the Places API (New) Text Search hard cap for a
+    single call (no pagination here) — plenty for one destination's
+    candidate pool once combined with the AI curation pass.
+    """
+    if not PLACES_API_KEY:
+        return []
+    query = f"top attractions and things to do in {city}"
+    for attempt in range(_retries):
+        is_last_attempt = attempt == _retries - 1
+        try:
+            resp = requests.post(
+                SEARCH_URL,
+                json={"textQuery": query, "maxResultCount": max_results},
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Goog-Api-Key": PLACES_API_KEY,
+                    "X-Goog-FieldMask": _ATTRACTION_SEARCH_FIELD_MASK,
+                },
+                timeout=8,
+            )
+            if resp.status_code == 200:
+                return resp.json().get("places", [])
+            if resp.status_code == 429 or resp.status_code >= 500:
+                if not is_last_attempt:
+                    time.sleep(0.6)
+                    continue
+            print(f"[Places] Broad search HTTP {resp.status_code} for '{city}': {resp.text[:300]}")
+            return []
+        except requests.exceptions.RequestException as e:
+            if not is_last_attempt:
+                time.sleep(0.6)
+                continue
+            print(f"[Places] Broad search exception for '{city}' after {_retries} attempts: {type(e).__name__}: {e}")
+            return []
+    return []
+
+
 def _names_plausibly_match(query_name: str, candidate_name: str) -> bool:
     """
     Loose check that a Places search result is actually the place we asked

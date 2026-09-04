@@ -12,7 +12,7 @@ Upgrade path: swap engine URL for PostgreSQL when you scale.
 import json
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from models import Itinerary
@@ -89,6 +89,15 @@ def init_db() -> None:
 
             CREATE INDEX IF NOT EXISTS idx_itineraries_destination
                 ON itineraries (destination);
+
+            CREATE TABLE IF NOT EXISTS trip_candidates_cache (
+                cache_key        TEXT PRIMARY KEY,   -- "{city_lower}|{budget}"
+                city             TEXT NOT NULL,
+                budget           TEXT NOT NULL,
+                candidates_json  TEXT NOT NULL,       -- list[TripCandidate] as JSON
+                created_at       TEXT NOT NULL,
+                expires_at       TEXT NOT NULL
+            );
         """)
 
         # Migration: earlier versions of this table didn't store the hero
@@ -736,6 +745,56 @@ def upsert_stop_cache(city: str, stop_name: str, photo_url: str, maps_url_overri
                    updated_at = excluded.updated_at""",
             (key, city, stop_name, photo_url, maps_url_override or "", datetime.utcnow().isoformat()),
         )
+
+
+# ── Build Your Own Trip candidate cache — by (city, budget) ────────────────
+# The broad Places search + AI curation pass (trip_builder.py) that builds a
+# destination's candidate attraction list is a paid, several-second
+# operation — cache the result per (city, budget tier) so the same
+# combination isn't re-fetched/re-curated on every visitor. Expiry (rather
+# than caching forever) accounts for Places data drifting over time
+# (closures, new attractions) without needing a manual cache-clear.
+
+def _trip_cache_key(city: str, budget: str) -> str:
+    return f"{(city or '').strip().lower()}|{(budget or '').strip().lower()}"
+
+
+def get_trip_candidates_cache(city: str, budget: str) -> list[dict] | None:
+    """
+    Returns the cached candidate list (list of TripCandidate-shaped dicts)
+    for this (city, budget) combination, or None if there's no cache entry
+    or it has expired.
+    """
+    key = _trip_cache_key(city, budget)
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT candidates_json, expires_at FROM trip_candidates_cache WHERE cache_key = ?",
+            (key,),
+        ).fetchone()
+    if not row:
+        return None
+    if row["expires_at"] < datetime.utcnow().isoformat():
+        return None  # expired — caller will re-fetch and overwrite
+    return json.loads(row["candidates_json"])
+
+
+def save_trip_candidates_cache(city: str, budget: str, candidates: list[dict], ttl_days: int = 30) -> None:
+    """Saves/overwrites the candidate list cached for this (city, budget) combination."""
+    key = _trip_cache_key(city, budget)
+    now = datetime.utcnow()
+    expires_at = now + timedelta(days=ttl_days)
+    with _conn() as conn:
+        conn.execute(
+            """INSERT INTO trip_candidates_cache
+               (cache_key, city, budget, candidates_json, created_at, expires_at)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(cache_key) DO UPDATE SET
+                   candidates_json = excluded.candidates_json,
+                   created_at = excluded.created_at,
+                   expires_at = excluded.expires_at""",
+            (key, city, budget, json.dumps(candidates, ensure_ascii=False), now.isoformat(), expires_at.isoformat()),
+        )
+    print(f"[DB] Cached {len(candidates)} trip candidate(s) for {city} / {budget} (expires {expires_at.date()})")
 
 
 def cache_stops_from_itinerary(destination: str, itinerary: Itinerary) -> None:

@@ -66,8 +66,11 @@
      popup rather than a natural continuation of the teaser. Narrowing the
      card itself while the quiz is active keeps it feeling like the same
      contained element throughout. */
-  #vibe-quiz-card { transition: max-width 0.3s ease; }
-  #vibe-quiz-card.vibe-quiz-active { max-width: 42rem; margin-left: auto; margin-right: auto; }
+  /* vibe-quiz-card intentionally stays the SAME size/shape in both the
+     teaser and quiz states — an earlier attempt to narrow it on open (see
+     git history) made the quiz read as a separate popup appearing over
+     the teaser instead of the same card just showing different content,
+     which is exactly what it must NOT do. */
   .hero-bottom-overlay {
     background: linear-gradient(to top, rgba(10,12,16,0.80), rgba(10,12,16,0.35) 45%, rgba(10,12,16,0.05) 75%, rgba(10,12,16,0) 100%);
   }
@@ -1313,6 +1316,7 @@
         <div class="md:w-2/5 md:flex-shrink-0">
           <div class="relative h-[100px] md:h-52 mb-3 md:mb-0 rounded-2xl overflow-hidden">
             <img src="${photoUrl}" alt="" class="w-full h-full object-cover" data-icon="car" data-seed="${seed}" onerror="imgFallback(this, this.dataset.icon, this.dataset.seed)">
+            <div id="ai-route-car-rental-credit" class="absolute right-2 bottom-1 text-[9px] text-white/80" style="text-shadow: 0 1px 4px rgba(0,0,0,0.5);"></div>
           </div>
         </div>
         <div class="md:w-3/5 md:pt-2">
@@ -1550,18 +1554,11 @@
     vibeQuizAnswers = [];
     document.getElementById('vibe-quiz-teaser').classList.add('hidden');
     document.getElementById('vibe-quiz-inline').classList.remove('hidden');
-    const card = document.getElementById('vibe-quiz-card');
-    if (card) {
-      card.classList.add('vibe-quiz-active');
-      card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
     renderVibeQuizStep();
   }
   function closeVibeQuiz() {
     document.getElementById('vibe-quiz-inline').classList.add('hidden');
     document.getElementById('vibe-quiz-teaser').classList.remove('hidden');
-    const card = document.getElementById('vibe-quiz-card');
-    if (card) card.classList.remove('vibe-quiz-active');
   }
   function vibeQuizAnswer(option) {
     vibeQuizAnswers.push(option);
@@ -3181,6 +3178,7 @@
     if (itinerary.car_rental_recommended && hotelsBannerEl) {
       hotelsBannerEl.insertAdjacentHTML('beforeend', buildCarRentalBannerHtml(itinerary.destination, videoId, itinerary.car_rental_note, itinerary.car_rental_photo_url));
       if (typeof lucide !== 'undefined') lucide.createIcons();
+      renderUnsplashCredit('ai-route-car-rental-credit', itinerary.car_rental_attribution);
     }
     // New affiliate partners (Phase 3) — visa + flights banners render
     // into their own fixed slots (top of route, under the hotel banner);
@@ -3302,7 +3300,7 @@
     return setInterval(() => {
       factIndex = (factIndex + 1) % COUNTRY_FACTS.length;
       showFact(factIndex);
-    }, 3200);
+    }, 7000);
   }
   // Same rotating "did you know" pattern as startMagicBoxFactRotation
   // above, generalized for Build Your Own Trip's two loading states (the
@@ -3330,7 +3328,7 @@
     return setInterval(() => {
       factIndex = (factIndex + 1) % pool.length;
       showFact(factIndex);
-    }, 3200);
+    }, 7000);
   }
   // Small spinning-globe animation shown alongside the rotating facts
   // during any "generating a trip" loading state, so there's something

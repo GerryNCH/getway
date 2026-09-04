@@ -533,6 +533,33 @@ def _get_destination_gallery_unsplash(destination: str, count: int = 5) -> list[
     return photos
 
 
+def get_car_rental_photo_unsplash(destination: str) -> tuple[str, UnsplashAttribution | None]:
+    """
+    One themed photo (a car/road scene actually IN the destination, not a
+    generic stock car) for the "Rent a car in {city}" banner — same
+    Unsplash-search-and-attribute pattern as _get_destination_gallery_unsplash,
+    just with driving-specific query terms instead of generic travel ones.
+    Real bug this fixes: models.Itinerary never had a car_rental_photo_url
+    field at all, so that banner's <img> always had an empty src and fell
+    straight to the plain icon+gradient placeholder — every single time,
+    for every trip, regardless of destination. Returns ("", None) if
+    nothing usable is found (no key configured, or all queries came up
+    empty) — the frontend's existing icon+gradient fallback still applies.
+    """
+    city = re.split(r"\s*(?:,|&|\band\b)\s*", destination, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+    queries = [f"{city} scenic road drive", f"{city} road trip", f"{city} countryside road"]
+    for query in queries:
+        candidates = sorted(_unsplash_candidates(query, per_page=6), key=lambda r: r.get("likes", 0), reverse=True)
+        if candidates:
+            best = candidates[0]
+            url = best.get("urls", {}).get("regular", "")
+            if url:
+                _trigger_unsplash_download(best)
+                return url, _attribution_from_candidate(best)
+    print(f"[Unsplash] No car rental photo found for '{destination}'")
+    return "", None
+
+
 # Google Places is now tried first for every specific-name stop regardless
 # of category — it has real photos of the actual entity (crowd-sourced from
 # Google Maps), whereas Unsplash is keyword-matched stock photography that

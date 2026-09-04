@@ -56,7 +56,7 @@ from places import (
     enrich_itinerary_with_photos, _unsplash_candidates, _attribution_from_candidate,
     _trigger_unsplash_download, _get_place_photo_and_location, search_attractions_broad,
     search_hotels_near, _get_destination_gallery_unsplash, search_activities_by_type,
-    _ACTIVITY_TYPE_QUERY_TERMS, search_places_freetext,
+    _ACTIVITY_TYPE_QUERY_TERMS, search_places_freetext, get_car_rental_photo_unsplash,
 )
 from trip_builder import (
     is_open as trip_place_is_open, fits_budget, curate_candidates,
@@ -296,6 +296,19 @@ async def extract(req: ExtractRequest):
             enrich_itinerary_with_photos(itinerary)
         except Exception as e:
             print(f"[Places] Enrichment failed (non-fatal): {e}")
+
+        # Themed "Rent a car in {city}" banner photo — only worth fetching
+        # when the AI actually recommended a car for this trip. Non-fatal:
+        # an empty car_rental_photo_url just means the frontend's existing
+        # icon+gradient placeholder is shown instead, same as before this
+        # existed.
+        if itinerary.car_rental_recommended:
+            try:
+                photo_url, attribution = get_car_rental_photo_unsplash(itinerary.destination)
+                itinerary.car_rental_photo_url = photo_url
+                itinerary.car_rental_attribution = attribution
+            except Exception as e:
+                print(f"[Places] Car rental photo fetch failed (non-fatal): {e}")
 
         itinerary.comments = [Comment(**c) for c in raw_comments]
 
@@ -601,6 +614,13 @@ def build_trip(req: TripBuildRequest):
     car_recommended, car_note, car_cost_usd = recommend_car_rental(city)
     print(f"[TripBuilder] Car rental for {city}: recommended={car_recommended} (${car_cost_usd:.4f})")
 
+    car_photo_url, car_attribution = "", None
+    if car_recommended:
+        try:
+            car_photo_url, car_attribution = get_car_rental_photo_unsplash(city)
+        except Exception as e:
+            print(f"[Places] Car rental photo fetch failed (non-fatal): {e}")
+
     itinerary = Itinerary(
         destination=city,
         duration=f"{req.days} day{'s' if req.days != 1 else ''}",
@@ -608,6 +628,8 @@ def build_trip(req: TripBuildRequest):
         price_category=_BUDGET_PRICE_CATEGORY.get(budget, ""),
         car_rental_recommended=car_recommended,
         car_rental_note=car_note,
+        car_rental_photo_url=car_photo_url,
+        car_rental_attribution=car_attribution,
     )
 
     # Hero/gallery: reuse the existing destination Unsplash logic exactly

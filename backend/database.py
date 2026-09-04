@@ -175,6 +175,10 @@ def init_db() -> None:
             conn.execute("ALTER TABLE itineraries ADD COLUMN car_rental_recommended INTEGER DEFAULT 0")
         if "car_rental_note" not in existing_cols:
             conn.execute("ALTER TABLE itineraries ADD COLUMN car_rental_note TEXT DEFAULT ''")
+        if "car_rental_photo_url" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN car_rental_photo_url TEXT DEFAULT ''")
+        if "car_rental_attribution_json" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN car_rental_attribution_json TEXT DEFAULT NULL")
         if "qc_json" not in existing_cols:
             # AI Quality Check result (see quality_check.ai_quality_check):
             # {"score", "status", "issues", "suggestions", "cost_usd"}.
@@ -298,6 +302,7 @@ def get_itinerary(video_id: str) -> Itinerary | None:
     comments = json.loads(row["comments_json"] or "[]")
     hero_attribution = json.loads(row["hero_attribution_json"]) if row["hero_attribution_json"] else None
     gallery_attributions = json.loads(row["gallery_attributions_json"] or "[]")
+    car_rental_attribution = json.loads(row["car_rental_attribution_json"]) if row["car_rental_attribution_json"] else None
     return Itinerary(
         destination=row["destination"],
         duration=row["duration"],
@@ -310,6 +315,8 @@ def get_itinerary(video_id: str) -> Itinerary | None:
         hotel_banner_photo_url=row["hotel_banner_photo_url"] or "",
         car_rental_recommended=bool(row["car_rental_recommended"]),
         car_rental_note=row["car_rental_note"] or "",
+        car_rental_photo_url=row["car_rental_photo_url"] or "",
+        car_rental_attribution=car_rental_attribution,
         view_count=row["view_count"] or 0,
         affiliate_click_count=row["affiliate_click_count"] or 0,
         hero_photo_url=row["hero_photo_url"] or "",
@@ -343,8 +350,9 @@ def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
                 hero_photo_url, gallery_photo_urls_json, comments_json,
                 hero_attribution_json, gallery_attributions_json, summary,
                 generation_cost_usd, car_rental_recommended, car_rental_note,
+                car_rental_photo_url, car_rental_attribution_json,
                 fun_fact)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 video_id,
                 url,
@@ -361,6 +369,8 @@ def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
                 itinerary.generation_cost_usd,
                 int(itinerary.car_rental_recommended),
                 itinerary.car_rental_note,
+                itinerary.car_rental_photo_url,
+                json.dumps(_attr_to_dict(itinerary.car_rental_attribution)),
                 itinerary.fun_fact,
             ),
         )
@@ -403,6 +413,7 @@ def _row_to_admin_dict(row: sqlite3.Row) -> dict:
         "hotel_banner_photo_url": row["hotel_banner_photo_url"] or "",
         "car_rental_recommended": bool(row["car_rental_recommended"]),
         "car_rental_note": row["car_rental_note"] or "",
+        "car_rental_photo_url": row["car_rental_photo_url"] or "",
         "quality_check": json.loads(row["qc_json"]) if row["qc_json"] else None,
         "fun_fact": row["fun_fact"] or "",
     }

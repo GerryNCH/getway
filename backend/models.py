@@ -170,6 +170,12 @@ class Itinerary(BaseModel):
     car_rental_note: str = ""  # Short reason shown alongside the car
                                  # rental box, e.g. "This itinerary covers
                                  # several towns best explored by car."
+    car_rental_photo_url: str = ""  # Destination-specific driving/road
+                                      # photo for the "Rent a car" banner —
+                                      # see places.get_car_rental_photo_unsplash.
+                                      # Empty falls back to the frontend's
+                                      # plain icon+gradient placeholder.
+    car_rental_attribution: Optional[UnsplashAttribution] = None
     view_count: int = 0            # Times the route page has been opened
     affiliate_click_count: int = 0  # Times a Booking/Expedia/Airbnb link
                                       # was clicked from this route

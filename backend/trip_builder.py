@@ -86,10 +86,16 @@ _CLOSED_STATUSES = {"CLOSED_TEMPORARILY", "CLOSED_PERMANENTLY"}
 # classify a place as budget-tier-agnostic ("free") when it has no
 # priceLevel at all, which is normal for this category (Google's
 # priceLevel field is really meant for restaurants/bars, not parks).
+#
+# Deliberately does NOT include "historical_landmark" or "monument" — real
+# bug: those two types are too ambiguous to treat as a reliable free
+# signal. Many world-famous PAID attractions (the Colosseum, Arc de
+# Triomphe) carry these exact types despite requiring a paid ticket, so
+# including them here was silently marking those as is_free=True.
 _FREE_TYPE_HINTS = {
     "park", "plaza", "national_park", "state_park", "hiking_area",
-    "historical_landmark", "monument", "natural_feature", "beach",
-    "square", "garden", "botanical_garden", "observation_deck",
+    "natural_feature", "beach", "square", "garden", "botanical_garden",
+    "observation_deck",
 }
 
 # Which Places (New) priceLevel enum values are appropriate for each budget

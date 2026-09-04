@@ -246,6 +246,25 @@ def init_db() -> None:
             )
             print(f"[DB] One-time migration: cleared {cleared_2} stale trip_candidates_cache row(s) (is_free/category fix)")
 
+        # Third one-time migration, same reasoning/pattern as above: rows
+        # cached before curate_candidates started dropping Places results
+        # with no `location` field can still contain a coordinate-less
+        # candidate (confirmed live — a saved Norway trip had a whole day
+        # with zero mappable stops because of exactly this). A cache HIT on
+        # one of those stale rows would keep serving the bad candidate
+        # after the fix, since the fix only runs on a fresh Places search.
+        _CACHE_RESET_MIGRATION_3 = "clear_trip_candidates_cache_for_dropped_no_location_candidates"
+        already_applied_3 = conn.execute(
+            "SELECT 1 FROM _schema_migrations WHERE name = ?", (_CACHE_RESET_MIGRATION_3,)
+        ).fetchone()
+        if not already_applied_3:
+            cleared_3 = conn.execute("DELETE FROM trip_candidates_cache").rowcount
+            conn.execute(
+                "INSERT INTO _schema_migrations (name, applied_at) VALUES (?, ?)",
+                (_CACHE_RESET_MIGRATION_3, datetime.utcnow().isoformat()),
+            )
+            print(f"[DB] One-time migration: cleared {cleared_3} stale trip_candidates_cache row(s) (no-location candidate fix)")
+
         # Seed the singleton site_settings row once, with the hero slides
         # that were previously hardcoded in index.html — so nothing changes
         # visually on the homepage until an admin actually edits them.

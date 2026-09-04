@@ -210,6 +210,7 @@
       <button onclick="(function(){ var v=document.getElementById('home-tiktok-url').value.trim(); if(v){document.getElementById('tiktok-url').value=v;} showScreen('magicbox'); if(v){startMagicBox();} })()" class="btn-interactive w-full h-[50px] flex items-center justify-center gap-2 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">
         Build my route <i data-lucide="rocket" class="w-4 h-4"></i>
       </button>
+      <button type="button" onclick="startBuildTrip()" class="w-full text-center text-xs text-gray-400 hover:text-gray-600 mt-3">Or build your own trip →</button>
     </div>
   </div>
   <div class="h-16 md:h-20"></div>
@@ -812,12 +813,11 @@
 </div>
 </div>
 <!-- ====================================================================== -->
-<!-- SCREEN: BUILD YOUR OWN TRIP (Phase E — builder flow)                   -->
-<!-- TEMPORARY test entry point while this is unlinked from the rest of the -->
-<!-- site (Phase F wires up the real entry points): visit this page with    -->
-<!-- #build-trip in the URL, or run startBuildTrip() from the browser       -->
-<!-- console. Remove/replace this hash check in handleBuildTripHash() once  -->
-<!-- Phase F adds the real homepage link.                                   -->
+<!-- SCREEN: BUILD YOUR OWN TRIP (builder flow)                             -->
+<!-- Two real entry points: the "Or build your own trip →" link under the  -->
+<!-- AI Magic Box on the homepage, and the vibe quiz's "no route for this   -->
+<!-- destination yet" result. #build-trip in the URL (handleBuildTripHash() -->
+<!-- below) still works too as a harmless direct deep link.                 -->
 <!-- Step 6's actual preview reuses screen-ai-route's own rendering code    -->
 <!-- (renderAiRoute) — this screen's own #build-trip-step6 is only a brief  -->
 <!-- loading state while POST /trip/build is in flight; see                 -->
@@ -1584,11 +1584,16 @@
           </div>
         </div>
         <button type="button" id="vibe-quiz-paste-btn" class="btn-interactive w-full h-[46px] bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl mb-2">Paste a link now</button>
+        <button type="button" id="vibe-quiz-build-trip-btn" class="btn-outline-interactive w-full h-[46px] bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-2xl mb-2">Build your own trip to ${escapeHtml(destination.name.split(',')[0])}</button>
         <button type="button" id="vibe-quiz-retake-btn" class="w-full text-center text-xs text-gray-400 hover:text-gray-600">Retake the quiz</button>
       `;
       document.getElementById('vibe-quiz-paste-btn').addEventListener('click', () => {
         closeVibeQuiz();
         scrollToMagicBox();
+      });
+      document.getElementById('vibe-quiz-build-trip-btn').addEventListener('click', () => {
+        closeVibeQuiz();
+        startBuildTrip(destination.name);
       });
     }
     document.getElementById('vibe-quiz-retake-btn').addEventListener('click', () => {
@@ -3278,12 +3283,15 @@
       });
   }
   // ======================================================================
-  // BUILD YOUR OWN TRIP (Phase E) — builder flow.
-  // TEMPORARY test entry point: visit this page with #build-trip in the
-  // URL, or run startBuildTrip() from the console — see
-  // handleBuildTripHash() below. Not linked from the homepage yet; that's
-  // Phase F. Step 6's actual preview and the final saved trip page both
-  // reuse screen-ai-route's own renderAiRoute() — no new rendering code.
+  // BUILD YOUR OWN TRIP — builder flow.
+  // Two real entry points: the "Or build your own trip →" link under the
+  // AI Magic Box on the homepage (blank start), and the vibe quiz's
+  // "no route for this destination yet" result (startBuildTrip(destination)
+  // pre-fills step1 with the matched destination). #build-trip in the URL
+  // still works too (see handleBuildTripHash() below) — harmless to keep
+  // as a direct deep link now that the real entry points exist. Step 6's
+  // actual preview and the final saved trip page both reuse
+  // screen-ai-route's own renderAiRoute() — no new rendering code.
   // Steps: 1 destination/days/people, 2 budget, 3 activity type,
   // 4 attractions checklist, 5 activities checklist, 6 build/preview.
   // ======================================================================
@@ -3301,16 +3309,16 @@
     previewItinerary: null,   // itinerary returned by /trip/build
     slug: null,                // set once saved — reused for the edit-and-resave flow
   };
-  function startBuildTrip() {
+  function startBuildTrip(prefillDestination) {
     _buildTripState = {
-      destination: '', days: 3, people: 2, budget: '',
+      destination: prefillDestination || '', days: 3, people: 2, budget: '',
       activityTypeSelection: new Set(), activityTypes: [],
       candidates: [], selected: new Set(), funFact: '',
       selectedAttractions: [],
       previewItinerary: null, slug: null,
     };
     const destInput = document.getElementById('bt-destination');
-    if (destInput) destInput.value = '';
+    if (destInput) destInput.value = prefillDestination || '';
     showBuildTripStep(1);
     showScreen('build-trip');
   }

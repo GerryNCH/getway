@@ -109,6 +109,9 @@ class Stop(BaseModel):
                                  # through from TripCandidate.estimated_price
                                  # (e.g. "€16"). Empty for video-extracted
                                  # stops and whenever unknown/free.
+    is_full_day: bool = False  # Build Your Own Trip stops only — carried
+                                 # through from TripCandidate.is_full_day.
+                                 # Always False for video-extracted stops.
 
 
 class DayPlan(BaseModel):
@@ -291,6 +294,17 @@ class TripCandidate(BaseModel):
                                  # the AI isn't confident enough to avoid a
                                  # misleading guess — NOT the same as
                                  # price_level (Google's own signal).
+    is_full_day: bool = False  # True = the AI curation pass judged this a
+                                 # major attraction that typically takes most
+                                 # or all of a day to properly visit (a theme
+                                 # park, a day-trip island, a big safari/
+                                 # wildlife park, a major hike, a full-day
+                                 # fjord/boat cruise). trip_builder.
+                                 # group_into_days gives each of these its
+                                 # OWN day rather than packing other stops
+                                 # alongside it — same rule
+                                 # ai_analyzer.py's video-extraction prompt
+                                 # already applies to AI-generated routes.
 
 
 class TripCandidatesRequest(BaseModel):
@@ -416,3 +430,19 @@ class TripEditStateResponse(BaseModel):
     people: int
     budget: str
     selected_attractions: list[TripCandidate]
+
+
+# ── Build Your Own Trip (manual search-and-add) ──────────────────────────────
+
+class TripSearchRequest(BaseModel):
+    destination: str
+    query: str  # free-text, traveler-typed (e.g. "diving") — for something
+                 # the curated candidate lists didn't surface. Not budget-
+                 # filtered: the traveler explicitly asked for this, so
+                 # trip_builder.fits_budget is deliberately not applied here.
+
+
+class TripSearchResponse(BaseModel):
+    destination: str
+    query: str
+    candidates: list[TripCandidate]

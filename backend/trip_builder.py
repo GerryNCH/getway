@@ -192,7 +192,7 @@ def fits_budget(place: dict, budget: str) -> bool:
 
 def _place_to_candidate_dict(place: dict, description: str = "", category: str = "sight",
                               section: str = "attraction", estimated_price: str = "",
-                              is_free: bool | None = None) -> dict:
+                              is_free: bool | None = None, is_full_day: bool = False) -> dict:
     """
     Converts one raw Places result into a TripCandidate-shaped dict.
 
@@ -203,6 +203,11 @@ def _place_to_candidate_dict(place: dict, description: str = "", category: str =
     alone would wrongly call free). None (the default, used by the
     AI-failure fallback path in curate_candidates) falls back to
     _is_free_by_type(place).
+
+    `is_full_day`: the AI curation pass's judgment on whether this typically
+    takes most/all of a day to visit (theme park, day-trip island, major
+    hike, etc.) — see group_into_days. Always False on the AI-failure
+    fallback path (no AI judgment available then).
     """
     loc = place.get("location") or {}
     photo_url = photo_url_from_places_photos(place.get("photos", []))
@@ -221,6 +226,7 @@ def _place_to_candidate_dict(place: dict, description: str = "", category: str =
         "is_famous": _is_famous(place),
         "section": section,
         "estimated_price": estimated_price,
+        "is_full_day": is_full_day,
     }
 
 
@@ -235,11 +241,12 @@ Your job for EACH candidate:
 4. Assign one category: sight | food | activity | beach | village. Never "hotel" — this list never includes accommodation. Base this ONLY on what the place actually IS, never on which search found it: use "sight" for a place primarily visited/viewed — a museum, landmark, church, historical site, viewpoint, or park — even if it was found via an activity-type search, if that's genuinely what it is. Use "activity" for a bookable experience or thing you DO rather than a place you visit to look at — a guided tour, cooking class, boat trip, theme park ride, adventure/adrenaline activity, art workshop.
 5. "estimated_price" — a short realistic ballpark price string (e.g. "€16", "€10-15", "€25-30") ONLY for a paid attraction/activity/tour you have reasonably confident general knowledge of — well-known museums, monuments, landmarks, popular tours. Leave it as "" (empty string) whenever the place is free, OR whenever you are not confident enough in a specific number to avoid a misleading guess. Never invent a precise-sounding price for a place you don't actually have real knowledge of — a missing estimate is far better than a wrong one.
 6. "is_free" — true if this SPECIFIC place is free to enter/visit with no admission charge, false if it normally requires paying an entry fee or is a paid activity/experience/tour/class. Use your real knowledge of the specific place — don't default to true. When genuinely unsure, false is the safer default (a rough price estimate is better than wrongly claiming something is free).
+7. "is_full_day" — true if visiting this properly typically takes most or all of a full day (a theme park, a day-trip island, a large safari/wildlife park, a major hiking trail, a full-day fjord or boat cruise, a distant day excursion). false for anything shorter (most museums, landmarks, quick tours, restaurants, viewpoints) — false is the default for the vast majority of places, so only mark true when you're genuinely confident it eats an entire day.
 
 Reply with ONLY valid JSON, no markdown fences:
-{"candidates": [{"index": 0, "description": "...", "category": "sight", "is_free": false, "estimated_price": "€16"}]}
+{"candidates": [{"index": 0, "description": "...", "category": "sight", "is_free": false, "estimated_price": "€16", "is_full_day": false}]}
 
-Only include entries you decided to KEEP — dropped candidates simply don't appear in the array. "index" must exactly match an index from the input. "estimated_price" must be present on every kept entry, as "" when not applicable/not confident. "is_free" must be present on every kept entry as a boolean."""
+Only include entries you decided to KEEP — dropped candidates simply don't appear in the array. "index" must exactly match an index from the input. "estimated_price" must be present on every kept entry, as "" when not applicable/not confident. "is_free" and "is_full_day" must be present on every kept entry as booleans."""
 
 
 def _price_string_means_free(price: str) -> bool:
@@ -345,6 +352,7 @@ def curate_candidates(destination: str, raw_places: list[dict]) -> tuple[list[di
                 section=raw_places[idx].get("_section", "attraction"),
                 estimated_price=estimated_price,
                 is_free=bool(item.get("is_free", False)),
+                is_full_day=bool(item.get("is_full_day", False)),
             )
             # Final authority on the canonical free representation,
             # regardless of which signal actually caught it: the AI's own
@@ -545,31 +553,79 @@ def _nearest_neighbor_order(attractions: list[dict]) -> list[dict]:
     return path + without_coords
 
 
-def group_into_days(attractions: list[dict], num_days: int) -> list[list[dict]]:
+def _split_evenly_by_proximity(attractions: list[dict], num_slots: int) -> list[list[dict]]:
     """
-    Groups `attractions` into up to `num_days` day-clusters, each already
-    ordered by proximity: builds one nearest-neighbor path across ALL
-    attractions (_nearest_neighbor_order), then splits it into contiguous
-    chunks. A contiguous slice of an already-proximity-ordered path is
-    naturally a geographic cluster, and day N+1 picks up near where day N
-    ended — this single algorithm satisfies both "group nearby stops
-    together" and "order within a day to minimize backtracking" at once.
-
-    Chunk sizes are as even as possible, with any remainder given to the
-    earlier days. If there are fewer attractions than `num_days`, trailing
-    days get an empty list — assemble_days() drops those rather than
-    padding the itinerary with content-free days.
+    The original single-pass grouping: one nearest-neighbor path across
+    `attractions` (_nearest_neighbor_order), split into `num_slots`
+    contiguous chunks of as-even-as-possible size (remainder to the
+    earlier slots). A contiguous slice of an already-proximity-ordered
+    path is naturally a geographic cluster, and slot N+1 picks up near
+    where slot N ended — satisfies "group nearby stops together" and
+    "order within a slot to minimize backtracking" at once. Used by
+    group_into_days() for whichever attractions AREN'T full-day items.
     """
-    num_days = max(1, num_days)
+    num_slots = max(1, num_slots)
     ordered = _nearest_neighbor_order(attractions)
     n = len(ordered)
-    base, remainder = divmod(n, num_days)
-    days: list[list[dict]] = []
+    base, remainder = divmod(n, num_slots)
+    slots: list[list[dict]] = []
     idx = 0
-    for day_i in range(num_days):
-        size = base + (1 if day_i < remainder else 0)
-        days.append(ordered[idx:idx + size])
+    for slot_i in range(num_slots):
+        size = base + (1 if slot_i < remainder else 0)
+        slots.append(ordered[idx:idx + size])
         idx += size
+    return slots
+
+
+def group_into_days(attractions: list[dict], num_days: int) -> list[list[dict]]:
+    """
+    Groups `attractions` into up to `num_days` day-clusters.
+
+    Full-day attractions (is_full_day=True — a theme park, a day-trip
+    island, a major hike; see _CURATION_SYSTEM's is_full_day judgment)
+    each claim an ENTIRE day of their own, in nearest-neighbor order
+    relative to each other — matching the same rule ai_analyzer.py's
+    video-extraction prompt already applies to AI-generated routes ("a
+    major full-day attraction gets its own day — don't pack anything else
+    alongside it"). Everything else is then proximity-clustered
+    (_split_evenly_by_proximity) into whatever day slots remain.
+
+    JUDGMENT CALL — flagged for review: if full-day items alone would need
+    more days than `num_days` allows, the overflow ones demote back to
+    regular treatment (clustered in with everything else) rather than
+    being silently dropped — losing a place the traveler explicitly
+    selected felt worse than under-representing how long it actually
+    takes to see it. Similarly, if EVERY day slot gets claimed by a
+    full-day item, any regular attractions left over get appended as one
+    extra day beyond `num_days` rather than lost — assemble_days() still
+    only drops genuinely EMPTY trailing days, never a day with content.
+
+    Ordering is simple, not fully optimized: full-day days come first,
+    then the regular-attraction days — not interleaved by geography
+    between the two groups. Good enough for a sensible itinerary without
+    a much more complex joint-optimization pass.
+    """
+    num_days = max(1, num_days)
+    full_day_items = [a for a in attractions if a.get("is_full_day")]
+    regular_items = [a for a in attractions if not a.get("is_full_day")]
+
+    days: list[list[dict]] = []
+    ordered_full_day = _nearest_neighbor_order(full_day_items)
+    for item in ordered_full_day[:num_days]:
+        days.append([item])
+    # Overflow full-day items (more of them than num_days allows) demote to
+    # regular treatment rather than being dropped.
+    regular_items = regular_items + ordered_full_day[num_days:]
+
+    remaining_slots = num_days - len(days)
+    if regular_items:
+        if remaining_slots > 0:
+            days.extend(_split_evenly_by_proximity(regular_items, remaining_slots))
+        else:
+            # Every day slot is already claimed by a full-day item — add
+            # the leftover regular attractions as one more day rather than
+            # losing them.
+            days.append(_nearest_neighbor_order(regular_items))
     return days
 
 
@@ -589,6 +645,7 @@ def _candidate_dict_to_stop(candidate: dict) -> dict:
         "lng": candidate.get("lng"),
         "is_free": candidate.get("is_free", False),
         "estimated_price": candidate.get("estimated_price", ""),
+        "is_full_day": candidate.get("is_full_day", False),
     }
 
 
@@ -672,7 +729,10 @@ def assemble_days(attractions: list[dict], num_days: int, hotel: dict | None) ->
     JUDGMENT CALL — flagged for review: if `num_days` exceeds how many
     attractions were selected, trailing empty days are dropped — the
     returned itinerary can have fewer days than requested rather than
-    padding with content-free days.
+    padding with content-free days. It can also have exactly ONE more day
+    than requested in the rare case where every day slot got claimed by a
+    full-day attraction (see group_into_days) and regular attractions were
+    still left over — those get their own extra day rather than being lost.
     """
     day_groups = group_into_days(attractions, num_days)
     days: list[dict] = []

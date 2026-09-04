@@ -39,7 +39,7 @@ from models import (
     ExtractRequest, ExtractResponse, Itinerary, DayPlan, Comment, ReviewCreate, Review,
     ReviewsResponse, RouteMeta, SiteSettings, TripCandidate, TripCandidatesRequest,
     TripCandidatesResponse, TripHotelRequest, TripHotelRecommendation, TripHotelResponse,
-    TripBuildRequest,
+    TripBuildRequest, TripSaveRequest, TripSaveResponse, TripEditStateResponse,
 )
 import database
 from extractor import (
@@ -549,6 +549,80 @@ def build_trip(req: TripBuildRequest):
         source="custom_builder",
         video_id="",
         cached=False,
+    )
+
+
+@app.post("/trip/save", response_model=TripSaveResponse)
+def save_trip(req: TripSaveRequest):
+    """
+    Persists a built custom trip (the output of /trip/build) so it's
+    reachable via a shareable slug (GET /trip/{slug}). Pass `slug` to
+    update an existing saved trip in place instead of creating a new one —
+    the edit flow: GET /trip/{slug}/edit-state to reopen the builder
+    pre-filled, POST /trip/build again with the traveler's changes, then
+    POST here with that SAME slug.
+
+    No auth/ownership check — matches the rest of the site, which has no
+    user accounts at all; anyone with the slug can view or re-save it.
+    """
+    budget = req.budget.strip().lower()
+    if budget not in _TRIP_BUDGET_TIERS:
+        raise HTTPException(400, f"budget must be one of: {', '.join(sorted(_TRIP_BUDGET_TIERS))}")
+    if not req.selected_attractions:
+        raise HTTPException(400, "selected_attractions must not be empty")
+
+    slug = database.save_custom_trip(
+        destination=req.destination.strip(),
+        days=req.days,
+        people=req.people,
+        budget=budget,
+        selected_attractions=[a.model_dump() for a in req.selected_attractions],
+        itinerary=req.itinerary,
+        slug=req.slug,
+    )
+    return TripSaveResponse(slug=slug)
+
+
+@app.get("/trip/{slug}", response_model=ExtractResponse)
+def get_saved_trip(slug: str):
+    """
+    Returns a saved custom trip in the SAME ExtractResponse shape as
+    video-generated routes (see GET /itinerary/{video_id}) — so the
+    frontend's route-rendering code doesn't need a separate path for
+    builder-made trips. video_id is set to the slug so any generic code
+    that just needs SOME route identifier keeps working unmodified.
+    """
+    saved = database.get_custom_trip(slug)
+    if not saved:
+        raise HTTPException(404, "Trip not found for this slug")
+    return ExtractResponse(
+        itinerary=Itinerary(**saved["itinerary"]),
+        source="custom_builder",
+        video_id=slug,
+        cached=True,
+    )
+
+
+@app.get("/trip/{slug}/edit-state", response_model=TripEditStateResponse)
+def get_trip_edit_state(slug: str):
+    """
+    Returns the ORIGINAL builder inputs for a saved trip — destination,
+    days, people, budget, and the exact selected_attractions — everything
+    needed to reopen the builder pre-filled. The saved GET /trip/{slug}
+    page itself stays a locked, non-editable snapshot; this is what a
+    future "Edit this trip" button calls before showing the builder form
+    again (see POST /trip/save's `slug` param for the resulting resave).
+    """
+    saved = database.get_custom_trip(slug)
+    if not saved:
+        raise HTTPException(404, "Trip not found for this slug")
+    return TripEditStateResponse(
+        slug=slug,
+        destination=saved["destination"],
+        days=saved["days"],
+        people=saved["people"],
+        budget=saved["budget"],
+        selected_attractions=[TripCandidate(**a) for a in saved["selected_attractions"]],
     )
 
 

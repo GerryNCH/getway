@@ -92,7 +92,7 @@ def init_db() -> None:
                 ON itineraries (destination);
 
             CREATE TABLE IF NOT EXISTS trip_candidates_cache (
-                cache_key        TEXT PRIMARY KEY,   -- "{city_lower}|{budget}"
+                cache_key        TEXT PRIMARY KEY,   -- "{city_lower}|{budget}|{activity_types}"
                 city             TEXT NOT NULL,
                 budget           TEXT NOT NULL,
                 candidates_json  TEXT NOT NULL,       -- list[TripCandidate] as JSON
@@ -180,6 +180,20 @@ def init_db() -> None:
             # the itinerary; existing rows start empty and are backfilled
             # by main.py's startup task / POST /admin/backfill-fun-facts.
             conn.execute("ALTER TABLE itineraries ADD COLUMN fun_fact TEXT DEFAULT ''")
+
+        # Migration: trip_candidates_cache gained an activity_types column
+        # (Build Your Own Trip's "what kind of activities?" wizard step) —
+        # default '' for rows saved before this existed, which correctly
+        # represents "no activity filter" (the old attractions-only
+        # behavior). See _trip_cache_key/_activity_types_cache_key below;
+        # existing rows' cache_key was computed WITHOUT this segment, so
+        # they simply won't be matched by a post-migration lookup and will
+        # be re-saved under the new key format on next request — a one-time
+        # cache-cold-start for previously-cached (city, budget) pairs, not
+        # a correctness issue.
+        existing_trip_candidates_cols = {row["name"] for row in conn.execute("PRAGMA table_info(trip_candidates_cache)")}
+        if "activity_types" not in existing_trip_candidates_cols:
+            conn.execute("ALTER TABLE trip_candidates_cache ADD COLUMN activity_types TEXT DEFAULT ''")
 
         # Seed the singleton site_settings row once, with the hero slides
         # that were previously hardcoded in index.html — so nothing changes
@@ -779,17 +793,26 @@ def upsert_stop_cache(city: str, stop_name: str, photo_url: str, maps_url_overri
 # than caching forever) accounts for Places data drifting over time
 # (closures, new attractions) without needing a manual cache-clear.
 
-def _trip_cache_key(city: str, budget: str) -> str:
-    return f"{(city or '').strip().lower()}|{(budget or '').strip().lower()}"
+def _activity_types_cache_key(activity_types: list[str] | None) -> str:
+    """Canonical form of an activity_types list for cache keys: sorted, comma-joined, lowercase slugs. Empty/None -> ''."""
+    if not activity_types:
+        return ""
+    return ",".join(sorted({t.strip().lower() for t in activity_types if t and t.strip()}))
 
 
-def get_trip_candidates_cache(city: str, budget: str) -> list[dict] | None:
+def _trip_cache_key(city: str, budget: str, activity_types: list[str] | None = None) -> str:
+    return f"{(city or '').strip().lower()}|{(budget or '').strip().lower()}|{_activity_types_cache_key(activity_types)}"
+
+
+def get_trip_candidates_cache(city: str, budget: str, activity_types: list[str] | None = None) -> list[dict] | None:
     """
     Returns the cached candidate list (list of TripCandidate-shaped dicts)
-    for this (city, budget) combination, or None if there's no cache entry
-    or it has expired.
+    for this (city, budget, activity_types) combination, or None if
+    there's no cache entry or it has expired. activity_types=None/[] means
+    the plain attractions-only search — unchanged from before this
+    parameter existed.
     """
-    key = _trip_cache_key(city, budget)
+    key = _trip_cache_key(city, budget, activity_types)
     with _conn() as conn:
         row = conn.execute(
             "SELECT candidates_json, expires_at FROM trip_candidates_cache WHERE cache_key = ?",
@@ -802,23 +825,26 @@ def get_trip_candidates_cache(city: str, budget: str) -> list[dict] | None:
     return json.loads(row["candidates_json"])
 
 
-def save_trip_candidates_cache(city: str, budget: str, candidates: list[dict], ttl_days: int = 30) -> None:
-    """Saves/overwrites the candidate list cached for this (city, budget) combination."""
-    key = _trip_cache_key(city, budget)
+def save_trip_candidates_cache(city: str, budget: str, candidates: list[dict],
+                                activity_types: list[str] | None = None, ttl_days: int = 30) -> None:
+    """Saves/overwrites the candidate list cached for this (city, budget, activity_types) combination."""
+    key = _trip_cache_key(city, budget, activity_types)
+    activity_types_str = _activity_types_cache_key(activity_types)
     now = datetime.utcnow()
     expires_at = now + timedelta(days=ttl_days)
     with _conn() as conn:
         conn.execute(
             """INSERT INTO trip_candidates_cache
-               (cache_key, city, budget, candidates_json, created_at, expires_at)
-               VALUES (?, ?, ?, ?, ?, ?)
+               (cache_key, city, budget, activity_types, candidates_json, created_at, expires_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(cache_key) DO UPDATE SET
                    candidates_json = excluded.candidates_json,
                    created_at = excluded.created_at,
                    expires_at = excluded.expires_at""",
-            (key, city, budget, json.dumps(candidates, ensure_ascii=False), now.isoformat(), expires_at.isoformat()),
+            (key, city, budget, activity_types_str, json.dumps(candidates, ensure_ascii=False), now.isoformat(), expires_at.isoformat()),
         )
-    print(f"[DB] Cached {len(candidates)} trip candidate(s) for {city} / {budget} (expires {expires_at.date()})")
+    print(f"[DB] Cached {len(candidates)} trip candidate(s) for {city} / {budget} "
+          f"(activity_types={activity_types_str or 'none'}, expires {expires_at.date()})")
 
 
 # ── Build Your Own Trip hotel cache — by (city, budget, rough location) ────

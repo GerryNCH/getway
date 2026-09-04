@@ -641,6 +641,17 @@
 <!-- ====================================================================== -->
 <div id="screen-ai-route" class="screen">
 <div class="min-h-screen">
+<!-- Build Your Own Trip preview bar — hidden by default, only shown by
+     buildAndPreviewTrip() (Phase E) when this screen is being reused to
+     preview a not-yet-saved custom trip. Never shown for a normal
+     AI-generated route or an already-saved trip page. -->
+<div id="build-trip-preview-bar" class="hidden bg-[#111827] text-white text-xs md:text-sm px-5 md:px-14 py-3 flex items-center justify-between gap-3 flex-wrap">
+  <span class="flex items-center gap-1.5"><i data-lucide="eye" class="w-3.5 h-3.5"></i>Preview — not saved yet</span>
+  <div class="flex items-center gap-2">
+    <button type="button" onclick="backToBuildTripStep3()" class="btn-outline-interactive h-[34px] px-3.5 border border-white/30 text-white text-xs font-medium rounded-full">Edit selections</button>
+    <button type="button" id="build-trip-save-btn" onclick="saveBuiltTrip()" class="btn-interactive h-[34px] px-4 bg-[#8B5CF6] text-white text-xs font-medium rounded-full">Save trip</button>
+  </div>
+</div>
 <div class="w-full max-w-[390px] md:max-w-none mx-auto">
   <!-- Hero -->
   <div class="relative h-[280px] md:h-[50vh] md:min-h-[400px] w-full overflow-hidden" style="background: linear-gradient(135deg, #1c2128 0%, #334155 55%, #15171A 100%);">
@@ -798,6 +809,121 @@
     <section><h2 class="text-base font-semibold mb-2">9. Changes</h2><p>Continued use after changes constitutes acceptance.</p></section>
     <section><h2 class="text-base font-semibold mb-2">10. Contact</h2><p>Questions: <a href="mailto:getway.smart@gmail.com" class="text-[#6D28D9]">getway.smart@gmail.com</a>.</p></section>
   </div>
+</div>
+</div>
+<!-- ====================================================================== -->
+<!-- SCREEN: BUILD YOUR OWN TRIP (Phase E — builder flow)                   -->
+<!-- TEMPORARY test entry point while this is unlinked from the rest of the -->
+<!-- site (Phase F wires up the real entry points): visit this page with    -->
+<!-- #build-trip in the URL, or run startBuildTrip() from the browser       -->
+<!-- console. Remove/replace this hash check in handleBuildTripHash() once  -->
+<!-- Phase F adds the real homepage link.                                   -->
+<!-- Step 4's actual preview reuses screen-ai-route's own rendering code    -->
+<!-- (renderAiRoute) — this screen's own #build-trip-step4 is only a brief  -->
+<!-- loading state while POST /trip/build is in flight; see                 -->
+<!-- buildAndPreviewTrip() below. -->
+<!-- ====================================================================== -->
+<div id="screen-build-trip" class="screen">
+<div class="flex justify-center min-h-screen">
+<div class="w-full max-w-[390px] md:max-w-xl">
+  <div class="px-5 md:px-0 py-4 md:py-8 flex items-center justify-between">
+    <button onclick="showScreen('home')" class="font-serif-display text-base md:text-xl">GetWay<span class="text-[#8B5CF6]">.</span></button>
+  </div>
+  <!-- Step 1: destination + days + people -->
+  <div id="build-trip-step1" class="mx-5 md:mx-0 px-6 md:px-10 py-9 md:py-12 glass-card rounded-[28px]">
+    <div class="text-center mb-7">
+      <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">Build Your Own Trip</div>
+      <div class="font-serif-display text-[28px] md:text-4xl mb-2">Where are we going?</div>
+      <div class="text-xs md:text-sm text-gray-600 leading-relaxed px-2.5">Pick a destination and we'll help you build the perfect route.</div>
+    </div>
+    <div class="mb-3.5">
+      <label class="text-[11px] font-medium text-gray-500 mb-1.5 block">Destination</label>
+      <div class="flex items-center gap-2.5 h-[52px] px-3 sm:px-4 bg-white/70 border border-gray-200 rounded-2xl">
+        <i data-lucide="map-pin" class="w-[18px] h-[18px] text-gray-500 flex-shrink-0"></i>
+        <input id="bt-destination" type="text" placeholder="e.g. Lisbon, Portugal" class="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-gray-400">
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-3 mb-8">
+      <div>
+        <label class="text-[11px] font-medium text-gray-500 mb-1.5 block">Days</label>
+        <div class="flex items-center gap-2.5 h-[52px] px-3 sm:px-4 bg-white/70 border border-gray-200 rounded-2xl">
+          <i data-lucide="calendar-days" class="w-[18px] h-[18px] text-gray-500 flex-shrink-0"></i>
+          <input id="bt-days" type="number" min="1" max="30" value="3" class="flex-1 min-w-0 bg-transparent text-sm outline-none">
+        </div>
+      </div>
+      <div>
+        <label class="text-[11px] font-medium text-gray-500 mb-1.5 block">People</label>
+        <div class="flex items-center gap-2.5 h-[52px] px-3 sm:px-4 bg-white/70 border border-gray-200 rounded-2xl">
+          <i data-lucide="users" class="w-[18px] h-[18px] text-gray-500 flex-shrink-0"></i>
+          <input id="bt-people" type="number" min="1" max="20" value="2" class="flex-1 min-w-0 bg-transparent text-sm outline-none">
+        </div>
+      </div>
+    </div>
+    <button onclick="buildTripStep1Continue()" class="btn-interactive w-full h-[50px] flex items-center justify-center gap-2 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">
+      Continue <i data-lucide="arrow-right" class="w-4 h-4"></i>
+    </button>
+  </div>
+  <!-- Step 2: budget choice -->
+  <div id="build-trip-step2" class="hidden mx-5 md:mx-0 px-6 md:px-10 py-9 md:py-12 glass-card rounded-[28px]">
+    <div class="text-center mb-7">
+      <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">Build Your Own Trip</div>
+      <div class="font-serif-display text-[28px] md:text-4xl mb-2">What's your budget?</div>
+      <div class="text-xs md:text-sm text-gray-600 leading-relaxed px-2.5">This shapes which places we suggest — hotels always stay well-rated, no matter what you pick.</div>
+    </div>
+    <div class="grid grid-cols-3 gap-3 mb-6">
+      <button type="button" onclick="chooseBuildTripBudget('cheap')" class="btn-interactive bg-[#F8F6FF] hover:bg-[#F1EEFF] rounded-2xl p-4 text-center border border-transparent transition-colors">
+        <span class="text-2xl block mb-1.5">💸</span>
+        <span class="text-xs font-medium block">Cheap</span>
+      </button>
+      <button type="button" onclick="chooseBuildTripBudget('mid')" class="btn-interactive bg-[#F8F6FF] hover:bg-[#F1EEFF] rounded-2xl p-4 text-center border border-transparent transition-colors">
+        <span class="text-2xl block mb-1.5">💳</span>
+        <span class="text-xs font-medium block">Mid-range</span>
+      </button>
+      <button type="button" onclick="chooseBuildTripBudget('luxury')" class="btn-interactive bg-[#F8F6FF] hover:bg-[#F1EEFF] rounded-2xl p-4 text-center border border-transparent transition-colors">
+        <span class="text-2xl block mb-1.5">💎</span>
+        <span class="text-xs font-medium block">Luxury</span>
+      </button>
+    </div>
+    <button type="button" onclick="showBuildTripStep(1)" class="w-full text-center text-xs text-gray-400 hover:text-gray-600">&larr; Back</button>
+  </div>
+  <!-- Step 3: candidate checklist -->
+  <div id="build-trip-step3" class="hidden mx-5 md:mx-0 px-6 md:px-10 py-9 md:py-12 glass-card rounded-[28px]">
+    <div class="text-center mb-6">
+      <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">Build Your Own Trip</div>
+      <div class="font-serif-display text-[26px] md:text-3xl mb-2">Pick what you want to see</div>
+      <div class="text-xs md:text-sm text-gray-600 leading-relaxed px-2.5">Everything's checked by default — untick anything you'd rather skip.</div>
+    </div>
+    <div id="build-trip-candidates-loading" class="text-center py-14">
+      <div class="w-14 h-14 bg-[#F1EEFF] rounded-full flex items-center justify-center mx-auto mb-4">
+        <i data-lucide="wand-2" class="w-6 h-6 text-[#8B5CF6] animate-pulse"></i>
+      </div>
+      <div class="text-sm font-medium">Finding great places…</div>
+    </div>
+    <div id="build-trip-candidates-empty" class="hidden text-center py-14">
+      <div class="text-sm text-gray-500 mb-4">We couldn't find any places for this destination and budget.</div>
+      <button type="button" onclick="showBuildTripStep(2)" class="btn-interactive h-[42px] px-5 bg-[#8B5CF6] text-white text-xs font-medium rounded-xl">Try a different budget</button>
+    </div>
+    <div id="build-trip-candidates-list" class="hidden">
+      <div id="build-trip-candidates-items" class="space-y-2.5 max-h-[50vh] overflow-y-auto mb-6 pr-1"></div>
+      <div class="flex items-center justify-between mb-3">
+        <span id="build-trip-selected-count" class="text-[11px] text-gray-400">Select at least one place</span>
+        <button type="button" onclick="showBuildTripStep(2)" class="text-xs text-gray-400 hover:text-gray-600">&larr; Back</button>
+      </div>
+      <button id="build-trip-continue-btn" onclick="buildTripStep3Continue()" disabled class="btn-interactive w-full h-[50px] flex items-center justify-center gap-2 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl opacity-40 pointer-events-none">
+        Build my itinerary <i data-lucide="sparkles" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </div>
+  <!-- Step 4: brief loading state while /trip/build runs — the actual
+       preview is rendered into screen-ai-route via renderAiRoute(), reused
+       as-is; see buildAndPreviewTrip(). -->
+  <div id="build-trip-step4" class="hidden mx-5 md:mx-0 px-6 md:px-10 py-16 md:py-20 text-center glass-card rounded-[28px]">
+    <div class="w-16 h-16 bg-[#F1EEFF] rounded-full flex items-center justify-center mx-auto mb-6">
+      <i data-lucide="route" class="w-6 h-6 text-[#8B5CF6] animate-pulse"></i>
+    </div>
+    <div class="text-sm font-medium">Building your itinerary…</div>
+  </div>
+</div>
 </div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js" crossorigin="anonymous"></script>
@@ -3089,6 +3215,250 @@
         console.error('Could not restore shared route "' + routeParam + '":', err);
       });
   }
+  // ======================================================================
+  // BUILD YOUR OWN TRIP (Phase E) — builder flow.
+  // TEMPORARY test entry point: visit this page with #build-trip in the
+  // URL, or run startBuildTrip() from the console — see
+  // handleBuildTripHash() below. Not linked from the homepage yet; that's
+  // Phase F. Step 4's actual preview and the final saved trip page both
+  // reuse screen-ai-route's own renderAiRoute() — no new rendering code.
+  // ======================================================================
+  let _buildTripState = {
+    destination: '', days: 3, people: 2, budget: '',
+    candidates: [],           // raw TripCandidate objects from /trip/candidates
+    selected: new Set(),      // indices into `candidates` currently checked
+    selectedAttractions: [],  // the TripCandidate objects actually sent to /trip/build
+    previewItinerary: null,   // itinerary returned by /trip/build
+    slug: null,                // set once saved — reused for the edit-and-resave flow
+  };
+  function startBuildTrip() {
+    _buildTripState = {
+      destination: '', days: 3, people: 2, budget: '',
+      candidates: [], selected: new Set(), selectedAttractions: [],
+      previewItinerary: null, slug: null,
+    };
+    const destInput = document.getElementById('bt-destination');
+    if (destInput) destInput.value = '';
+    showBuildTripStep(1);
+    showScreen('build-trip');
+  }
+  function showBuildTripStep(n) {
+    [1, 2, 3, 4].forEach(i => {
+      const el = document.getElementById('build-trip-step' + i);
+      if (el) el.classList.toggle('hidden', i !== n);
+    });
+  }
+  function buildTripStep1Continue() {
+    const dest = (document.getElementById('bt-destination').value || '').trim();
+    const days = parseInt(document.getElementById('bt-days').value, 10);
+    const people = parseInt(document.getElementById('bt-people').value, 10);
+    if (!dest) { alert('Please enter a destination.'); return; }
+    if (!days || days < 1) { alert('Please enter a valid number of days.'); return; }
+    if (!people || people < 1) { alert('Please enter a valid number of people.'); return; }
+    _buildTripState.destination = dest;
+    _buildTripState.days = days;
+    _buildTripState.people = people;
+    showBuildTripStep(2);
+  }
+  function chooseBuildTripBudget(tier) {
+    _buildTripState.budget = tier;
+    showBuildTripStep(3);
+    loadBuildTripCandidates();
+  }
+  const BUILD_TRIP_PRICE_LEVEL_LABEL = {
+    PRICE_LEVEL_FREE: 'Free',
+    PRICE_LEVEL_INEXPENSIVE: '€',
+    PRICE_LEVEL_MODERATE: '€€',
+    PRICE_LEVEL_EXPENSIVE: '€€€',
+    PRICE_LEVEL_VERY_EXPENSIVE: '€€€€',
+  };
+  async function loadBuildTripCandidates() {
+    document.getElementById('build-trip-candidates-loading').classList.remove('hidden');
+    document.getElementById('build-trip-candidates-list').classList.add('hidden');
+    document.getElementById('build-trip-candidates-empty').classList.add('hidden');
+    try {
+      const res = await fetch(`${BACKEND_URL}/trip/candidates`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ destination: _buildTripState.destination, budget: _buildTripState.budget })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Server error');
+      }
+      const data = await res.json();
+      _buildTripState.candidates = data.candidates || [];
+      // Everything starts checked — friendlier default than an empty list
+      // the traveler has to build up one tap at a time; unticking a place
+      // they don't want is one tap either way.
+      _buildTripState.selected = new Set(_buildTripState.candidates.map((_, i) => i));
+      renderBuildTripCandidates();
+    } catch (err) {
+      document.getElementById('build-trip-candidates-loading').classList.add('hidden');
+      alert('Something went wrong finding places: ' + err.message);
+      showBuildTripStep(2);
+    }
+  }
+  function renderBuildTripCandidates() {
+    document.getElementById('build-trip-candidates-loading').classList.add('hidden');
+    const candidates = _buildTripState.candidates;
+    if (!candidates.length) {
+      document.getElementById('build-trip-candidates-empty').classList.remove('hidden');
+      document.getElementById('build-trip-candidates-list').classList.add('hidden');
+      return;
+    }
+    document.getElementById('build-trip-candidates-empty').classList.add('hidden');
+    document.getElementById('build-trip-candidates-list').classList.remove('hidden');
+    const container = document.getElementById('build-trip-candidates-items');
+    container.innerHTML = candidates.map((c, i) => {
+      const seed = slugify(c.name || ('candidate-' + i));
+      const checked = _buildTripState.selected.has(i);
+      const priceLabel = BUILD_TRIP_PRICE_LEVEL_LABEL[c.price_level] || '';
+      const ratingLabel = c.rating ? Number(c.rating).toFixed(1) : '';
+      return `
+        <label class="flex items-center gap-3 bg-white bento-card rounded-2xl p-3 cursor-pointer">
+          <input type="checkbox" data-idx="${i}" ${checked ? 'checked' : ''} onchange="toggleBuildTripCandidate(${i})" class="w-5 h-5 rounded-md accent-[#8B5CF6] flex-shrink-0">
+          <div class="w-14 h-14 rounded-xl flex-shrink-0 overflow-hidden relative" style="background:${gradientFor(seed)}">
+            <img src="${c.photo_url || ''}" alt="" class="absolute inset-0 w-full h-full object-cover" onerror="imgFallback(this,'map-pin','${seed}')">
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-medium truncate">${escapeHtml(c.name || '')}</div>
+            <div class="text-xs text-gray-500 leading-snug">${escapeHtml(c.description || '')}</div>
+            <div class="flex items-center gap-2 mt-1 text-[11px] text-gray-400">
+              ${ratingLabel ? `<span class="inline-flex items-center gap-0.5"><i data-lucide="star" class="w-3 h-3 text-amber-500"></i>${ratingLabel}</span>` : ''}
+              ${priceLabel ? `<span>${priceLabel}</span>` : ''}
+            </div>
+          </div>
+        </label>`;
+    }).join('');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    updateBuildTripContinueBtn();
+  }
+  function toggleBuildTripCandidate(i) {
+    if (_buildTripState.selected.has(i)) _buildTripState.selected.delete(i);
+    else _buildTripState.selected.add(i);
+    updateBuildTripContinueBtn();
+  }
+  function updateBuildTripContinueBtn() {
+    const btn = document.getElementById('build-trip-continue-btn');
+    const countEl = document.getElementById('build-trip-selected-count');
+    const count = _buildTripState.selected.size;
+    if (btn) {
+      btn.disabled = count === 0;
+      btn.classList.toggle('opacity-40', count === 0);
+      btn.classList.toggle('pointer-events-none', count === 0);
+    }
+    if (countEl) countEl.textContent = count ? `${count} selected` : 'Select at least one place';
+  }
+  function buildTripStep3Continue() {
+    const selectedCandidates = _buildTripState.candidates.filter((_, i) => _buildTripState.selected.has(i));
+    if (!selectedCandidates.length) return;
+    _buildTripState.selectedAttractions = selectedCandidates;
+    buildAndPreviewTrip();
+  }
+  async function buildAndPreviewTrip() {
+    showBuildTripStep(4);
+    try {
+      const res = await fetch(`${BACKEND_URL}/trip/build`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          destination: _buildTripState.destination,
+          days: _buildTripState.days,
+          people: _buildTripState.people,
+          budget: _buildTripState.budget,
+          selected_attractions: _buildTripState.selectedAttractions,
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Server error');
+      }
+      const data = await res.json();
+      _buildTripState.previewItinerary = data.itinerary;
+      renderAiRoute(data.itinerary, '', '');
+      const bar = document.getElementById('build-trip-preview-bar');
+      if (bar) bar.classList.remove('hidden');
+      showScreen('ai-route');
+    } catch (err) {
+      alert('Something went wrong building your itinerary: ' + err.message);
+      showBuildTripStep(3);
+      showScreen('build-trip');
+    }
+  }
+  function backToBuildTripStep3() {
+    const bar = document.getElementById('build-trip-preview-bar');
+    if (bar) bar.classList.add('hidden');
+    showBuildTripStep(3);
+    showScreen('build-trip');
+  }
+  async function saveBuiltTrip() {
+    const state = _buildTripState;
+    if (!state.previewItinerary) return;
+    const btn = document.getElementById('build-trip-save-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    try {
+      const res = await fetch(`${BACKEND_URL}/trip/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          destination: state.destination,
+          days: state.days,
+          people: state.people,
+          budget: state.budget,
+          selected_attractions: state.selectedAttractions,
+          itinerary: state.previewItinerary,
+          slug: state.slug || null,
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Server error');
+      }
+      const data = await res.json();
+      state.slug = data.slug;
+      // Locked, shareable URL for this saved trip — same GET /trip/{slug}
+      // a shared link would open, so reloading this exact URL always shows
+      // the real saved snapshot, not just what happens to be in memory.
+      history.pushState({}, '', `${location.pathname}?trip=${encodeURIComponent(data.slug)}`);
+      const bar = document.getElementById('build-trip-preview-bar');
+      if (bar) bar.classList.add('hidden');
+      renderAiRoute(state.previewItinerary, data.slug, '');
+    } catch (err) {
+      alert('Could not save your trip: ' + err.message);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Save trip'; }
+    }
+  }
+  // Restores a saved custom trip from ?trip=<slug> on page load — the
+  // Build Your Own Trip equivalent of handleSharedRouteParam() above,
+  // against the separate GET /trip/{slug} endpoint (custom trips aren't
+  // stored in the same table as video routes).
+  function handleSharedBuildTripParam() {
+    const params = new URLSearchParams(location.search);
+    const slug = params.get('trip');
+    if (!slug) return;
+    fetch(`${BACKEND_URL}/trip/${encodeURIComponent(slug)}`)
+      .then(res => {
+        if (!res.ok) throw new Error('Trip not found: ' + res.status);
+        return res.json();
+      })
+      .then(data => {
+        renderAiRoute(data.itinerary, data.video_id, '');
+        showScreen('ai-route');
+      })
+      .catch(err => {
+        console.error('Could not restore saved trip "' + slug + '":', err);
+      });
+  }
+  // TEMPORARY test entry point for Phase E, see the comment on
+  // screen-build-trip above — remove/replace once Phase F adds the real
+  // homepage entry point(s).
+  function handleBuildTripHash() {
+    if (location.hash === '#build-trip') {
+      startBuildTrip();
+    }
+  }
   // Runs a single init step in isolation: if it throws, log it and move on
   // instead of letting one bad step take down everything after it.
   function safeRun(label, fn) {
@@ -3295,6 +3665,8 @@
       if (typeof AOS !== 'undefined') { AOS.init({ duration: 800, once: true }); }
     });
     safeRun('handleSharedRouteParam', handleSharedRouteParam);
+    safeRun('handleSharedBuildTripParam', handleSharedBuildTripParam);
+    safeRun('handleBuildTripHash', handleBuildTripHash);
     safeRun('wireMallorcaDemoHotelLinks', wireMallorcaDemoHotelLinks);
     safeRun('initSwipeGalleries', initSwipeGalleries);
     loadMallorcaRealPhotos();

@@ -600,31 +600,41 @@ def _hotel_dict_to_stop(hotel: dict) -> dict:
 # geographically wrong coordinate from a bad Places match. Rather than
 # trust every upstream source to always be right, every built itinerary
 # gets one final pass: a Stop whose coordinates are wildly far from the
-# itinerary's OTHER stops (median-based — robust to a single bad outlier,
-# unlike a mean) gets its coordinates dropped and a warning logged, so the
-# map view just shows no pin/line for that stop instead of drawing a route
-# across half the globe. The stop itself (name/description/card) is never
-# removed — only its lat/lng.
-_MAX_STOP_DISTANCE_FROM_MEDIAN_KM = 100.0
+# REST OF ITS OWN DAY gets its coordinates dropped and a warning logged,
+# so the map view just shows no pin/line for that stop instead of drawing
+# a route across half the globe. The stop itself (name/description/card)
+# is never removed — only its lat/lng.
+#
+# Real bug this fixes: this used to compare every stop against ONE median
+# for the WHOLE itinerary, not per day. A genuinely large-area multi-day
+# trip (e.g. Norway — Oslo one day, a fjord town hundreds of km away a few
+# days later) legitimately has days far apart from EACH OTHER, so that
+# whole-trip median falsely flagged entire later days as "implausible" and
+# wiped their map coordinates (Day 3/4 showing "No map coordinates for
+# this day yet." even though the data was correct). Stops WITHIN a single
+# day, though, genuinely should be close together — group_into_days
+# already clusters same-day stops by proximity — so a stop wildly far
+# from its own day's median is still a real red flag worth catching.
+_MAX_STOP_DISTANCE_FROM_DAY_MEDIAN_KM = 100.0
 
 
 def _drop_implausible_stop_coordinates(days: list[dict]) -> None:
     """Mutates `days` in place — see the module comment above this function."""
-    all_stops = [s for day in days for s in day["stops"]]
-    with_coords = [s for s in all_stops if s.get("lat") is not None and s.get("lng") is not None]
-    if len(with_coords) < 2:
-        return  # nothing to sanity-check against
-    median_point = (
-        statistics.median(s["lat"] for s in with_coords),
-        statistics.median(s["lng"] for s in with_coords),
-    )
-    for s in with_coords:
-        dist = _haversine_km(median_point, (s["lat"], s["lng"]))
-        if dist > _MAX_STOP_DISTANCE_FROM_MEDIAN_KM:
-            print(f"[TripBuilder] Dropping coordinates for stop '{s.get('name')}' — "
-                  f"{dist:.0f}km from the itinerary's other stops (likely a bad Places match)")
-            s["lat"] = None
-            s["lng"] = None
+    for day in days:
+        with_coords = [s for s in day["stops"] if s.get("lat") is not None and s.get("lng") is not None]
+        if len(with_coords) < 2:
+            continue  # nothing to sanity-check this day against
+        median_point = (
+            statistics.median(s["lat"] for s in with_coords),
+            statistics.median(s["lng"] for s in with_coords),
+        )
+        for s in with_coords:
+            dist = _haversine_km(median_point, (s["lat"], s["lng"]))
+            if dist > _MAX_STOP_DISTANCE_FROM_DAY_MEDIAN_KM:
+                print(f"[TripBuilder] Dropping coordinates for stop '{s.get('name')}' (day {day.get('day')}) — "
+                      f"{dist:.0f}km from that day's other stops (likely a bad Places match)")
+                s["lat"] = None
+                s["lng"] = None
 
 
 def assemble_days(attractions: list[dict], num_days: int, hotel: dict | None) -> list[dict]:

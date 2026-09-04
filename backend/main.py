@@ -599,18 +599,26 @@ def admin_quality_check(video_id: str, secret: str):
 
 
 @app.post("/admin/backfill-fun-facts")
-def admin_backfill_fun_facts(secret: str):
+def admin_backfill_fun_facts(secret: str, force: bool = False):
     """
     Manually re-triggers the same fun_fact backfill that already runs
     automatically at every startup (see _backfill_fun_facts_background) —
     useful to get an immediate result/count right after approving a batch
     of new routes, instead of waiting for the next deploy/restart. Safe to
-    call any time; routes that already have a fun_fact are skipped.
+    call any time; by default routes that already have a fun_fact are
+    skipped.
+
+    force=true instead re-generates EVERY approved route's fun_fact, even
+    ones that already have one — use this once after a prompt change (e.g.
+    asking for more surprising/quirky facts instead of generic ones) to
+    upgrade facts that were already written under the old prompt, not just
+    fill in blanks. Costs roughly $0.0005 x number of approved routes.
+
     Returns how many were checked, how many got filled, and the real
     Anthropic cost of this run.
     """
     _check_admin_secret(secret)
-    targets = database.list_approved_missing_fun_fact()
+    targets = database.list_approved_for_fun_fact_refresh(force=force)
     filled = 0
     total_cost = 0.0
     for row in targets:

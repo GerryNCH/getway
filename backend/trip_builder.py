@@ -176,8 +176,19 @@ def fits_budget(place: dict, budget: str) -> bool:
 
 
 def _place_to_candidate_dict(place: dict, description: str = "", category: str = "sight",
-                              section: str = "attraction", estimated_price: str = "") -> dict:
-    """Converts one raw Places result into a TripCandidate-shaped dict."""
+                              section: str = "attraction", estimated_price: str = "",
+                              is_free: bool | None = None) -> dict:
+    """
+    Converts one raw Places result into a TripCandidate-shaped dict.
+
+    `is_free`: pass the AI curation pass's own per-candidate judgment when
+    available — it has real-world knowledge _is_free_by_type's blunt
+    Places-type list doesn't (e.g. Cinecittà World, a paid theme park
+    Places tags with the generic "park" type, which the type heuristic
+    alone would wrongly call free). None (the default, used by the
+    AI-failure fallback path in curate_candidates) falls back to
+    _is_free_by_type(place).
+    """
     loc = place.get("location") or {}
     photo_url = photo_url_from_places_photos(place.get("photos", []))
     name = place.get("displayName", {}).get("text", "")
@@ -189,7 +200,7 @@ def _place_to_candidate_dict(place: dict, description: str = "", category: str =
         "rating": place.get("rating", 0) or 0,
         "user_rating_count": place.get("userRatingCount", 0) or 0,
         "price_level": place.get("priceLevel", "") or "",
-        "is_free": _is_free_by_type(place),
+        "is_free": _is_free_by_type(place) if is_free is None else is_free,
         "lat": loc.get("latitude"),
         "lng": loc.get("longitude"),
         "is_famous": _is_famous(place),
@@ -206,35 +217,41 @@ Your job for EACH candidate:
 1. Decide whether it's a genuine, tourist-worthy attraction, activity, or place to eat — DROP anything that clearly isn't (parking garages, generic ATMs/banks, gas stations, residential buildings, chain pharmacies, anything that isn't actually a place a traveler would choose to visit).
 2. DROP near-duplicates of another candidate in the same list (e.g. two listings for the same landmark under slightly different names) — keep only the better-named one.
 3. For everything you keep, write ONE short, engaging sentence description in GetWay's tone — like a travel writer's pick, not a dry Google Maps category label. Never invent specific facts you can't reasonably infer from the name/type.
-4. Assign one category: sight | food | activity | beach | village. Never "hotel" — this list never includes accommodation.
+4. Assign one category: sight | food | activity | beach | village. Never "hotel" — this list never includes accommodation. Base this ONLY on what the place actually IS, never on which search found it: use "sight" for a place primarily visited/viewed — a museum, landmark, church, historical site, viewpoint, or park — even if it was found via an activity-type search, if that's genuinely what it is. Use "activity" for a bookable experience or thing you DO rather than a place you visit to look at — a guided tour, cooking class, boat trip, theme park ride, adventure/adrenaline activity, art workshop.
 5. "estimated_price" — a short realistic ballpark price string (e.g. "€16", "€10-15", "€25-30") ONLY for a paid attraction/activity/tour you have reasonably confident general knowledge of — well-known museums, monuments, landmarks, popular tours. Leave it as "" (empty string) whenever the place is free, OR whenever you are not confident enough in a specific number to avoid a misleading guess. Never invent a precise-sounding price for a place you don't actually have real knowledge of — a missing estimate is far better than a wrong one.
+6. "is_free" — true if this SPECIFIC place is free to enter/visit with no admission charge, false if it normally requires paying an entry fee or is a paid activity/experience/tour/class. Use your real knowledge of the specific place — don't default to true. When genuinely unsure, false is the safer default (a rough price estimate is better than wrongly claiming something is free).
 
 Reply with ONLY valid JSON, no markdown fences:
-{"candidates": [{"index": 0, "description": "...", "category": "sight", "estimated_price": "€16"}]}
+{"candidates": [{"index": 0, "description": "...", "category": "sight", "is_free": false, "estimated_price": "€16"}]}
 
-Only include entries you decided to KEEP — dropped candidates simply don't appear in the array. "index" must exactly match an index from the input. "estimated_price" must be present on every kept entry, as "" when not applicable/not confident."""
+Only include entries you decided to KEEP — dropped candidates simply don't appear in the array. "index" must exactly match an index from the input. "estimated_price" must be present on every kept entry, as "" when not applicable/not confident. "is_free" must be present on every kept entry as a boolean."""
 
 
 def _price_string_means_free(price: str) -> bool:
     """
     True if `price` (an AI-written estimated_price string) actually means
-    free — either literally "free" (case-insensitive) or a zero amount in
-    any common form ("€0", "$0", "0", "0€"). Real bug this fixes: the AI
-    curation pass sometimes correctly recognizes a place is free but
-    writes that into estimated_price as a zero-value price string instead
-    of leaving it blank and relying on is_free — without this check that
-    showed as a "~€0" badge instead of "Free".
+    free — either containing the word "free" (case-insensitive, e.g.
+    "Free", "free entry") or a price range whose LOWEST number is zero in
+    any common form ("€0", "$0", "0", "0€", "€0-5" — that last one
+    genuinely means "can be free"). This is the final, authoritative check
+    for the canonical free representation (is_free=True,
+    estimated_price="") — applied regardless of whether the AI's own
+    is_free field already said true or a stray free-ish price string is
+    what actually signals it (real bug this half fixes: "Le Palme" showed
+    "~€0" instead of "Free" because the original narrower pattern — exact
+    "free" or a single zero amount — didn't catch every free-ish form the
+    AI can write).
     """
     normalized = (price or "").strip().lower()
     if not normalized:
         return False
-    if normalized == "free":
+    if re.search(r"\bfree\b", normalized):
         return True
-    digits = re.sub(r"[^\d.]", "", normalized)
-    if not digits:
+    numbers = re.findall(r"\d+(?:\.\d+)?", normalized)
+    if not numbers:
         return False
     try:
-        return float(digits) == 0
+        return min(float(n) for n in numbers) == 0
     except ValueError:
         return False
 
@@ -300,11 +317,15 @@ def curate_candidates(destination: str, raw_places: list[dict]) -> tuple[list[di
                 category=item.get("category", "sight"),
                 section=raw_places[idx].get("_section", "attraction"),
                 estimated_price=estimated_price,
+                is_free=bool(item.get("is_free", False)),
             )
-            if _price_string_means_free(estimated_price):
-                # The AI's real-world knowledge beats the Python type
-                # heuristic here — override whatever is_free the type
-                # check produced.
+            # Final authority on the canonical free representation,
+            # regardless of which signal actually caught it: the AI's own
+            # stated is_free, OR a free-ish estimated_price string it wrote
+            # instead (still possible even with is_free asked for
+            # explicitly — models don't always keep two fields perfectly in
+            # sync with each other).
+            if candidate["is_free"] or _price_string_means_free(estimated_price):
                 candidate["is_free"] = True
                 candidate["estimated_price"] = ""
             candidates.append(candidate)

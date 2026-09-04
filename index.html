@@ -760,7 +760,8 @@
   <div class="px-5 md:px-14 lg:px-24 py-6 md:py-8">
     <div class="max-w-fit md:mx-auto bg-white/70 backdrop-filter backdrop-blur border border-gray-200/80 rounded-full p-1.5 shadow-sm overflow-x-auto">
       <div class="peek-scroll flex gap-1.5 md:justify-center">
-        <button onclick="filterAiStops('all', this)" class="ai-filter-chip is-active flex-shrink-0 h-[36px] px-4 flex items-center gap-1.5 text-xs font-medium rounded-full bg-[#8B5CF6] text-white whitespace-nowrap">All Stops</button>
+        <button onclick="filterAiStops('essentials', this)" class="ai-filter-chip ai-filter-chip-essentials flex-shrink-0 h-[36px] px-4 flex items-center gap-1.5 text-xs font-semibold rounded-full bg-[#F1EEFF] text-[#6D28D9] whitespace-nowrap"><i data-lucide="shield-check" class="w-3.5 h-3.5"></i>Travel essentials</button>
+        <button id="ai-filter-chip-all" onclick="filterAiStops('all', this)" class="ai-filter-chip is-active flex-shrink-0 h-[36px] px-4 flex items-center gap-1.5 text-xs font-medium rounded-full bg-[#8B5CF6] text-white whitespace-nowrap">All Stops</button>
         <button onclick="filterAiStops('hotel', this)" class="ai-filter-chip flex-shrink-0 h-[36px] px-4 flex items-center gap-1.5 text-xs font-medium rounded-full text-gray-600 whitespace-nowrap"><i data-lucide="bed" class="w-3.5 h-3.5"></i>Hotels</button>
         <button onclick="filterAiStops('food', this)" class="ai-filter-chip flex-shrink-0 h-[36px] px-4 flex items-center gap-1.5 text-xs font-medium rounded-full text-gray-600 whitespace-nowrap"><i data-lucide="utensils" class="w-3.5 h-3.5"></i>Food & Drinks</button>
         <button onclick="filterAiStops('sight', this)" class="ai-filter-chip flex-shrink-0 h-[36px] px-4 flex items-center gap-1.5 text-xs font-medium rounded-full text-gray-600 whitespace-nowrap"><i data-lucide="landmark" class="w-3.5 h-3.5"></i>Sights</button>
@@ -769,6 +770,13 @@
       </div>
     </div>
   </div>
+  <!-- "Travel essentials" reminder panel — swapped in over #ai-route-days
+       when that filter chip is active (see filterAiStops). NOT another
+       stop category (it holds no .ai-stop-card elements to filter by) —
+       a shortcut list of the same visa/flights/transfer/map/insurance
+       banners that already live further down the page, so nothing here
+       replaces them, it just recaps them in one place up top. -->
+  <div id="ai-route-essentials-panel" class="hidden px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-10 md:mb-14"></div>
   <!-- Route Map view — collapsed behind a toggle button by default (only
        expands if the person actually wants to see it), day tabs + Leaflet
        map with numbered stops. The toggle button itself only appears when
@@ -777,8 +785,8 @@
        the backend show neither the button nor the section. -->
   <div id="ai-route-map-toggle-wrap" class="hidden px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-8 md:mb-10">
     <button id="ai-route-map-toggle-btn" onclick="toggleAiRouteMap()" class="btn-interactive w-full flex items-center gap-4 bg-white rounded-[22px] p-4 md:p-5 bento-card text-left">
-      <div class="w-11 h-11 rounded-2xl bg-[#F1EEFF] flex items-center justify-center flex-shrink-0">
-        <i data-lucide="map" class="w-5 h-5 text-[#7C3AED]"></i>
+      <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#8B5CF6] to-[#6D28D9] shadow-[0_4px_10px_-4px_rgba(124,58,237,0.5)] flex items-center justify-center flex-shrink-0">
+        <i data-lucide="map" class="w-5 h-5 text-white"></i>
       </div>
       <div class="flex-1 min-w-0">
         <div id="ai-route-map-toggle-label" class="text-sm font-medium mb-0.5">View route on map</div>
@@ -2511,8 +2519,8 @@
     const kiwiHref = kiwiFlightsUrl(city);
     return `
       <div class="bento-card bg-white rounded-[26px] p-4 md:p-6 flex items-center gap-4 md:gap-5">
-        <div class="w-11 h-11 md:w-12 md:h-12 rounded-2xl bg-[#F1EEFF] flex items-center justify-center flex-shrink-0">
-          <i data-lucide="plane" class="w-5 h-5 text-[#7C3AED]"></i>
+        <div class="w-11 h-11 md:w-12 md:h-12 rounded-2xl bg-gradient-to-br from-[#8B5CF6] to-[#6D28D9] shadow-[0_4px_10px_-4px_rgba(124,58,237,0.5)] flex items-center justify-center flex-shrink-0">
+          <i data-lucide="plane" class="w-5 h-5 text-white"></i>
         </div>
         <div class="flex-1 min-w-0">
           <div class="text-sm font-medium mb-0.5">Find flights to ${escapeHtml(city)}</div>
@@ -2540,8 +2548,8 @@
     const href = iVisaUrl(city);
     return `
       <div class="bento-card bg-white rounded-[22px] p-4 md:p-5 flex items-center gap-4">
-        <div class="w-11 h-11 rounded-2xl bg-[#F1EEFF] flex items-center justify-center flex-shrink-0">
-          <i data-lucide="stamp" class="w-5 h-5 text-[#7C3AED]"></i>
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#8B5CF6] to-[#6D28D9] shadow-[0_4px_10px_-4px_rgba(124,58,237,0.5)] flex items-center justify-center flex-shrink-0">
+          <i data-lucide="stamp" class="w-5 h-5 text-white"></i>
         </div>
         <div class="flex-1 min-w-0">
           <div class="text-sm font-medium mb-0.5">Do I need a visa for ${escapeHtml(city)}?</div>
@@ -2563,8 +2571,8 @@
     const worldNomadsHref = worldNomadsUrl();
     return `
       <div class="bento-card bg-white rounded-[22px] p-4 md:p-5 flex items-center gap-4 flex-wrap md:flex-nowrap">
-        <div class="w-11 h-11 rounded-2xl bg-[#F1EEFF] flex items-center justify-center flex-shrink-0">
-          <i data-lucide="shield-check" class="w-5 h-5 text-[#7C3AED]"></i>
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#8B5CF6] to-[#6D28D9] shadow-[0_4px_10px_-4px_rgba(124,58,237,0.5)] flex items-center justify-center flex-shrink-0">
+          <i data-lucide="shield-check" class="w-5 h-5 text-white"></i>
         </div>
         <div class="flex-1 min-w-0">
           <div class="text-sm font-medium mb-0.5">Travel insurance</div>
@@ -2589,8 +2597,8 @@
     const kiwitaxiHref = kiwitaxiUrl(city);
     return `
       <div class="bento-card bg-white rounded-[22px] p-4 md:p-5 mb-6 md:mb-8 flex items-center gap-4 flex-wrap md:flex-nowrap">
-        <div class="w-11 h-11 rounded-2xl bg-[#F1EEFF] flex items-center justify-center flex-shrink-0">
-          <i data-lucide="car-taxi-front" class="w-5 h-5 text-[#7C3AED]"></i>
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#8B5CF6] to-[#6D28D9] shadow-[0_4px_10px_-4px_rgba(124,58,237,0.5)] flex items-center justify-center flex-shrink-0">
+          <i data-lucide="car-taxi-front" class="w-5 h-5 text-white"></i>
         </div>
         <div class="flex-1 min-w-0">
           <div class="text-sm font-medium mb-0.5">Book an airport transfer</div>
@@ -3229,10 +3237,33 @@
   function filterAiStops(category, clickedBtn) {
     document.querySelectorAll('.ai-filter-chip').forEach(chip => {
       chip.classList.remove('is-active', 'bg-[#8B5CF6]', 'text-white');
-      chip.classList.add('text-gray-600');
+      if (chip.classList.contains('ai-filter-chip-essentials')) {
+        chip.classList.add('bg-[#F1EEFF]', 'text-[#6D28D9]');
+      } else {
+        chip.classList.add('text-gray-600');
+      }
     });
     clickedBtn.classList.add('is-active', 'bg-[#8B5CF6]', 'text-white');
-    clickedBtn.classList.remove('text-gray-600');
+    clickedBtn.classList.remove('text-gray-600', 'bg-[#F1EEFF]', 'text-[#6D28D9]');
+
+    const essentialsPanel = document.getElementById('ai-route-essentials-panel');
+    const daysContainer = document.getElementById('ai-route-days');
+    if (category === 'essentials') {
+      // Not another stop category — swaps the normal day-by-day stop list
+      // for a compact recap of the same visa/flights/transfer/map/
+      // insurance banners that already live further down the page (see
+      // buildEssentialsPanelHtml). Tapping any other chip below flips
+      // back to the normal filtered stop list.
+      if (essentialsPanel) {
+        essentialsPanel.innerHTML = buildEssentialsPanelHtml(window._aiRouteDestination, window._aiRouteVideoId);
+        essentialsPanel.classList.remove('hidden');
+      }
+      if (daysContainer) daysContainer.classList.add('hidden');
+      if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+      return;
+    }
+    if (essentialsPanel) essentialsPanel.classList.add('hidden');
+    if (daysContainer) daysContainer.classList.remove('hidden');
     document.querySelectorAll('.ai-stop-card').forEach(card => {
       const matches = category === 'all' || card.dataset.category === category;
       card.classList.toggle('filter-hidden', !matches);
@@ -3242,6 +3273,60 @@
       group.classList.toggle('filter-hidden', !hasVisible);
     });
     if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+  }
+  // Builds the "Travel essentials" panel content — a shortcut recap of
+  // whichever of the 5 affiliate banners (visa/flights/transfer/map/
+  // insurance) are actually enabled/relevant for this route, using the
+  // exact same copy, URLs, and admin on/off toggles as the full banners
+  // themselves (isAffiliateSectionEnabled, iVisaUrl, etc.) — this is a
+  // reminder shortcut to them, never a second source of truth.
+  function buildEssentialsPanelHtml(destination, videoId) {
+    const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim() || destination || '';
+    const rows = [];
+    if (isAffiliateSectionEnabled('visa')) {
+      rows.push({ icon: 'stamp', title: `Do I need a visa for ${escapeHtml(city)}?`, sub: 'Check your eligibility via iVisa', cta: 'Check', href: iVisaUrl(city) });
+    }
+    if (isAffiliateSectionEnabled('flights')) {
+      rows.push({ icon: 'plane', title: `Find flights to ${escapeHtml(city)}`, sub: 'Compare fares before you book', cta: 'Compare', href: skyscannerFlightsUrl(city) });
+    }
+    if (isAffiliateSectionEnabled('transfer')) {
+      rows.push({ icon: 'car-taxi-front', title: 'Book an airport transfer', sub: `Pre-book a ride from the airport in ${escapeHtml(city)}`, cta: 'Book', href: getTransferUrl(city) });
+    }
+    const mapToggleWrap = document.getElementById('ai-route-map-toggle-wrap');
+    if (mapToggleWrap && !mapToggleWrap.classList.contains('hidden')) {
+      rows.push({ icon: 'map', title: 'View route on map', sub: 'See every stop plotted, with walking & driving times', cta: 'Open', onclick: 'essentialsOpenMap()' });
+    }
+    if (isAffiliateSectionEnabled('insurance')) {
+      rows.push({ icon: 'shield-check', title: 'Travel insurance', sub: 'Cover this trip in case plans change', cta: 'Cover', href: safetyWingUrl() });
+    }
+    if (!rows.length) return '';
+    return `
+      <div class="bento-card bg-white rounded-[26px] p-4 md:p-6">
+        <div class="text-[11px] font-semibold tracking-wide text-gray-400 uppercase mb-3 flex items-center gap-1.5"><i data-lucide="shield-check" class="w-3.5 h-3.5 text-[#6D28D9]"></i>Before you go — ${escapeHtml(city)}</div>
+        <div class="flex flex-col">
+          ${rows.map(r => `
+            <div class="flex items-center gap-3 py-2.5 border-b border-gray-100 last:border-0">
+              <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-[#8B5CF6] to-[#6D28D9] flex items-center justify-center flex-shrink-0"><i data-lucide="${r.icon}" class="w-4 h-4 text-white"></i></div>
+              <div class="flex-1 min-w-0">
+                <div class="text-xs font-medium truncate">${r.title}</div>
+                <div class="text-[10px] text-gray-400 truncate">${r.sub}</div>
+              </div>
+              ${r.onclick
+                ? `<button type="button" onclick="${r.onclick}" class="text-[11px] font-medium text-[#6D28D9] flex-shrink-0 whitespace-nowrap">${r.cta} →</button>`
+                : `<a href="${r.href}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="text-[11px] font-medium text-[#6D28D9] flex-shrink-0 whitespace-nowrap">${r.cta} →</a>`}
+            </div>`).join('')}
+        </div>
+      </div>`;
+  }
+  // "View route on map" row inside the essentials panel: opens the map
+  // section if it isn't already, then scrolls to it — same map-open logic
+  // as the full "View route on map" banner, just reachable from here too.
+  function essentialsOpenMap() {
+    const section = document.getElementById('ai-route-map-section');
+    if (section && section.classList.contains('hidden')) {
+      toggleAiRouteMap();
+    }
+    if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
   function copyAiRouteLink() {
     const id = window._aiRouteVideoId;
@@ -3377,10 +3462,18 @@
       // Reset AI route filters to "All"
       document.querySelectorAll('.ai-filter-chip').forEach(c => {
         c.classList.remove('is-active','bg-[#8B5CF6]','text-white');
-        c.classList.add('text-gray-600');
+        if (c.classList.contains('ai-filter-chip-essentials')) {
+          c.classList.add('bg-[#F1EEFF]', 'text-[#6D28D9]');
+        } else {
+          c.classList.add('text-gray-600');
+        }
       });
-      const allChip = document.querySelector('.ai-filter-chip');
+      const allChip = document.getElementById('ai-filter-chip-all');
       if (allChip) { allChip.classList.add('is-active','bg-[#8B5CF6]','text-white'); allChip.classList.remove('text-gray-600'); }
+      const essentialsPanelReset = document.getElementById('ai-route-essentials-panel');
+      if (essentialsPanelReset) essentialsPanelReset.classList.add('hidden');
+      const daysContainerReset = document.getElementById('ai-route-days');
+      if (daysContainerReset) daysContainerReset.classList.remove('hidden');
       renderAiRoute(data.itinerary, data.video_id, url);
       showScreen('ai-route');
     } catch (err) {

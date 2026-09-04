@@ -38,7 +38,7 @@ from fastapi.staticfiles import StaticFiles
 from models import (
     ExtractRequest, ExtractResponse, Itinerary, Comment, ReviewCreate, Review,
     ReviewsResponse, RouteMeta, SiteSettings, TripCandidate, TripCandidatesRequest,
-    TripCandidatesResponse,
+    TripCandidatesResponse, TripHotelRequest, TripHotelRecommendation, TripHotelResponse,
 )
 import database
 from extractor import (
@@ -53,8 +53,12 @@ from quality_check import ai_quality_check
 from places import (
     enrich_itinerary_with_photos, _unsplash_candidates, _attribution_from_candidate,
     _trigger_unsplash_download, _get_place_photo_and_location, search_attractions_broad,
+    search_hotels_near,
 )
-from trip_builder import is_open as trip_place_is_open, fits_budget, curate_candidates
+from trip_builder import (
+    is_open as trip_place_is_open, fits_budget, curate_candidates,
+    cluster_center, pick_hotel, hotel_to_recommendation_dict,
+)
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 
@@ -404,6 +408,55 @@ def get_trip_candidates(req: TripCandidatesRequest):
     return TripCandidatesResponse(
         destination=city, budget=budget,
         candidates=[TripCandidate(**c) for c in curated],
+        cached=False,
+    )
+
+
+@app.post("/trip/hotel", response_model=TripHotelResponse)
+def get_trip_hotel(req: TripHotelRequest):
+    """
+    "Build Your Own Trip" Phase B — recommends a single hotel matching the
+    chosen budget tier, geographically anchored to whichever attractions
+    the traveler selected from /trip/candidates. LOCKED LOGIC: the hotel is
+    always open and 4.0+ rated regardless of budget (see
+    trip_builder.pick_hotel) — "cheap" only changes the room-rate tier, not
+    location quality. Cached by (city, budget, rough selection centroid) —
+    see database.get_trip_hotel_cache/save_trip_hotel_cache.
+    """
+    city = req.destination.strip()
+    budget = req.budget.strip().lower()
+    if not city:
+        raise HTTPException(400, "Missing destination")
+    if budget not in _TRIP_BUDGET_TIERS:
+        raise HTTPException(400, f"budget must be one of: {', '.join(sorted(_TRIP_BUDGET_TIERS))}")
+    if not req.selected_attractions:
+        raise HTTPException(400, "selected_attractions is required to anchor the hotel search")
+
+    center = cluster_center([(a.lat, a.lng) for a in req.selected_attractions])
+    if center is None:
+        raise HTTPException(400, "selected_attractions had no usable coordinates")
+    lat, lng = center
+
+    cached = database.get_trip_hotel_cache(city, budget, lat, lng)
+    if cached is not None:
+        print(f"[TripBuilder] Hotel cache HIT for {city} / {budget} near ({lat:.2f}, {lng:.2f})")
+        return TripHotelResponse(
+            destination=city, budget=budget,
+            hotel=TripHotelRecommendation(**cached) if cached else None,
+            cached=True,
+        )
+
+    print(f"[TripBuilder] Hotel cache MISS for {city} / {budget} near ({lat:.2f}, {lng:.2f}) — searching Places")
+    raw_hotels = search_hotels_near(lat, lng, city)
+    chosen = pick_hotel(raw_hotels, budget)
+    hotel_dict = hotel_to_recommendation_dict(chosen, city) if chosen else None
+    print(f"[TripBuilder] {city}/{budget}: {len(raw_hotels)} raw hotels -> "
+          f"{'picked ' + hotel_dict['name'] if hotel_dict else 'none qualified (4.0+ rating)'}")
+
+    database.save_trip_hotel_cache(city, budget, lat, lng, hotel_dict, ttl_days=_TRIP_CACHE_TTL_DAYS)
+    return TripHotelResponse(
+        destination=city, budget=budget,
+        hotel=TripHotelRecommendation(**hotel_dict) if hotel_dict else None,
         cached=False,
     )
 

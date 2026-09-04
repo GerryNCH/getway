@@ -363,6 +363,25 @@ def curate_candidates(destination: str, raw_places: list[dict]) -> tuple[list[di
             if candidate["is_free"] or _price_string_means_free(estimated_price):
                 candidate["is_free"] = True
                 candidate["estimated_price"] = ""
+            # ROOT CAUSE of a real bug: Google Places Text Search occasionally
+            # returns a result with no `location` field at all — confirmed by
+            # inspecting a live saved Norway trip where an "art workshops"
+            # activity-type search surfaced two geographically nonsensical
+            # results (one a well-known Utah, USA landmark) that both came
+            # back with lat=None, lng=None. Left in, a coordinate-less
+            # candidate is worse than merely "not on the map": since
+            # _nearest_neighbor_order pushes every coordinate-less
+            # attraction to the END of its path (nothing to route it by),
+            # several of them can land CONTIGUOUSLY and get sliced into the
+            # SAME day by _split_evenly_by_proximity — producing a day with
+            # zero mappable stops at all ("No map coordinates for this day
+            # yet."), not just one missing pin. Dropped here instead, before
+            # the traveler can ever select one — it's not just unmappable,
+            # it's also unverifiable as actually being IN the destination.
+            if candidate["lat"] is None or candidate["lng"] is None:
+                print(f"[TripBuilder] Dropping candidate '{candidate.get('name')}' — Places returned no location "
+                      f"for it (can't be placed on the map or trusted as being in {destination})")
+                continue
             candidates.append(candidate)
         return candidates, cost_usd
 
@@ -377,10 +396,14 @@ def curate_candidates(destination: str, raw_places: list[dict]) -> tuple[list[di
         stop_reason = getattr(locals().get("response"), "stop_reason", None)
         stop_reason_note = f" (stop_reason={stop_reason})" if stop_reason else ""
         print(f"[TripBuilder] AI curation failed (non-fatal, returning unfiltered list): {type(e).__name__}: {e}{stop_reason_note}")
-        return [
+        fallback_candidates = [
             _place_to_candidate_dict(p, section=p.get("_section", "attraction"))
             for p in raw_places
-        ], cost_usd
+        ]
+        # Same coordinate-less filter as the AI-success path above — a
+        # candidate Places couldn't geolocate is dropped here too, not just
+        # on the happy path.
+        return [c for c in fallback_candidates if c["lat"] is not None and c["lng"] is not None], cost_usd
 
 
 # ── Phase B: hotel selection ─────────────────────────────────────────────

@@ -648,7 +648,7 @@
 <div id="build-trip-preview-bar" class="hidden bg-[#111827] text-white text-xs md:text-sm px-5 md:px-14 py-3 flex items-center justify-between gap-3 flex-wrap">
   <span class="flex items-center gap-1.5"><i data-lucide="eye" class="w-3.5 h-3.5"></i>Preview — not saved yet</span>
   <div class="flex items-center gap-2">
-    <button type="button" onclick="backToBuildTripStep3()" class="btn-outline-interactive h-[34px] px-3.5 border border-white/30 text-white text-xs font-medium rounded-full">Edit selections</button>
+    <button type="button" onclick="backToBuildTripStep4()" class="btn-outline-interactive h-[34px] px-3.5 border border-white/30 text-white text-xs font-medium rounded-full">Edit selections</button>
     <button type="button" id="build-trip-save-btn" onclick="saveBuiltTrip()" class="btn-interactive h-[34px] px-4 bg-[#8B5CF6] text-white text-xs font-medium rounded-full">Save trip</button>
   </div>
 </div>
@@ -818,10 +818,11 @@
 <!-- #build-trip in the URL, or run startBuildTrip() from the browser       -->
 <!-- console. Remove/replace this hash check in handleBuildTripHash() once  -->
 <!-- Phase F adds the real homepage link.                                   -->
-<!-- Step 4's actual preview reuses screen-ai-route's own rendering code    -->
-<!-- (renderAiRoute) — this screen's own #build-trip-step4 is only a brief  -->
+<!-- Step 5's actual preview reuses screen-ai-route's own rendering code    -->
+<!-- (renderAiRoute) — this screen's own #build-trip-step5 is only a brief  -->
 <!-- loading state while POST /trip/build is in flight; see                 -->
-<!-- buildAndPreviewTrip() below. -->
+<!-- buildAndPreviewTrip() below. Steps: 1 destination/days/people, 2       -->
+<!-- budget, 3 activity type, 4 attraction checklist, 5 build/preview.      -->
 <!-- ====================================================================== -->
 <div id="screen-build-trip" class="screen">
 <div class="flex justify-center min-h-screen">
@@ -886,8 +887,22 @@
     </div>
     <button type="button" onclick="showBuildTripStep(1)" class="w-full text-center text-xs text-gray-400 hover:text-gray-600">&larr; Back</button>
   </div>
-  <!-- Step 3: candidate checklist -->
+  <!-- Step 3: activity type (multi-select, "Mix of Everything" is mutually
+       exclusive with the individual chips) — see toggleBuildTripActivityType(). -->
   <div id="build-trip-step3" class="hidden mx-5 md:mx-0 px-6 md:px-10 py-9 md:py-12 glass-card rounded-[28px]">
+    <div class="text-center mb-6">
+      <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">Build Your Own Trip</div>
+      <div class="font-serif-display text-[26px] md:text-3xl mb-2">What are you into?</div>
+      <div class="text-xs md:text-sm text-gray-600 leading-relaxed px-2.5">Pick as many as you like — we'll mix them in alongside the destination's top sights.</div>
+    </div>
+    <div id="build-trip-activity-grid" class="grid grid-cols-3 gap-2.5 mb-6"></div>
+    <button id="build-trip-activity-continue-btn" onclick="buildTripStep3Continue()" disabled class="btn-interactive w-full h-[50px] flex items-center justify-center gap-2 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl opacity-40 pointer-events-none mb-3">
+      Continue <i data-lucide="arrow-right" class="w-4 h-4"></i>
+    </button>
+    <button type="button" onclick="showBuildTripStep(2)" class="w-full text-center text-xs text-gray-400 hover:text-gray-600">&larr; Back</button>
+  </div>
+  <!-- Step 4: candidate checklist -->
+  <div id="build-trip-step4" class="hidden mx-5 md:mx-0 px-6 md:px-10 py-9 md:py-12 glass-card rounded-[28px]">
     <div class="text-center mb-6">
       <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">Build Your Own Trip</div>
       <div class="font-serif-display text-[26px] md:text-3xl mb-2">Pick what you want to see</div>
@@ -907,17 +922,17 @@
       <div id="build-trip-candidates-items" class="space-y-2.5 max-h-[50vh] overflow-y-auto mb-6 pr-1"></div>
       <div class="flex items-center justify-between mb-3">
         <span id="build-trip-selected-count" class="text-[11px] text-gray-400">Select at least one place</span>
-        <button type="button" onclick="showBuildTripStep(2)" class="text-xs text-gray-400 hover:text-gray-600">&larr; Back</button>
+        <button type="button" onclick="showBuildTripStep(3)" class="text-xs text-gray-400 hover:text-gray-600">&larr; Back</button>
       </div>
-      <button id="build-trip-continue-btn" onclick="buildTripStep3Continue()" disabled class="btn-interactive w-full h-[50px] flex items-center justify-center gap-2 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl opacity-40 pointer-events-none">
+      <button id="build-trip-continue-btn" onclick="buildTripStep4Continue()" disabled class="btn-interactive w-full h-[50px] flex items-center justify-center gap-2 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl opacity-40 pointer-events-none">
         Build my itinerary <i data-lucide="sparkles" class="w-4 h-4"></i>
       </button>
     </div>
   </div>
-  <!-- Step 4: brief loading state while /trip/build runs — the actual
+  <!-- Step 5: brief loading state while /trip/build runs — the actual
        preview is rendered into screen-ai-route via renderAiRoute(), reused
        as-is; see buildAndPreviewTrip(). -->
-  <div id="build-trip-step4" class="hidden mx-5 md:mx-0 px-6 md:px-10 py-16 md:py-20 text-center glass-card rounded-[28px]">
+  <div id="build-trip-step5" class="hidden mx-5 md:mx-0 px-6 md:px-10 py-16 md:py-20 text-center glass-card rounded-[28px]">
     <div class="w-16 h-16 bg-[#F1EEFF] rounded-full flex items-center justify-center mx-auto mb-6">
       <i data-lucide="route" class="w-6 h-6 text-[#8B5CF6] animate-pulse"></i>
     </div>
@@ -3220,11 +3235,15 @@
   // TEMPORARY test entry point: visit this page with #build-trip in the
   // URL, or run startBuildTrip() from the console — see
   // handleBuildTripHash() below. Not linked from the homepage yet; that's
-  // Phase F. Step 4's actual preview and the final saved trip page both
+  // Phase F. Step 5's actual preview and the final saved trip page both
   // reuse screen-ai-route's own renderAiRoute() — no new rendering code.
+  // Steps: 1 destination/days/people, 2 budget, 3 activity type,
+  // 4 attraction checklist, 5 build/preview.
   // ======================================================================
   let _buildTripState = {
     destination: '', days: 3, people: 2, budget: '',
+    activityTypeSelection: new Set(),  // slugs (or 'mix') currently toggled in step3
+    activityTypes: [],        // expanded final slug list sent to /trip/candidates + /trip/build
     candidates: [],           // raw TripCandidate objects from /trip/candidates
     selected: new Set(),      // indices into `candidates` currently checked
     selectedAttractions: [],  // the TripCandidate objects actually sent to /trip/build
@@ -3234,6 +3253,7 @@
   function startBuildTrip() {
     _buildTripState = {
       destination: '', days: 3, people: 2, budget: '',
+      activityTypeSelection: new Set(), activityTypes: [],
       candidates: [], selected: new Set(), selectedAttractions: [],
       previewItinerary: null, slug: null,
     };
@@ -3243,7 +3263,7 @@
     showScreen('build-trip');
   }
   function showBuildTripStep(n) {
-    [1, 2, 3, 4].forEach(i => {
+    [1, 2, 3, 4, 5].forEach(i => {
       const el = document.getElementById('build-trip-step' + i);
       if (el) el.classList.toggle('hidden', i !== n);
     });
@@ -3263,6 +3283,70 @@
   function chooseBuildTripBudget(tier) {
     _buildTripState.budget = tier;
     showBuildTripStep(3);
+    renderBuildTripActivityChips();
+  }
+  // ── Activity type step (step3) ──────────────────────────────────────
+  const BUILD_TRIP_ACTIVITY_TYPES = [
+    { slug: 'nightlife', label: 'Nightlife & Bars', icon: 'martini' },
+    { slug: 'nature', label: 'Nature & Hiking', icon: 'trees' },
+    { slug: 'history', label: 'History & Culture', icon: 'landmark' },
+    { slug: 'beach', label: 'Beach & Water', icon: 'waves' },
+    { slug: 'food', label: 'Food & Drink', icon: 'utensils' },
+    { slug: 'art', label: 'Art & Museums', icon: 'palette' },
+    { slug: 'adventure', label: 'Adventure', icon: 'compass' },
+    { slug: 'family', label: 'Family-Friendly', icon: 'users' },
+  ];
+  const BUILD_TRIP_MIX_SLUG = 'mix';
+  function renderBuildTripActivityChips() {
+    const grid = document.getElementById('build-trip-activity-grid');
+    if (!grid) return;
+    const selected = _buildTripState.activityTypeSelection;
+    const chipHtml = (slug, label, icon) => {
+      const isActive = selected.has(slug);
+      return `
+        <button type="button" onclick="toggleBuildTripActivityType('${slug}')" class="btn-interactive rounded-2xl p-3 text-center border transition-colors ${isActive ? 'bg-[#8B5CF6] text-white border-[#8B5CF6]' : 'bg-[#F8F6FF] hover:bg-[#F1EEFF] text-gray-700 border-transparent'}">
+          <i data-lucide="${icon}" class="w-4 h-4 mx-auto mb-1.5 ${isActive ? 'text-white' : 'text-[#7C3AED]'}"></i>
+          <span class="text-[11px] font-medium block leading-tight">${label}</span>
+        </button>`;
+    };
+    grid.innerHTML = BUILD_TRIP_ACTIVITY_TYPES.map(t => chipHtml(t.slug, t.label, t.icon)).join('')
+      + chipHtml(BUILD_TRIP_MIX_SLUG, 'Mix of Everything', 'shuffle');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    updateBuildTripActivityContinueBtn();
+  }
+  function toggleBuildTripActivityType(slug) {
+    const selected = _buildTripState.activityTypeSelection;
+    if (slug === BUILD_TRIP_MIX_SLUG) {
+      // "Mix of Everything" is mutually exclusive with every individual
+      // chip — selecting it means "all of them", so it replaces whatever
+      // individual chips were picked; toggling it off just clears the set.
+      const wasOn = selected.has(BUILD_TRIP_MIX_SLUG);
+      selected.clear();
+      if (!wasOn) selected.add(BUILD_TRIP_MIX_SLUG);
+    } else {
+      selected.delete(BUILD_TRIP_MIX_SLUG);  // any individual pick cancels "mix"
+      if (selected.has(slug)) selected.delete(slug);
+      else selected.add(slug);
+    }
+    renderBuildTripActivityChips();
+  }
+  function updateBuildTripActivityContinueBtn() {
+    const btn = document.getElementById('build-trip-activity-continue-btn');
+    if (!btn) return;
+    const hasSelection = _buildTripState.activityTypeSelection.size > 0;
+    btn.disabled = !hasSelection;
+    btn.classList.toggle('opacity-40', !hasSelection);
+    btn.classList.toggle('pointer-events-none', !hasSelection);
+  }
+  function buildTripStep3Continue() {
+    const selected = _buildTripState.activityTypeSelection;
+    if (!selected.size) return;
+    // "Mix of Everything" is expanded client-side into all 8 slugs — the
+    // backend never needs to know "mix" is a concept, just a slug list.
+    _buildTripState.activityTypes = selected.has(BUILD_TRIP_MIX_SLUG)
+      ? BUILD_TRIP_ACTIVITY_TYPES.map(t => t.slug)
+      : BUILD_TRIP_ACTIVITY_TYPES.map(t => t.slug).filter(s => selected.has(s));
+    showBuildTripStep(4);
     loadBuildTripCandidates();
   }
   const BUILD_TRIP_PRICE_LEVEL_LABEL = {
@@ -3280,7 +3364,11 @@
       const res = await fetch(`${BACKEND_URL}/trip/candidates`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ destination: _buildTripState.destination, budget: _buildTripState.budget })
+        body: JSON.stringify({
+          destination: _buildTripState.destination,
+          budget: _buildTripState.budget,
+          activity_types: _buildTripState.activityTypes,
+        })
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -3296,7 +3384,7 @@
     } catch (err) {
       document.getElementById('build-trip-candidates-loading').classList.add('hidden');
       alert('Something went wrong finding places: ' + err.message);
-      showBuildTripStep(2);
+      showBuildTripStep(3);
     }
   }
   function renderBuildTripCandidates() {
@@ -3362,14 +3450,14 @@
     }
     if (countEl) countEl.textContent = count ? `${count} selected` : 'Select at least one place';
   }
-  function buildTripStep3Continue() {
+  function buildTripStep4Continue() {
     const selectedCandidates = _buildTripState.candidates.filter((_, i) => _buildTripState.selected.has(i));
     if (!selectedCandidates.length) return;
     _buildTripState.selectedAttractions = selectedCandidates;
     buildAndPreviewTrip();
   }
   async function buildAndPreviewTrip() {
-    showBuildTripStep(4);
+    showBuildTripStep(5);
     try {
       const res = await fetch(`${BACKEND_URL}/trip/build`, {
         method: 'POST',
@@ -3394,14 +3482,14 @@
       showScreen('ai-route');
     } catch (err) {
       alert('Something went wrong building your itinerary: ' + err.message);
-      showBuildTripStep(3);
+      showBuildTripStep(4);
       showScreen('build-trip');
     }
   }
-  function backToBuildTripStep3() {
+  function backToBuildTripStep4() {
     const bar = document.getElementById('build-trip-preview-bar');
     if (bar) bar.classList.add('hidden');
-    showBuildTripStep(3);
+    showBuildTripStep(4);
     showScreen('build-trip');
   }
   async function saveBuiltTrip() {

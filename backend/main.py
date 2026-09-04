@@ -54,12 +54,13 @@ from quality_check import ai_quality_check
 from places import (
     enrich_itinerary_with_photos, _unsplash_candidates, _attribution_from_candidate,
     _trigger_unsplash_download, _get_place_photo_and_location, search_attractions_broad,
-    search_hotels_near, _get_destination_gallery_unsplash,
+    search_hotels_near, _get_destination_gallery_unsplash, search_activities_by_type,
+    _ACTIVITY_TYPE_QUERY_TERMS,
 )
 from trip_builder import (
     is_open as trip_place_is_open, fits_budget, curate_candidates,
     cluster_center, pick_hotel, hotel_to_recommendation_dict,
-    assemble_days, recommend_car_rental,
+    assemble_days, recommend_car_rental, dedupe_places,
 )
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -371,17 +372,38 @@ _TRIP_BUDGET_TIERS = {"cheap", "mid", "luxury"}
 _TRIP_CACHE_TTL_DAYS = 30
 
 
+def _normalize_activity_types(raw: list[str]) -> list[str]:
+    """
+    Strips/lowercases each slug, drops anything not in
+    places._ACTIVITY_TYPE_QUERY_TERMS, and dedupes — order-preserving.
+    Empty input (the default, old behavior) returns [].
+    """
+    normalized: list[str] = []
+    for t in raw or []:
+        slug = (t or "").strip().lower()
+        if slug and slug in _ACTIVITY_TYPE_QUERY_TERMS and slug not in normalized:
+            normalized.append(slug)
+    return normalized
+
+
 @app.post("/trip/candidates", response_model=TripCandidatesResponse)
 def get_trip_candidates(req: TripCandidatesRequest):
     """
     "Build Your Own Trip" secondary feature — Phase A (backend only, no
     frontend yet). Returns a curated, budget-appropriate list of candidate
     attractions for a destination: a broad Places search
-    (places.search_attractions_broad), filtered for open/budget-fit
-    (trip_builder.is_open / fits_budget), then run through an AI curation
-    pass (trip_builder.curate_candidates) that drops junk/duplicates and
-    rewrites descriptions in site tone. Cached by (city, budget) — see
+    (places.search_attractions_broad), optionally combined with one Text
+    Search per requested activity type (places.search_activities_by_type —
+    e.g. "nightlife", "history"), deduplicated (trip_builder.dedupe_places)
+    so the AI curation pass never sees the same place twice. Filtered for
+    open/budget-fit (trip_builder.is_open / fits_budget), then run through
+    an AI curation pass (trip_builder.curate_candidates) that drops
+    junk/duplicates and rewrites descriptions in site tone. Cached by
+    (city, budget, activity_types) — see
     database.get_trip_candidates_cache/save_trip_candidates_cache.
+
+    activity_types is optional; empty (the default) is the original
+    attractions-only behavior, unchanged.
     """
     city = req.destination.strip()
     budget = req.budget.strip().lower()
@@ -389,24 +411,29 @@ def get_trip_candidates(req: TripCandidatesRequest):
         raise HTTPException(400, "Missing destination")
     if budget not in _TRIP_BUDGET_TIERS:
         raise HTTPException(400, f"budget must be one of: {', '.join(sorted(_TRIP_BUDGET_TIERS))}")
+    activity_types = _normalize_activity_types(req.activity_types)
 
-    cached = database.get_trip_candidates_cache(city, budget)
+    cached = database.get_trip_candidates_cache(city, budget, activity_types)
     if cached is not None:
-        print(f"[TripBuilder] Cache HIT for {city} / {budget} ({len(cached)} candidates)")
+        print(f"[TripBuilder] Cache HIT for {city} / {budget} / activity_types={activity_types or 'none'} ({len(cached)} candidates)")
         return TripCandidatesResponse(
             destination=city, budget=budget,
             candidates=[TripCandidate(**c) for c in cached],
             cached=True,
         )
 
-    print(f"[TripBuilder] Cache MISS for {city} / {budget} — searching Places")
+    print(f"[TripBuilder] Cache MISS for {city} / {budget} / activity_types={activity_types or 'none'} — searching Places")
     raw_places = search_attractions_broad(city)
+    for activity_type in activity_types:
+        raw_places += search_activities_by_type(city, activity_type)
+    raw_places = dedupe_places(raw_places)
     fitted = [p for p in raw_places if trip_place_is_open(p) and fits_budget(p, budget)]
     curated, cost_usd = curate_candidates(city, fitted)
-    print(f"[TripBuilder] {city}/{budget}: {len(raw_places)} raw -> {len(fitted)} fit budget -> "
+    print(f"[TripBuilder] {city}/{budget}: {len(raw_places)} raw (deduped across "
+          f"{1 + len(activity_types)} search(es)) -> {len(fitted)} fit budget -> "
           f"{len(curated)} after AI curation (${cost_usd:.4f})")
 
-    database.save_trip_candidates_cache(city, budget, curated, ttl_days=_TRIP_CACHE_TTL_DAYS)
+    database.save_trip_candidates_cache(city, budget, curated, activity_types=activity_types, ttl_days=_TRIP_CACHE_TTL_DAYS)
     return TripCandidatesResponse(
         destination=city, budget=budget,
         candidates=[TripCandidate(**c) for c in curated],

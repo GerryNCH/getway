@@ -160,7 +160,7 @@ Schema:
   "destination": "City, Country",
   "duration": "X days",
   "summary": "2-3 sentence intro: what makes this destination special, and what this specific route covers (e.g. its vibe, standout stops, or theme)",
-  "fun_fact": "One genuinely true, specific, well-known fun fact about the destination itself (the city/region/country) — NOT about any specific stop in this route. One sentence, max ~20 words.",
+  "fun_fact": "One genuinely true fact about the destination itself that's surprising, quirky, or slightly odd — the kind that makes someone think 'huh, no way' or 'okay, now I want to go there.' NOT about any specific stop in this route, and NOT a flat postcard statement. One sentence, max ~20 words.",
   "price_category": "€ | €€ | €€€",
   "tags": ["0-3 of: most_popular, luxury, budget_friendly, exotic, mountain, city, beach"],
   "car_rental_recommended": true,
@@ -187,12 +187,19 @@ Schema:
 
 "fun_fact" — one REAL, verifiable fact about the destination itself (the
 city/region/country as a whole), never about a specific stop in this
-itinerary. Never invent or guess one — if you aren't confident a fact is
-actually true, write a more general but definitely-true fact instead
-(e.g. fall back to something well-established like a geographic or
-historical fact rather than a specific, possibly-wrong statistic). One
-sentence, engaging and specific — not generic filler like "has beautiful
-beaches". No source citation needed, just the fact itself.
+itinerary. Aim for something that actually surprises people — a fact that
+makes them go "wait, really?" and gives them a genuine reason to want to
+visit, not a flat, generic statement. Good angles to look for: an unusual
+law or local custom, a record the place quietly holds, a strange bit of
+history, an oddly specific number, something counter-intuitive about its
+size/age/location, or a "most people don't know this" detail. Bad
+examples to avoid: "has beautiful beaches", "is known for its rich
+culture", "is a popular tourist destination" — these say nothing. Never
+invent or guess a fact — if you aren't confident an intriguing fact is
+actually true, fall back to a more general but definitely-true fact
+instead (e.g. a well-established geographic or historical fact) rather
+than risk a wrong specific statistic. One sentence. No source citation
+needed, just the fact itself.
 
 "price_category" — your best estimate of the overall trip's price level based
 on what's actually visible: budget hostel/guesthouse, street food, public
@@ -406,12 +413,14 @@ def analyse_frames(frame_paths: list[str], comments: list[dict] | None = None) -
     return Itinerary(**data), price_category, tags, cost_usd
 
 
-_FUN_FACT_SYSTEM = """You write one short, genuinely true, well-known fun fact about a travel destination for a travel app's homepage.
+_FUN_FACT_SYSTEM = """You write one short, genuinely true, surprising fun fact about a travel destination for a travel app's homepage — the kind that makes someone think "huh, no way" or "okay, now I actually want to go there."
 
 Rules:
-- Must be a REAL, verifiable fact — never invent or guess. If you are not confident a fact is true, write a more general but still definitely-true fact instead.
+- Must be a REAL, verifiable fact — never invent or guess. If you are not confident a surprising fact is true, write a more general but still definitely-true fact instead.
 - About the destination itself (the city/region/country) — not about any specific hotel, restaurant, or attraction.
-- One sentence, max ~20 words, engaging and specific — not generic filler like "has beautiful beaches".
+- Favor quirky, little-known, or counter-intuitive angles: an unusual law or custom, a record the place quietly holds, a strange bit of history, an oddly specific number, a "most people don't know this" detail.
+- Avoid flat, generic filler — sentences like "has beautiful beaches", "is known for its rich culture", or "is a popular tourist destination" say nothing and should never be the output.
+- One sentence, max ~20 words.
 - No markdown, no surrounding quotes — just the sentence itself.
 
 Reply with ONLY the fact sentence, nothing else."""

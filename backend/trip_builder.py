@@ -168,7 +168,8 @@ def fits_budget(place: dict, budget: str) -> bool:
     return price_level in _PRICE_LEVEL_BY_TIER.get(budget, set())
 
 
-def _place_to_candidate_dict(place: dict, description: str = "", category: str = "sight") -> dict:
+def _place_to_candidate_dict(place: dict, description: str = "", category: str = "sight",
+                              section: str = "attraction", estimated_price: str = "") -> dict:
     """Converts one raw Places result into a TripCandidate-shaped dict."""
     loc = place.get("location") or {}
     photo_url = photo_url_from_places_photos(place.get("photos", []))
@@ -185,6 +186,8 @@ def _place_to_candidate_dict(place: dict, description: str = "", category: str =
         "lat": loc.get("latitude"),
         "lng": loc.get("longitude"),
         "is_famous": _is_famous(place),
+        "section": section,
+        "estimated_price": estimated_price,
     }
 
 
@@ -197,11 +200,12 @@ Your job for EACH candidate:
 2. DROP near-duplicates of another candidate in the same list (e.g. two listings for the same landmark under slightly different names) — keep only the better-named one.
 3. For everything you keep, write ONE short, engaging sentence description in GetWay's tone — like a travel writer's pick, not a dry Google Maps category label. Never invent specific facts you can't reasonably infer from the name/type.
 4. Assign one category: sight | food | activity | beach | village. Never "hotel" — this list never includes accommodation.
+5. "estimated_price" — a short realistic ballpark price string (e.g. "€16", "€10-15", "€25-30") ONLY for a paid attraction/activity/tour you have reasonably confident general knowledge of — well-known museums, monuments, landmarks, popular tours. Leave it as "" (empty string) whenever the place is free, OR whenever you are not confident enough in a specific number to avoid a misleading guess. Never invent a precise-sounding price for a place you don't actually have real knowledge of — a missing estimate is far better than a wrong one.
 
 Reply with ONLY valid JSON, no markdown fences:
-{"candidates": [{"index": 0, "description": "...", "category": "sight"}]}
+{"candidates": [{"index": 0, "description": "...", "category": "sight", "estimated_price": "€16"}]}
 
-Only include entries you decided to KEEP — dropped candidates simply don't appear in the array. "index" must exactly match an index from the input."""
+Only include entries you decided to KEEP — dropped candidates simply don't appear in the array. "index" must exactly match an index from the input. "estimated_price" must be present on every kept entry, as "" when not applicable/not confident."""
 
 
 def curate_candidates(destination: str, raw_places: list[dict]) -> tuple[list[dict], float]:
@@ -262,12 +266,17 @@ def curate_candidates(destination: str, raw_places: list[dict]) -> tuple[list[di
                 raw_places[idx],
                 description=item.get("description", ""),
                 category=item.get("category", "sight"),
+                section=raw_places[idx].get("_section", "attraction"),
+                estimated_price=item.get("estimated_price", "") or "",
             ))
         return candidates, cost_usd
 
     except Exception as e:
         print(f"[TripBuilder] AI curation failed (non-fatal, returning unfiltered list): {type(e).__name__}: {e}")
-        return [_place_to_candidate_dict(p) for p in raw_places], cost_usd
+        return [
+            _place_to_candidate_dict(p, section=p.get("_section", "attraction"))
+            for p in raw_places
+        ], cost_usd
 
 
 # ── Phase B: hotel selection ─────────────────────────────────────────────
@@ -482,6 +491,8 @@ def _candidate_dict_to_stop(candidate: dict) -> dict:
         "is_specific_name": True,
         "lat": candidate.get("lat"),
         "lng": candidate.get("lng"),
+        "is_free": candidate.get("is_free", False),
+        "estimated_price": candidate.get("estimated_price", ""),
     }
 
 

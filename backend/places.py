@@ -174,14 +174,14 @@ def search_attractions_broad(city: str, max_results: int = 20, _retries: int = 2
 # frontend/backend pass around; the phrases are only ever used to build a
 # search query here.
 _ACTIVITY_TYPE_QUERY_TERMS = {
-    "nightlife": "nightlife, bars and clubs",
-    "nature": "hiking trails, parks and nature spots",
-    "history": "historical sites, landmarks and museums",
-    "beach": "beaches and water activities",
-    "food": "food tours, markets and culinary experiences",
-    "art": "art galleries and museums",
-    "adventure": "adventure and adrenaline activities",
-    "family": "family-friendly activities and attractions",
+    "nightlife": "nightlife tours, bars and clubs",
+    "nature": "guided hiking tours and outdoor excursions",
+    "history": "guided historical walking tours",
+    "beach": "boat tours, sailing and water sports",
+    "food": "food tours, cooking classes and tastings",
+    "art": "art workshops and painting classes",
+    "adventure": "adventure tours and adrenaline activities",
+    "family": "family-friendly tours and activities",
 }
 
 

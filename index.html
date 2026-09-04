@@ -3315,6 +3315,18 @@
       const checked = _buildTripState.selected.has(i);
       const priceLabel = BUILD_TRIP_PRICE_LEVEL_LABEL[c.price_level] || '';
       const ratingLabel = c.rating ? Number(c.rating).toFixed(1) : '';
+      // Price/free signal — "Free" (park/plaza/monument-type places, see
+      // trip_builder._is_free_by_type) takes priority since it's a
+      // distinct, more useful signal than "no price data at all"; a plain
+      // price-level pill (€/€€/€€€/€€€€) otherwise, styled like the
+      // existing route-card price pill (see renderRoutes' priceCategory
+      // badge) — same small rounded-full chip, just on a light row instead
+      // of a photo overlay.
+      const priceBadge = c.is_free
+        ? `<span class="text-[10px] font-medium text-[#16A34A] bg-[#EFFCF3] px-2 py-0.5 rounded-full">Free</span>`
+        : priceLabel
+        ? `<span class="text-[10px] font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full">${priceLabel}</span>`
+        : '';
       return `
         <label class="flex items-center gap-3 bg-white bento-card rounded-2xl p-3 cursor-pointer">
           <input type="checkbox" data-idx="${i}" ${checked ? 'checked' : ''} onchange="toggleBuildTripCandidate(${i})" class="w-5 h-5 rounded-md accent-[#8B5CF6] flex-shrink-0">
@@ -3326,7 +3338,7 @@
             <div class="text-xs text-gray-500 leading-snug">${escapeHtml(c.description || '')}</div>
             <div class="flex items-center gap-2 mt-1 text-[11px] text-gray-400">
               ${ratingLabel ? `<span class="inline-flex items-center gap-0.5"><i data-lucide="star" class="w-3 h-3 text-amber-500"></i>${ratingLabel}</span>` : ''}
-              ${priceLabel ? `<span>${priceLabel}</span>` : ''}
+              ${priceBadge}
             </div>
           </div>
         </label>`;

@@ -114,6 +114,29 @@ def is_open(place: dict) -> bool:
     return place.get("businessStatus", "") not in _CLOSED_STATUSES
 
 
+def dedupe_places(raw_places: list[dict]) -> list[dict]:
+    """
+    Deduplicates a list of raw Places results — used when merging multiple
+    Text Search calls (the plain attraction search + one call per
+    requested activity type) before AI curation, so a place returned by
+    two different searches (e.g. a famous landmark showing up in both "top
+    attractions" and "historical sites") doesn't get shown twice or cost a
+    second curation judgment. Prefers Places' own `id` field when present
+    (the most reliable identifier); falls back to a lowercased/trimmed
+    displayName match when `id` is missing. Order-preserving — first
+    occurrence wins.
+    """
+    seen: set[str] = set()
+    result: list[dict] = []
+    for place in raw_places:
+        key = place.get("id") or place.get("displayName", {}).get("text", "").strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        result.append(place)
+    return result
+
+
 def _is_famous(place: dict) -> bool:
     rating = place.get("rating", 0) or 0
     reviews = place.get("userRatingCount", 0) or 0

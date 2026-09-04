@@ -450,10 +450,10 @@ def get_trip_hotel(req: TripHotelRequest):
 
     print(f"[TripBuilder] Hotel cache MISS for {city} / {budget} near ({lat:.2f}, {lng:.2f}) — searching Places")
     raw_hotels = search_hotels_near(lat, lng, city)
-    chosen = pick_hotel(raw_hotels, budget)
+    chosen = pick_hotel(raw_hotels, budget, anchor=(lat, lng))
     hotel_dict = hotel_to_recommendation_dict(chosen, city) if chosen else None
     print(f"[TripBuilder] {city}/{budget}: {len(raw_hotels)} raw hotels -> "
-          f"{'picked ' + hotel_dict['name'] if hotel_dict else 'none qualified (4.0+ rating)'}")
+          f"{'picked ' + hotel_dict['name'] if hotel_dict else 'none qualified (4.0+ rating, within range)'}")
 
     database.save_trip_hotel_cache(city, budget, lat, lng, hotel_dict, ttl_days=_TRIP_CACHE_TTL_DAYS)
     return TripHotelResponse(
@@ -508,7 +508,7 @@ def build_trip(req: TripBuildRequest):
             hotel_dict = cached_hotel or None
         else:
             raw_hotels = search_hotels_near(lat, lng, city)
-            chosen = pick_hotel(raw_hotels, budget)
+            chosen = pick_hotel(raw_hotels, budget, anchor=(lat, lng))
             hotel_dict = hotel_to_recommendation_dict(chosen, city) if chosen else None
             database.save_trip_hotel_cache(city, budget, lat, lng, hotel_dict, ttl_days=_TRIP_CACHE_TTL_DAYS)
 

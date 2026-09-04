@@ -54,6 +54,7 @@ quality_check.py (this module is pure logic; main.py wires it to storage).
 
 import json
 import math
+import statistics
 
 import anthropic
 from places import photo_url_from_places_photos
@@ -65,6 +66,17 @@ _client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
 # in quality_check.py and troll_filter.py.
 _HAIKU_INPUT_PER_MTOK = 1.00
 _HAIKU_OUTPUT_PER_MTOK = 5.00
+
+
+def _haversine_km(a: tuple[float, float], b: tuple[float, float]) -> float:
+    """Great-circle distance between two (lat, lng) points, in km. Shared
+    by pick_hotel's distance sanity check (Phase B) and the day-clustering
+    path-ordering (Phase C)."""
+    lat1, lng1 = math.radians(a[0]), math.radians(a[1])
+    lat2, lng2 = math.radians(b[0]), math.radians(b[1])
+    dlat, dlng = lat2 - lat1, lng2 - lng1
+    h = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlng / 2) ** 2
+    return 2 * 6371 * math.asin(math.sqrt(h))
 
 # Places API (New) businessStatus values. Missing entirely (some results
 # don't set it) is treated as open — Google's own default assumption.
@@ -258,6 +270,25 @@ _HOTEL_PRICE_RANK = {
 # recommendation than a VERY_EXPENSIVE one across town.
 _HOTEL_TARGET_RANK = {"cheap": 1, "mid": 2, "luxury": 3.5}
 
+# ROOT CAUSE of a real bug (see pick_hotel's docstring): places.
+# search_hotels_near's locationBias is only a soft ranking preference in
+# Places API (New) Text Search, NOT a hard geographic filter — Google can
+# and does return text-relevant results well outside the biased circle.
+# Without an explicit distance check, ranking purely by price/rating could
+# (and did) pick a hotel over 1000km from the traveler's actual trip. This
+# is a hard cutoff enforced BEFORE price/rating ranking, independent of
+# whatever radius was used to bias the search itself.
+_HOTEL_MAX_DISTANCE_FROM_ANCHOR_KM = 25.0
+
+
+def _hotel_distance_from_anchor_km(hotel: dict, anchor: tuple[float, float]) -> float | None:
+    """Returns the hotel's distance from `anchor` in km, or None if it has no usable coordinates."""
+    loc = hotel.get("location") or {}
+    lat, lng = loc.get("latitude"), loc.get("longitude")
+    if lat is None or lng is None:
+        return None
+    return _haversine_km(anchor, (lat, lng))
+
 
 def cluster_center(locations: list[tuple[float | None, float | None]]) -> tuple[float, float] | None:
     """
@@ -275,21 +306,40 @@ def cluster_center(locations: list[tuple[float | None, float | None]]) -> tuple[
     return (lat, lng)
 
 
-def pick_hotel(hotels: list[dict], budget: str) -> dict | None:
+def pick_hotel(hotels: list[dict], budget: str, anchor: tuple[float, float] | None = None) -> dict | None:
     """
     Selects the single best hotel from raw Places hotel-search results
     (places.search_hotels_near) for `budget` ("cheap" | "mid" | "luxury").
-    Returns None if no open, 4.0+-rated hotel is present at all.
+    Returns None if no open, 4.0+-rated, geographically-plausible hotel is
+    present at all.
 
     A hotel with no priceLevel at all (common — Places doesn't always set
     it for lodging) is treated as a neutral fit rather than penalized or
     guessed at, and ranked purely by rating in that case — honest
     uncertainty beats a false-precision price match.
+
+    `anchor` should be the same (lat, lng) center passed to
+    places.search_hotels_near for this same search — when given, any
+    result farther than _HOTEL_MAX_DISTANCE_FROM_ANCHOR_KM is excluded
+    BEFORE price/rating ranking (see that constant's comment for why this
+    exists — it's a real-bug fix, not defensive paranoia). Pass None only
+    when no anchor is available; every current call site always has one.
     """
     eligible = [
         h for h in hotels
         if is_open(h) and (h.get("rating", 0) or 0) >= _HOTEL_MIN_RATING
     ]
+    if anchor is not None:
+        still_eligible = []
+        for h in eligible:
+            dist = _hotel_distance_from_anchor_km(h, anchor)
+            if dist is None or dist > _HOTEL_MAX_DISTANCE_FROM_ANCHOR_KM:
+                name = h.get("displayName", {}).get("text", "?")
+                print(f"[TripBuilder] Excluding hotel '{name}' — "
+                      f"{'no coordinates' if dist is None else f'{dist:.0f}km from anchor (max {_HOTEL_MAX_DISTANCE_FROM_ANCHOR_KM:.0f}km)'}")
+                continue
+            still_eligible.append(h)
+        eligible = still_eligible
     if not eligible:
         return None
 
@@ -334,15 +384,6 @@ def hotel_to_recommendation_dict(hotel: dict, city: str) -> dict:
 
 
 # ── Phase C: day-by-day itinerary assembly ──────────────────────────────
-
-def _haversine_km(a: tuple[float, float], b: tuple[float, float]) -> float:
-    """Great-circle distance between two (lat, lng) points, in km."""
-    lat1, lng1 = math.radians(a[0]), math.radians(a[1])
-    lat2, lng2 = math.radians(b[0]), math.radians(b[1])
-    dlat, dlng = lat2 - lat1, lng2 - lng1
-    h = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlng / 2) ** 2
-    return 2 * 6371 * math.asin(math.sqrt(h))
-
 
 def _nearest_neighbor_order(attractions: list[dict]) -> list[dict]:
     """
@@ -437,6 +478,39 @@ def _hotel_dict_to_stop(hotel: dict) -> dict:
     }
 
 
+# Defense-in-depth for the SAME class of bug pick_hotel's anchor filter
+# fixes at the source (see _HOTEL_MAX_DISTANCE_FROM_ANCHOR_KM above): any
+# Stop — hotel or attraction — could in principle end up with a
+# geographically wrong coordinate from a bad Places match. Rather than
+# trust every upstream source to always be right, every built itinerary
+# gets one final pass: a Stop whose coordinates are wildly far from the
+# itinerary's OTHER stops (median-based — robust to a single bad outlier,
+# unlike a mean) gets its coordinates dropped and a warning logged, so the
+# map view just shows no pin/line for that stop instead of drawing a route
+# across half the globe. The stop itself (name/description/card) is never
+# removed — only its lat/lng.
+_MAX_STOP_DISTANCE_FROM_MEDIAN_KM = 100.0
+
+
+def _drop_implausible_stop_coordinates(days: list[dict]) -> None:
+    """Mutates `days` in place — see the module comment above this function."""
+    all_stops = [s for day in days for s in day["stops"]]
+    with_coords = [s for s in all_stops if s.get("lat") is not None and s.get("lng") is not None]
+    if len(with_coords) < 2:
+        return  # nothing to sanity-check against
+    median_point = (
+        statistics.median(s["lat"] for s in with_coords),
+        statistics.median(s["lng"] for s in with_coords),
+    )
+    for s in with_coords:
+        dist = _haversine_km(median_point, (s["lat"], s["lng"]))
+        if dist > _MAX_STOP_DISTANCE_FROM_MEDIAN_KM:
+            print(f"[TripBuilder] Dropping coordinates for stop '{s.get('name')}' — "
+                  f"{dist:.0f}km from the itinerary's other stops (likely a bad Places match)")
+            s["lat"] = None
+            s["lng"] = None
+
+
 def assemble_days(attractions: list[dict], num_days: int, hotel: dict | None) -> list[dict]:
     """
     Turns selected TripCandidate-shaped attraction dicts (+ optionally a
@@ -475,6 +549,8 @@ def assemble_days(attractions: list[dict], num_days: int, hotel: dict | None) ->
         # single empty Day 1 rather than returning an itinerary with zero
         # days at all.
         days = [{"day": 1, "label": "Day 1", "stops": []}]
+
+    _drop_implausible_stop_coordinates(days)
     return days
 
 

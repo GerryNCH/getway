@@ -286,7 +286,19 @@ def curate_candidates(destination: str, raw_places: list[dict]) -> tuple[list[di
     try:
         response = _client.messages.create(
             model="claude-haiku-4-5-20251001",  # cheapest/fastest — this is a curation pass, not the main analysis
-            max_tokens=4000,
+            # 8000, not 4000: a realistic merged candidate list (broad
+            # attraction search + several activity-type searches, e.g. the
+            # "Mix of Everything" activity-type option in index.html) can
+            # send 60-140 raw places through this call. Once is_free was
+            # added alongside estimated_price/description/category, that's
+            # enough per-candidate output to truncate the JSON reply mid-
+            # object well before 4000 tokens (confirmed by estimating
+            # realistic response size at increasing candidate counts — see
+            # this fix's commit message for the numbers) — which throws in
+            # json.loads() and silently lands in the except block below,
+            # every time. stop_reason logging there now confirms this
+            # directly if it ever recurs.
+            max_tokens=8000,
             system=_CURATION_SYSTEM,
             messages=[{"role": "user", "content": json.dumps({
                 "destination": destination,
@@ -332,7 +344,16 @@ def curate_candidates(destination: str, raw_places: list[dict]) -> tuple[list[di
         return candidates, cost_usd
 
     except Exception as e:
-        print(f"[TripBuilder] AI curation failed (non-fatal, returning unfiltered list): {type(e).__name__}: {e}")
+        # `response` may not exist at all if messages.create() itself raised
+        # (network/auth error) before ever assigning it — locals().get()
+        # avoids a NameError in that case, unlike referencing `response`
+        # directly. When it DOES exist (e.g. the exception came from
+        # json.loads on a truncated reply), stop_reason="max_tokens" is the
+        # single most useful piece of evidence for diagnosing this again
+        # without another round of guessing.
+        stop_reason = getattr(locals().get("response"), "stop_reason", None)
+        stop_reason_note = f" (stop_reason={stop_reason})" if stop_reason else ""
+        print(f"[TripBuilder] AI curation failed (non-fatal, returning unfiltered list): {type(e).__name__}: {e}{stop_reason_note}")
         return [
             _place_to_candidate_dict(p, section=p.get("_section", "attraction"))
             for p in raw_places

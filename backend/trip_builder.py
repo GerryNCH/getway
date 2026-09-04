@@ -1,8 +1,10 @@
 """
-trip_builder.py — "Build Your Own Trip" candidate curation (Phase A).
+trip_builder.py — "Build Your Own Trip" candidate curation (Phase A) and
+hotel selection (Phase B).
 
-Turns a broad Google Places attraction search (places.search_attractions_broad)
-into a clean, budget-appropriate candidate list for a destination:
+Phase A turns a broad Google Places attraction search
+(places.search_attractions_broad) into a clean, budget-appropriate
+candidate list for a destination:
   1. Filter out closed places (businessStatus) — is_open()
   2. Classify each place into which budget tier(s) it fits — paid places by
      priceLevel, free places (parks/plazas/outdoor monuments) by type, and
@@ -17,15 +19,28 @@ plain Python (free, exact, instant); the one genuine judgment call (which
 raw Places results are actually worth showing, and how to describe them)
 goes to Haiku.
 
-Deliberately does NOT touch the database — main.py owns the (city, budget)
-cache read/write, same division of responsibility as quality_check.py
-(this module is pure logic; main.py wires it to storage).
+Phase B picks a single recommended hotel, geographically anchored to the
+traveler's selected attractions:
+  4. cluster_center() — centroid of the selected attractions' coordinates
+  5. pick_hotel() — from places.search_hotels_near() results biased toward
+     that centroid, picks the best budget-tier fit among hotels that are
+     open AND 4.0+ rated — LOCKED LOGIC: "cheap" only ever changes which
+     room-rate tier gets picked, never location quality or star rating.
+  6. hotel_to_recommendation_dict() — shapes the chosen hotel into a
+     TripHotelRecommendation-ready dict, with real Booking.com/Expedia
+     affiliate links built via the SAME functions ai_analyzer.py already
+     uses for video-extracted hotel stops (no new affiliate-link logic).
+
+Deliberately does NOT touch the database — main.py owns the (city, budget[,
+location]) cache read/write, same division of responsibility as
+quality_check.py (this module is pure logic; main.py wires it to storage).
 """
 
 import json
 
 import anthropic
-from places import _build_photo_url
+from places import photo_url_from_places_photos
+from ai_analyzer import _booking_affiliate_url, _expedia_affiliate_url
 
 _client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
 
@@ -104,12 +119,7 @@ def fits_budget(place: dict, budget: str) -> bool:
 def _place_to_candidate_dict(place: dict, description: str = "", category: str = "sight") -> dict:
     """Converts one raw Places result into a TripCandidate-shaped dict."""
     loc = place.get("location") or {}
-    photos = place.get("photos", [])
-    photo_url = ""
-    if photos:
-        landscape = [p for p in photos if p.get("widthPx", 0) > p.get("heightPx", 0)]
-        best = max(landscape or photos, key=lambda p: p.get("widthPx", 0))
-        photo_url = _build_photo_url(best.get("name", ""))
+    photo_url = photo_url_from_places_photos(place.get("photos", []))
     name = place.get("displayName", {}).get("text", "")
     return {
         "name": name,
@@ -205,3 +215,102 @@ def curate_candidates(destination: str, raw_places: list[dict]) -> tuple[list[di
     except Exception as e:
         print(f"[TripBuilder] AI curation failed (non-fatal, returning unfiltered list): {type(e).__name__}: {e}")
         return [_place_to_candidate_dict(p) for p in raw_places], cost_usd
+
+
+# ── Phase B: hotel selection ─────────────────────────────────────────────
+
+# LOCKED LOGIC: a hotel must be this well-rated no matter the budget tier —
+# "cheap" only ever changes which room-rate tier gets picked among hotels
+# that already clear this bar, never location quality or star rating.
+_HOTEL_MIN_RATING = 4.0
+
+# Ordinal position of each Places (New) priceLevel value, used to measure
+# how close a hotel's price is to the tier we're targeting.
+_HOTEL_PRICE_RANK = {
+    "PRICE_LEVEL_FREE": 0,
+    "PRICE_LEVEL_INEXPENSIVE": 1,
+    "PRICE_LEVEL_MODERATE": 2,
+    "PRICE_LEVEL_EXPENSIVE": 3,
+    "PRICE_LEVEL_VERY_EXPENSIVE": 4,
+}
+
+# Target rank per budget tier. "luxury" sits between EXPENSIVE(3) and
+# VERY_EXPENSIVE(4) rather than locking onto only the priciest result —
+# there often isn't a VERY_EXPENSIVE hotel near a given attraction cluster,
+# and an EXPENSIVE one right next to the traveler's picks is a better
+# recommendation than a VERY_EXPENSIVE one across town.
+_HOTEL_TARGET_RANK = {"cheap": 1, "mid": 2, "luxury": 3.5}
+
+
+def cluster_center(locations: list[tuple[float | None, float | None]]) -> tuple[float, float] | None:
+    """
+    Centroid (mean lat, mean lng) of the traveler's selected attractions —
+    good enough to anchor a hotel search near "the middle of what they
+    picked" without needing a real geographic-clustering algorithm. None
+    entries (missing coordinates) are skipped; returns None if nothing
+    usable was given.
+    """
+    valid = [(lat, lng) for lat, lng in locations if lat is not None and lng is not None]
+    if not valid:
+        return None
+    lat = sum(p[0] for p in valid) / len(valid)
+    lng = sum(p[1] for p in valid) / len(valid)
+    return (lat, lng)
+
+
+def pick_hotel(hotels: list[dict], budget: str) -> dict | None:
+    """
+    Selects the single best hotel from raw Places hotel-search results
+    (places.search_hotels_near) for `budget` ("cheap" | "mid" | "luxury").
+    Returns None if no open, 4.0+-rated hotel is present at all.
+
+    A hotel with no priceLevel at all (common — Places doesn't always set
+    it for lodging) is treated as a neutral fit rather than penalized or
+    guessed at, and ranked purely by rating in that case — honest
+    uncertainty beats a false-precision price match.
+    """
+    eligible = [
+        h for h in hotels
+        if is_open(h) and (h.get("rating", 0) or 0) >= _HOTEL_MIN_RATING
+    ]
+    if not eligible:
+        return None
+
+    target_rank = _HOTEL_TARGET_RANK[budget]
+
+    def sort_key(h):
+        price_level = h.get("priceLevel", "")
+        rank = _HOTEL_PRICE_RANK.get(price_level, target_rank)  # unknown price → neutral fit
+        rating = h.get("rating", 0) or 0
+        return (abs(rank - target_rank), -rating)
+
+    eligible.sort(key=sort_key)
+    return eligible[0]
+
+
+def hotel_to_recommendation_dict(hotel: dict, city: str) -> dict:
+    """
+    Converts one raw Places hotel result (places.search_hotels_near),
+    already chosen by pick_hotel(), into a TripHotelRecommendation-shaped
+    dict — including real Booking.com/Expedia affiliate links built with
+    the SAME functions ai_analyzer.py already uses for video-extracted
+    hotel stops (_booking_affiliate_url / _expedia_affiliate_url): same
+    affiliate accounts, no new link logic written for this feature.
+    """
+    name = hotel.get("displayName", {}).get("text", "")
+    loc = hotel.get("location") or {}
+    query = f"{name} {city}".strip()
+    return {
+        "name": name,
+        "description": "",
+        "photo_url": photo_url_from_places_photos(hotel.get("photos", [])),
+        "rating": hotel.get("rating", 0) or 0,
+        "user_rating_count": hotel.get("userRatingCount", 0) or 0,
+        "price_level": hotel.get("priceLevel", "") or "",
+        "property_type": "",
+        "area_label": "",
+        "lat": loc.get("latitude"),
+        "lng": loc.get("longitude"),
+        "booking_url": _booking_affiliate_url(query),
+        "expedia_url": _expedia_affiliate_url(query),
+    }

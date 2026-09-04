@@ -36,6 +36,21 @@ def _build_photo_url(photo_name: str, max_width: int = 1600) -> str:
     )
 
 
+def photo_url_from_places_photos(photos: list[dict], max_width: int = 800) -> str:
+    """
+    Picks the best available photo (widest landscape shot, falling back to
+    widest overall) from a raw Places `photos` array and returns its URL,
+    or "" if the array is empty. Shared by trip_builder.py's candidate and
+    hotel result conversion — both need this exact same "pick one good
+    photo" logic.
+    """
+    if not photos:
+        return ""
+    landscape = [p for p in photos if p.get("widthPx", 0) > p.get("heightPx", 0)]
+    best = max(landscape or photos, key=lambda p: p.get("widthPx", 0))
+    return _build_photo_url(best.get("name", ""), max_width)
+
+
 def _search_places(query: str, max_results: int = 1, _retries: int = 2) -> list[dict]:
     """
     Runs a Places Text Search and returns the raw places list (with photos
@@ -136,6 +151,77 @@ def search_attractions_broad(city: str, max_results: int = 20, _retries: int = 2
                 time.sleep(0.6)
                 continue
             print(f"[Places] Broad search exception for '{city}' after {_retries} attempts: {type(e).__name__}: {e}")
+            return []
+    return []
+
+
+# Field mask for the "Build Your Own Trip" hotel search (search_hotels_near)
+# — same signal fields as the attraction search above (priceLevel, rating,
+# userRatingCount, businessStatus) plus formattedAddress, which the plain
+# attraction search doesn't need but a hotel recommendation benefits from
+# for a rough area description.
+_HOTEL_SEARCH_FIELD_MASK = (
+    "places.displayName,places.location,places.photos,places.priceLevel,"
+    "places.rating,places.userRatingCount,places.businessStatus,places.formattedAddress"
+)
+
+
+def search_hotels_near(lat: float, lng: float, city: str, radius_meters: int = 4000,
+                        max_results: int = 20, _retries: int = 2) -> list[dict]:
+    """
+    Geographically-anchored hotel search: a "hotels in {city}" Text Search
+    biased toward (lat, lng) via Places API (New)'s locationBias, so
+    results cluster around wherever the traveler's selected attractions
+    actually are — not wherever Google's own city-center bias happens to
+    land a plain "hotels in {city}" query. This is what makes the LOCKED
+    LOGIC guarantee possible ("cheap" budget never means a worse location):
+    trip_builder.pick_hotel() filters/ranks these results, but it can only
+    pick from what's actually near the traveler's chosen stops.
+
+    locationBias is a soft preference, not a hard filter — Google can still
+    return something outside `radius_meters` if nothing better exists.
+    Returns the raw places list with the field mask above; unclassified —
+    see trip_builder.pick_hotel() for the 4.0+ rating floor and budget fit.
+    """
+    if not PLACES_API_KEY:
+        return []
+    query = f"hotels in {city}"
+    body = {
+        "textQuery": query,
+        "maxResultCount": max_results,
+        "locationBias": {
+            "circle": {
+                "center": {"latitude": lat, "longitude": lng},
+                "radius": float(radius_meters),
+            }
+        },
+    }
+    for attempt in range(_retries):
+        is_last_attempt = attempt == _retries - 1
+        try:
+            resp = requests.post(
+                SEARCH_URL,
+                json=body,
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Goog-Api-Key": PLACES_API_KEY,
+                    "X-Goog-FieldMask": _HOTEL_SEARCH_FIELD_MASK,
+                },
+                timeout=8,
+            )
+            if resp.status_code == 200:
+                return resp.json().get("places", [])
+            if resp.status_code == 429 or resp.status_code >= 500:
+                if not is_last_attempt:
+                    time.sleep(0.6)
+                    continue
+            print(f"[Places] Hotel search HTTP {resp.status_code} for '{city}' near ({lat}, {lng}): {resp.text[:300]}")
+            return []
+        except requests.exceptions.RequestException as e:
+            if not is_last_attempt:
+                time.sleep(0.6)
+                continue
+            print(f"[Places] Hotel search exception for '{city}' after {_retries} attempts: {type(e).__name__}: {e}")
             return []
     return []
 

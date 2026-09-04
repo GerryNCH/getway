@@ -98,6 +98,17 @@ def init_db() -> None:
                 created_at       TEXT NOT NULL,
                 expires_at       TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS trip_hotel_cache (
+                cache_key   TEXT PRIMARY KEY,   -- "{city_lower}|{budget}|{lat_rounded}|{lng_rounded}"
+                city        TEXT NOT NULL,
+                budget      TEXT NOT NULL,
+                lat         REAL,
+                lng         REAL,
+                hotel_json  TEXT,               -- TripHotelRecommendation as JSON, or '' if none found
+                created_at  TEXT NOT NULL,
+                expires_at  TEXT NOT NULL
+            );
         """)
 
         # Migration: earlier versions of this table didn't store the hero
@@ -795,6 +806,68 @@ def save_trip_candidates_cache(city: str, budget: str, candidates: list[dict], t
             (key, city, budget, json.dumps(candidates, ensure_ascii=False), now.isoformat(), expires_at.isoformat()),
         )
     print(f"[DB] Cached {len(candidates)} trip candidate(s) for {city} / {budget} (expires {expires_at.date()})")
+
+
+# ── Build Your Own Trip hotel cache — by (city, budget, rough location) ────
+# The hotel search (places.search_hotels_near) is anchored to the centroid
+# of whichever attractions the traveler selected — a slightly different
+# centroid from a similar selection shouldn't force a fresh Places search,
+# so the cache key rounds the location to a coarse grid (~1.1km per 0.01°)
+# rather than keying on the exact float coordinates.
+
+_HOTEL_CACHE_LOCATION_PRECISION = 2  # decimal degrees ≈ 1.1km grid cells
+
+
+def _round_location(lat: float, lng: float) -> tuple[float, float]:
+    return (round(lat, _HOTEL_CACHE_LOCATION_PRECISION), round(lng, _HOTEL_CACHE_LOCATION_PRECISION))
+
+
+def _trip_hotel_cache_key(city: str, budget: str, lat: float, lng: float) -> str:
+    r_lat, r_lng = _round_location(lat, lng)
+    return f"{(city or '').strip().lower()}|{(budget or '').strip().lower()}|{r_lat}|{r_lng}"
+
+
+def get_trip_hotel_cache(city: str, budget: str, lat: float, lng: float) -> dict | None:
+    """
+    Returns the cached hotel recommendation dict for this (city, budget,
+    rough location) combination. A genuine "no qualifying hotel found"
+    result is cached too (as {}), so a real miss isn't re-searched on every
+    request either — callers should treat {} as "cached, no hotel" and
+    only None as "not cached / expired, go search again".
+    """
+    key = _trip_hotel_cache_key(city, budget, lat, lng)
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT hotel_json, expires_at FROM trip_hotel_cache WHERE cache_key = ?",
+            (key,),
+        ).fetchone()
+    if not row:
+        return None
+    if row["expires_at"] < datetime.utcnow().isoformat():
+        return None  # expired — caller will re-fetch and overwrite
+    return json.loads(row["hotel_json"]) if row["hotel_json"] else {}
+
+
+def save_trip_hotel_cache(city: str, budget: str, lat: float, lng: float, hotel: dict | None, ttl_days: int = 30) -> None:
+    """Saves/overwrites the hotel recommendation cached for this (city, budget, rough location). `hotel=None` caches a "no hotel found" result."""
+    key = _trip_hotel_cache_key(city, budget, lat, lng)
+    r_lat, r_lng = _round_location(lat, lng)
+    now = datetime.utcnow()
+    expires_at = now + timedelta(days=ttl_days)
+    with _conn() as conn:
+        conn.execute(
+            """INSERT INTO trip_hotel_cache
+               (cache_key, city, budget, lat, lng, hotel_json, created_at, expires_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(cache_key) DO UPDATE SET
+                   hotel_json = excluded.hotel_json,
+                   created_at = excluded.created_at,
+                   expires_at = excluded.expires_at""",
+            (key, city, budget, r_lat, r_lng,
+             json.dumps(hotel, ensure_ascii=False) if hotel else "",
+             now.isoformat(), expires_at.isoformat()),
+        )
+    print(f"[DB] Cached hotel for {city} / {budget} near ({r_lat}, {r_lng}) (expires {expires_at.date()})")
 
 
 def cache_stops_from_itinerary(destination: str, itinerary: Itinerary) -> None:

@@ -266,3 +266,49 @@ class TripCandidatesResponse(BaseModel):
     budget: str
     candidates: list[TripCandidate]
     cached: bool = False
+
+
+# ── Build Your Own Trip (Phase B: hotel recommendation) ─────────────────────
+
+class SelectedAttraction(BaseModel):
+    """
+    One attraction the traveler checked off from their TripCandidate list —
+    just enough (name + coordinates) to anchor the hotel search
+    geographically. See trip_builder.cluster_center().
+    """
+    name: str
+    lat: float
+    lng: float
+
+
+class TripHotelRequest(BaseModel):
+    destination: str
+    budget: str  # cheap | mid | luxury
+    selected_attractions: list[SelectedAttraction]  # anchors the hotel search — see trip_builder.cluster_center()
+
+
+class TripHotelRecommendation(BaseModel):
+    name: str
+    description: str = ""
+    photo_url: str = ""
+    rating: float = 0.0
+    user_rating_count: int = 0
+    price_level: str = ""  # Google's raw Places priceLevel enum — empty if unset
+    property_type: str = ""  # Not populated by Places directly in Phase B —
+                               # left empty for now, same convention as
+                               # Stop.property_type when not confidently known.
+    area_label: str = ""  # Same — left empty in Phase B.
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    booking_url: str = ""  # Built via ai_analyzer._booking_affiliate_url — same
+                             # affiliate link logic as video-extracted hotel stops.
+    expedia_url: str = ""  # Built via ai_analyzer._expedia_affiliate_url.
+
+
+class TripHotelResponse(BaseModel):
+    destination: str
+    budget: str
+    hotel: Optional[TripHotelRecommendation] = None  # None = no open, 4.0+-rated
+                                                        # hotel found near the
+                                                        # selected attractions.
+    cached: bool = False

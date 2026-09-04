@@ -96,18 +96,61 @@ def _search_places(query: str, max_results: int = 1, _retries: int = 2) -> list[
 
 
 # Field mask for the BROAD "Build Your Own Trip" candidate search
-# (search_attractions_broad) — separate from _search_places' minimal mask
-# above (photos/displayName/location only, tuned for confirming ONE named
-# place already known to exist). This one needs the extra signal fields
-# Build Your Own Trip's budget classification and AI curation pass depend
-# on (see trip_builder.py): priceLevel (paid-tier classification),
-# rating/userRatingCount (famous-place override + curation input), types
-# (free-by-type classification + junk filtering), businessStatus (drop
-# permanently/temporarily closed places).
+# (search_attractions_broad, search_activities_by_type) — separate from
+# _search_places' minimal mask above (photos/displayName/location only,
+# tuned for confirming ONE named place already known to exist). This one
+# needs the extra signal fields Build Your Own Trip's budget classification
+# and AI curation pass depend on (see trip_builder.py): priceLevel
+# (paid-tier classification), rating/userRatingCount (famous-place override
+# + curation input), types (free-by-type classification + junk filtering),
+# businessStatus (drop permanently/temporarily closed places), id (lets
+# trip_builder.dedupe_places identify the SAME real place returned by two
+# different searches — e.g. the attraction search and an activity-type
+# search both surfacing the same famous landmark — reliably, instead of
+# only via a fuzzy displayName match).
 _ATTRACTION_SEARCH_FIELD_MASK = (
-    "places.displayName,places.location,places.photos,places.priceLevel,"
+    "places.id,places.displayName,places.location,places.photos,places.priceLevel,"
     "places.rating,places.userRatingCount,places.types,places.businessStatus"
 )
+
+
+def _text_search(query: str, field_mask: str, max_results: int = 20, _retries: int = 2) -> list[dict]:
+    """
+    Shared Places API (New) Text Search POST + retry/error-handling logic —
+    used by search_attractions_broad and search_activities_by_type, which
+    are identical except for the query string. NOT used by
+    search_hotels_near, which needs an extra locationBias body field.
+    """
+    if not PLACES_API_KEY:
+        return []
+    for attempt in range(_retries):
+        is_last_attempt = attempt == _retries - 1
+        try:
+            resp = requests.post(
+                SEARCH_URL,
+                json={"textQuery": query, "maxResultCount": max_results},
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Goog-Api-Key": PLACES_API_KEY,
+                    "X-Goog-FieldMask": field_mask,
+                },
+                timeout=8,
+            )
+            if resp.status_code == 200:
+                return resp.json().get("places", [])
+            if resp.status_code == 429 or resp.status_code >= 500:
+                if not is_last_attempt:
+                    time.sleep(0.6)
+                    continue
+            print(f"[Places] Text search HTTP {resp.status_code} for '{query}': {resp.text[:300]}")
+            return []
+        except requests.exceptions.RequestException as e:
+            if not is_last_attempt:
+                time.sleep(0.6)
+                continue
+            print(f"[Places] Text search exception for '{query}' after {_retries} attempts: {type(e).__name__}: {e}")
+            return []
+    return []
 
 
 def search_attractions_broad(city: str, max_results: int = 20, _retries: int = 2) -> list[dict]:
@@ -122,37 +165,42 @@ def search_attractions_broad(city: str, max_results: int = 20, _retries: int = 2
     single call (no pagination here) — plenty for one destination's
     candidate pool once combined with the AI curation pass.
     """
-    if not PLACES_API_KEY:
-        return []
     query = f"top attractions and things to do in {city}"
-    for attempt in range(_retries):
-        is_last_attempt = attempt == _retries - 1
-        try:
-            resp = requests.post(
-                SEARCH_URL,
-                json={"textQuery": query, "maxResultCount": max_results},
-                headers={
-                    "Content-Type": "application/json",
-                    "X-Goog-Api-Key": PLACES_API_KEY,
-                    "X-Goog-FieldMask": _ATTRACTION_SEARCH_FIELD_MASK,
-                },
-                timeout=8,
-            )
-            if resp.status_code == 200:
-                return resp.json().get("places", [])
-            if resp.status_code == 429 or resp.status_code >= 500:
-                if not is_last_attempt:
-                    time.sleep(0.6)
-                    continue
-            print(f"[Places] Broad search HTTP {resp.status_code} for '{city}': {resp.text[:300]}")
-            return []
-        except requests.exceptions.RequestException as e:
-            if not is_last_attempt:
-                time.sleep(0.6)
-                continue
-            print(f"[Places] Broad search exception for '{city}' after {_retries} attempts: {type(e).__name__}: {e}")
-            return []
-    return []
+    return _text_search(query, _ATTRACTION_SEARCH_FIELD_MASK, max_results, _retries)
+
+
+# Activity-type slug -> Places Text Search query phrase, for the Build Your
+# Own Trip "what kind of activities?" wizard step. Slugs are what the
+# frontend/backend pass around; the phrases are only ever used to build a
+# search query here.
+_ACTIVITY_TYPE_QUERY_TERMS = {
+    "nightlife": "nightlife, bars and clubs",
+    "nature": "hiking trails, parks and nature spots",
+    "history": "historical sites, landmarks and museums",
+    "beach": "beaches and water activities",
+    "food": "food tours, markets and culinary experiences",
+    "art": "art galleries and museums",
+    "adventure": "adventure and adrenaline activities",
+    "family": "family-friendly activities and attractions",
+}
+
+
+def search_activities_by_type(city: str, activity_type: str, max_results: int = 15, _retries: int = 2) -> list[dict]:
+    """
+    Text Search for one specific activity-type slug (see
+    _ACTIVITY_TYPE_QUERY_TERMS) in `city` — e.g. "nightlife, bars and clubs
+    in Lisbon, Portugal". Returns [] for an unrecognized slug (main.py
+    already normalizes/drops unknown slugs before calling this — this is
+    just a second line of defense) rather than raising. Same field mask
+    and retry/error handling as search_attractions_broad; results are
+    unclassified/uncurated — main.py merges them with the plain attraction
+    search results before budget filtering and AI curation.
+    """
+    phrase = _ACTIVITY_TYPE_QUERY_TERMS.get(activity_type)
+    if not phrase:
+        return []
+    query = f"{phrase} in {city}"
+    return _text_search(query, _ATTRACTION_SEARCH_FIELD_MASK, max_results, _retries)
 
 
 # Field mask for the "Build Your Own Trip" hotel search (search_hotels_near)

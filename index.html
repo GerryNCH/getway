@@ -190,12 +190,13 @@
       <div>
         <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-3">Little game</div>
         <div class="font-serif-display text-3xl md:text-4xl mb-3">Find your travel vibe</div>
-        <div class="text-sm text-gray-600 leading-relaxed mb-6 max-w-md">Six quick questions — more than a coin flip, less than a therapy session — matched against the real routes GetWay already has.</div>
+        <div class="text-sm text-gray-600 leading-relaxed mb-6 max-w-md">Seven quick questions — more than a coin flip, less than a therapy session — matched against real destinations worldwide, not just what's already on GetWay.</div>
         <button onclick="startVibeQuiz()" class="btn-interactive inline-flex items-center gap-2 h-[46px] px-6 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">Take the quiz <i data-lucide="arrow-right" class="w-4 h-4"></i></button>
       </div>
       <div class="bg-[#F8F6FF] rounded-[24px] p-6 md:p-8">
         <div class="flex items-center gap-1.5 mb-5">
           <div class="h-1 flex-1 rounded-full bg-[#8B5CF6]"></div>
+          <div class="h-1 flex-1 rounded-full bg-[#E5E0FB]"></div>
           <div class="h-1 flex-1 rounded-full bg-[#E5E0FB]"></div>
           <div class="h-1 flex-1 rounded-full bg-[#E5E0FB]"></div>
           <div class="h-1 flex-1 rounded-full bg-[#E5E0FB]"></div>
@@ -211,9 +212,11 @@
       </div>
     </div>
   </div>
-  <!-- ── Vibe Quiz modal — 6 real questions, matched against GetWay's own
-       currently-loaded routes (see openVibeQuiz()/renderVibeQuizResults()
-       below). Hidden by default. ──────────────────────────────────────── -->
+  <!-- ── Vibe Quiz modal — 7 real questions (6 vibe + 1 region), matched
+       against a curated list of real-world destinations (VIBE_DESTINATIONS
+       in the script below) — the result is always the best-fitting real
+       place, whether or not GetWay has a route there yet. See
+       openVibeQuiz()/renderVibeQuizResults() below. Hidden by default. ── -->
   <div id="vibe-quiz-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4" style="background: rgba(17,24,39,0.55);">
     <div class="bg-white rounded-[28px] w-full max-w-lg max-h-[88vh] overflow-y-auto p-6 md:p-8 relative">
       <button type="button" onclick="closeVibeQuiz()" class="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors"><i data-lucide="x" class="w-4 h-4"></i></button>
@@ -923,6 +926,32 @@
     if (imgEl.parentNode) imgEl.replaceWith(wrapper);
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
+  // CSS `background-image` never fires an error event on a bad URL — unlike
+  // an <img>'s onerror, a broken background-image just silently renders as
+  // blank/transparent. Used for the few spots (AI-route hero bg) that need
+  // a CSS background rather than an <img>: preloads the URL in memory first
+  // and only swaps it in on success, otherwise falls back to a gradient —
+  // so a dead/expired photo URL never shows as an empty box.
+  function setBgWithFallback(el, url, seed) {
+    if (!el) return;
+    if (!url) {
+      el.style.backgroundImage = 'none';
+      el.style.background = gradientFor(seed || 'trip');
+      return;
+    }
+    const probe = new Image();
+    probe.onload = () => {
+      el.style.background = 'none';
+      el.style.backgroundImage = `url('${url}')`;
+      el.style.backgroundSize = 'cover';
+      el.style.backgroundPosition = 'center';
+    };
+    probe.onerror = () => {
+      el.style.backgroundImage = 'none';
+      el.style.background = gradientFor(seed || 'trip');
+    };
+    probe.src = url;
+  }
   // Fixed video_id used to key reviews for the static Mallorca demo route
   // (it has no real TikTok video behind it, so there's no natural video_id).
   const MALLORCA_DEMO_VIDEO_ID = 'mallorca-demo-route';
@@ -960,8 +989,8 @@
     return `
       <div class="ai-stop-card mb-6 md:mb-8 md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
         <div class="md:w-2/5 md:flex-shrink-0">
-          <div class="relative h-[140px] md:h-52 mb-3 md:mb-0 rounded-2xl overflow-hidden ${photo ? '' : 'media-placeholder'}" style="${photo ? `background-image:url('${photo}');background-size:cover;background-position:center;` : `background:${gradientFor(seed)}`}">
-            ${photo ? '' : '<i data-lucide="bed" class="w-8 h-8 text-white/80"></i>'}
+          <div class="relative h-[140px] md:h-52 mb-3 md:mb-0 rounded-2xl overflow-hidden" style="background:${gradientFor(seed)}">
+            <img src="${photo || ''}" alt="" class="absolute inset-0 w-full h-full object-cover" onerror="imgFallback(this,'bed','${seed}')">
           </div>
         </div>
         <div class="md:w-3/5 md:pt-2">
@@ -977,17 +1006,17 @@
         </div>
       </div>`;
   }
-  // Falls back to a generic "car on a scenic road" Unsplash placeholder
-  // when no admin-set or backend-provided photo is available, so the
-  // "Rent a car" card never shows an empty/broken image.
-  const CAR_RENTAL_PLACEHOLDER_PHOTO = 'https://source.unsplash.com/800x400/?car,travel,road';
+  // No dead-CDN placeholder here (source.unsplash.com was retired) — when
+  // there's no admin-set or backend-provided photo, the <img>'s onerror
+  // below fires immediately on an empty src and imgFallback() shows the
+  // gradient+icon placeholder, same as every other photo slot on this page.
   function buildCarRentalBannerHtml(destination, videoId, note, photo) {
     const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim() || destination || '';
     const bookingHref = bookingCarRentalUrl();
     const expediaHref = expediaCarRentalUrl();
     const gygHref = gygCarRentalUrl(city);
     const seed = 'car-rental-' + slugify(city);
-    const photoUrl = photo || CAR_RENTAL_PLACEHOLDER_PHOTO;
+    const photoUrl = photo || '';
     return `
       <div class="ai-stop-card mb-6 md:mb-8 md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
         <div class="md:w-2/5 md:flex-shrink-0">
@@ -1073,15 +1102,17 @@
     const input = document.getElementById('home-tiktok-url');
     if (input) setTimeout(() => input.focus(), 450);
   }
-  // ── Vibe Quiz: 6 real questions, matched against GetWay's own routes ──
-  // Every option casts one vote for a tag from the exact same universe
-  // already used everywhere else on the site (ROUTE_TAG_CONFIG /
-  // filterByCategory): most_popular, budget_friendly, luxury, exotic,
-  // mountain, city, beach. At the end, the tag(s) with the most votes are
-  // matched against the real, currently-loaded ROUTES — never an invented
-  // recommendation, and never a destination GetWay doesn't actually have a
-  // route for. Falls back to "most_popular" (then a plain browse-routes
-  // CTA) if nothing matches the top tag.
+  // ── Vibe Quiz: 6 vibe questions + 1 region question, matched against a
+  // curated list of real-world destinations (VIBE_DESTINATIONS below) ──
+  // Each of the first 6 questions casts one vote for a tag from the exact
+  // same universe already used everywhere else on the site
+  // (ROUTE_TAG_CONFIG / filterByCategory): most_popular, budget_friendly,
+  // luxury, exotic, mountain, city, beach. The 7th question narrows the
+  // result to a region. pickVibeDestination() then picks the single
+  // best-matching real destination — always a real, editorially-curated
+  // place, whether or not GetWay happens to have a route there yet. When
+  // it doesn't, renderVibeQuizResults() nudges the user to TikTok/
+  // Instagram instead of forcing an unrelated GetWay route as "the match".
   const VIBE_QUIZ_QUESTIONS = [
     {
       q: "What's calling you right now?",
@@ -1135,7 +1166,80 @@
         { label: "Wherever the beach is bluest", icon: "🏝️", tag: "beach" },
       ],
     },
+    {
+      // The extra, more specific question — narrows the tag-based vibe down
+      // to an actual region, so the final match (see VIBE_DESTINATIONS
+      // below) can be a real, specific place rather than just a category.
+      q: "Which region pulls you most?",
+      options: [
+        { label: "Europe", icon: "🇪🇺", region: "europe" },
+        { label: "Asia", icon: "🌏", region: "asia" },
+        { label: "The Americas", icon: "🌎", region: "americas" },
+        { label: "Africa & the Middle East", icon: "🐫", region: "africa_me" },
+      ],
+    },
   ];
+  // ── Curated real-world destinations the quiz can recommend ───────────
+  // This is editorial curation (which real places fit which vibe), not a
+  // factual/statistical claim — same kind of judgment call any travel
+  // editor makes. Each entry can carry more than one tag from the same
+  // universe used everywhere else (ROUTE_TAG_CONFIG). `hashtag` is used to
+  // deep-link an Instagram hashtag search when GetWay has no route there
+  // yet (see renderVibeQuizResults).
+  const VIBE_DESTINATIONS = [
+    { name: "Paris, France", region: "europe", tags: ["city", "most_popular"], blurb: "Iconic, walkable, and endlessly photogenic — the trip almost everyone wants once.", hashtag: "paris" },
+    { name: "Santorini, Greece", region: "europe", tags: ["beach", "luxury"], blurb: "Whitewashed cliffs, blue domes, and sunsets people fly across the world for.", hashtag: "santorini" },
+    { name: "Zermatt, Switzerland", region: "europe", tags: ["mountain", "luxury"], blurb: "The Matterhorn, car-free streets, and alpine luxury done right.", hashtag: "zermatt" },
+    { name: "Lisbon, Portugal", region: "europe", tags: ["city", "budget_friendly"], blurb: "Hills, trams, pastel de nata, and prices that don't hurt.", hashtag: "lisbon" },
+    { name: "Amalfi Coast, Italy", region: "europe", tags: ["beach", "most_popular"], blurb: "Cliffside towns, lemon groves, and the coastline everyone's seen on their feed.", hashtag: "amalficoast" },
+    { name: "Tokyo, Japan", region: "asia", tags: ["city", "most_popular"], blurb: "Neon, ramen, temples, and a public transit system that just works.", hashtag: "tokyo" },
+    { name: "Bali, Indonesia", region: "asia", tags: ["beach", "exotic"], blurb: "Rice terraces, surf breaks, and jungle waterfalls in the same afternoon.", hashtag: "bali" },
+    { name: "Bangkok, Thailand", region: "asia", tags: ["city", "budget_friendly"], blurb: "Street food empires, temples, and a nightlife that never really stops.", hashtag: "bangkok" },
+    { name: "Everest Base Camp, Nepal", region: "asia", tags: ["mountain", "exotic"], blurb: "The trek people plan for years and talk about forever.", hashtag: "nepal" },
+    { name: "Ha Long Bay, Vietnam", region: "asia", tags: ["beach", "budget_friendly"], blurb: "Limestone karsts rising out of jade-green water — genuinely otherworldly.", hashtag: "halongbay" },
+    { name: "New York City, USA", region: "americas", tags: ["city", "most_popular"], blurb: "The energy everyone warns you about and somehow still undersells.", hashtag: "nyc" },
+    { name: "Tulum, Mexico", region: "americas", tags: ["beach", "exotic"], blurb: "Cenotes, Mayan ruins, and beach clubs built into the jungle.", hashtag: "tulum" },
+    { name: "Banff, Canada", region: "americas", tags: ["mountain", "most_popular"], blurb: "Turquoise lakes and peaks so sharp they look edited — they're not.", hashtag: "banff" },
+    { name: "Rio de Janeiro, Brazil", region: "americas", tags: ["city", "exotic"], blurb: "Beaches, samba, and a skyline with a mountain in the middle of it.", hashtag: "riodejaneiro" },
+    { name: "Patagonia, Chile", region: "americas", tags: ["mountain", "exotic"], blurb: "The edge-of-the-map hiking trip serious outdoor people put off for years.", hashtag: "patagonia" },
+    { name: "Marrakech, Morocco", region: "africa_me", tags: ["city", "exotic"], blurb: "Souks, riads, and a medina that swallows your sense of direction happily.", hashtag: "marrakech" },
+    { name: "Zanzibar, Tanzania", region: "africa_me", tags: ["beach", "exotic"], blurb: "Spice-scented air and some of the clearest water you'll ever swim in.", hashtag: "zanzibar" },
+    { name: "Dubai, UAE", region: "africa_me", tags: ["city", "luxury"], blurb: "Skyscrapers, desert, and a level of polish built for exactly this vibe.", hashtag: "dubai" },
+    { name: "Cape Town, South Africa", region: "africa_me", tags: ["city", "mountain", "most_popular"], blurb: "Table Mountain, wine country, and coastline in one trip.", hashtag: "capetown" },
+    { name: "Petra, Jordan", region: "africa_me", tags: ["exotic", "most_popular"], blurb: "A city carved into rose-red cliffs — one of the actual wonders of the world.", hashtag: "petra" },
+  ];
+  const VIBE_PRIMARY_TAGS = ['beach', 'mountain', 'city', 'exotic', 'most_popular'];
+  const VIBE_MODIFIER_TAGS = ['budget_friendly', 'luxury'];
+  // Picks the single best-matching real destination for a tallied vibe —
+  // region + primary tag first, then relaxes region, then relaxes tag,
+  // always preferring a candidate that also matches the budget/luxury
+  // modifier when more than one still qualifies. Never returns nothing —
+  // VIBE_DESTINATIONS always has a most_popular fallback in every region.
+  function pickVibeDestination(topTag, modifierTag, region) {
+    const pools = [
+      VIBE_DESTINATIONS.filter(d => d.region === region && d.tags.includes(topTag)),
+      VIBE_DESTINATIONS.filter(d => d.tags.includes(topTag)),
+      modifierTag ? VIBE_DESTINATIONS.filter(d => d.region === region && d.tags.includes(modifierTag)) : [],
+      VIBE_DESTINATIONS.filter(d => d.region === region && d.tags.includes('most_popular')),
+      VIBE_DESTINATIONS,
+    ];
+    const pool = pools.find(p => p.length) || VIBE_DESTINATIONS;
+    if (modifierTag) {
+      const refined = pool.find(d => d.tags.includes(modifierTag));
+      if (refined) return refined;
+    }
+    return pool[0];
+  }
+  // Same city-matching rule as hasGetwayRoute(), but returns the actual
+  // route object (not just a boolean) so a real GetWay route can be opened
+  // directly when the quiz's destination happens to already exist here.
+  function findGetwayRouteForDestination(destinationLabel) {
+    const city = destinationLabel.split(',')[0].trim().toLowerCase();
+    return ROUTES.find((r) => {
+      const d = (r.destination || '').toLowerCase();
+      return d && (d.includes(city) || city.includes(d));
+    }) || null;
+  }
   let vibeQuizStep = 0;
   let vibeQuizAnswers = [];
   function startVibeQuiz() { openVibeQuiz(); }
@@ -1148,8 +1252,8 @@
   function closeVibeQuiz() {
     document.getElementById('vibe-quiz-modal').classList.add('hidden');
   }
-  function vibeQuizAnswer(tag) {
-    vibeQuizAnswers.push(tag);
+  function vibeQuizAnswer(option) {
+    vibeQuizAnswers.push(option);
     vibeQuizStep++;
     if (vibeQuizStep >= VIBE_QUIZ_QUESTIONS.length) {
       renderVibeQuizResults();
@@ -1184,7 +1288,7 @@
     body.querySelectorAll('.vibe-quiz-option').forEach((btn) => {
       btn.addEventListener('click', () => {
         const idx = parseInt(btn.dataset.optIndex, 10);
-        vibeQuizAnswer(question.options[idx].tag);
+        vibeQuizAnswer(question.options[idx]);
       });
     });
     const backBtn = document.getElementById('vibe-quiz-back-btn');
@@ -1193,46 +1297,67 @@
   }
   function renderVibeQuizResults() {
     const tally = {};
-    vibeQuizAnswers.forEach((tag) => { tally[tag] = (tally[tag] || 0) + 1; });
-    const ranked = Object.keys(tally).sort((a, b) => tally[b] - tally[a]);
-    const topTag = ranked[0] || 'most_popular';
-    const tagCfg = ROUTE_TAG_CONFIG[topTag];
-    const resultLabel = tagCfg ? tagCfg.label : 'Explorer';
+    let region = null;
+    vibeQuizAnswers.forEach((opt) => {
+      if (opt.region) { region = opt.region; return; }
+      if (opt.tag) tally[opt.tag] = (tally[opt.tag] || 0) + 1;
+    });
+    const primaryRanked = VIBE_PRIMARY_TAGS.filter(t => tally[t]).sort((a, b) => tally[b] - tally[a]);
+    const modifierRanked = VIBE_MODIFIER_TAGS.filter(t => tally[t]).sort((a, b) => tally[b] - tally[a]);
+    const topTag = primaryRanked[0] || 'most_popular';
+    const modifierTag = modifierRanked[0] || null;
 
-    let matches = ROUTES.filter(r => (r.tags || []).includes(topTag));
-    if (!matches.length && ranked[1]) matches = ROUTES.filter(r => (r.tags || []).includes(ranked[1]));
-    if (!matches.length) matches = ROUTES.filter(r => (r.tags || []).includes('most_popular'));
-    matches = matches.slice(0, 3);
+    const destination = pickVibeDestination(topTag, modifierTag, region);
+    const matchedRoute = findGetwayRouteForDestination(destination.name);
 
     const body = document.getElementById('vibe-quiz-body');
-    body.innerHTML = `
-      <div class="text-center mb-6">
-        <div class="text-[10px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">Your travel vibe</div>
-        <div class="font-serif-display text-3xl mb-2">${escapeHtml(resultLabel)}</div>
-        <div class="text-xs text-gray-500">Based on your answers — here's what actually matches on GetWay right now.</div>
-      </div>
-      <div class="space-y-3 mb-5">
-        ${matches.length ? matches.map(r => `
-          <button type="button" data-slug="${r.slug}" class="vibe-result-card btn-interactive w-full flex items-center gap-3 bg-[#F8F6FF] rounded-2xl p-3 text-left">
-            <div class="w-12 h-12 rounded-xl flex-shrink-0" style="background:${r.fallbackColor}"></div>
-            <div class="min-w-0">
-              <div class="text-sm font-medium truncate">${escapeHtml(r.destination)}</div>
-              <div class="text-[11px] text-gray-500">${escapeHtml(r.duration)} · ${r.stopCount} stops</div>
-            </div>
-          </button>`).join('') : `<div class="text-xs text-gray-500 text-center py-4">No matching route yet — but browse everything GetWay has so far.</div>`}
-      </div>
-      <button type="button" id="vibe-quiz-browse-btn" class="btn-interactive w-full h-[46px] bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl mb-2">Browse all ${escapeHtml(resultLabel)} routes</button>
-      <button type="button" id="vibe-quiz-retake-btn" class="w-full text-center text-xs text-gray-400 hover:text-gray-600">Retake the quiz</button>
-    `;
-    body.querySelectorAll('.vibe-result-card').forEach((card) => {
-      card.addEventListener('click', () => { closeVibeQuiz(); openRouteCard(card.dataset.slug); });
-    });
-    document.getElementById('vibe-quiz-browse-btn').addEventListener('click', () => {
-      closeVibeQuiz();
-      scrollToRoutes();
-      const btn = document.querySelector(`.category-chip[data-tag="${topTag}"]`);
-      if (btn) btn.click();
-    });
+    if (matchedRoute) {
+      body.innerHTML = `
+        <div class="text-center mb-6">
+          <div class="text-[10px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">Your best match</div>
+          <div class="font-serif-display text-3xl mb-2">${escapeHtml(destination.name)}</div>
+          <div class="text-xs text-gray-500">${escapeHtml(destination.blurb)}</div>
+        </div>
+        <button type="button" id="vibe-quiz-route-card" class="btn-interactive w-full flex items-center gap-3 bg-[#F8F6FF] rounded-2xl p-3 text-left mb-4">
+          <div class="w-12 h-12 rounded-xl flex-shrink-0" style="background:${matchedRoute.fallbackColor}"></div>
+          <div class="min-w-0">
+            <div class="text-sm font-medium truncate">${escapeHtml(matchedRoute.destination)}</div>
+            <div class="text-[11px] text-gray-500">${escapeHtml(matchedRoute.duration)} · ${matchedRoute.stopCount} stops — already on GetWay</div>
+          </div>
+        </button>
+        <button type="button" id="vibe-quiz-retake-btn" class="w-full text-center text-xs text-gray-400 hover:text-gray-600">Retake the quiz</button>
+      `;
+      document.getElementById('vibe-quiz-route-card').addEventListener('click', () => {
+        closeVibeQuiz();
+        openRouteCard(matchedRoute.slug);
+      });
+    } else {
+      // No GetWay route for this destination yet — nudge toward finding a
+      // real clip and pasting it into the Magic Box, rather than showing
+      // an unrelated "closest" GetWay route as if it were the real match.
+      const tiktokUrl = `https://www.tiktok.com/search?q=${encodeURIComponent(destination.name + ' travel')}`;
+      const igUrl = `https://www.instagram.com/explore/tags/${destination.hashtag}/`;
+      body.innerHTML = `
+        <div class="text-center mb-5">
+          <div class="text-[10px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">Your best match</div>
+          <div class="font-serif-display text-3xl mb-2">${escapeHtml(destination.name)}</div>
+          <div class="text-xs text-gray-500">${escapeHtml(destination.blurb)}</div>
+        </div>
+        <div class="bg-[#FAF8F3] rounded-2xl p-4 mb-4 text-center">
+          <div class="text-xs text-gray-600 mb-3">GetWay doesn't have a route for ${escapeHtml(destination.name.split(',')[0])} yet — find a clip, paste it, and your route is created.</div>
+          <div class="grid grid-cols-2 gap-2.5">
+            <a href="${tiktokUrl}" target="_blank" rel="noopener" class="btn-interactive h-[42px] flex items-center justify-center gap-1.5 bg-black text-white text-xs font-medium rounded-xl"><i data-lucide="music-2" class="w-3.5 h-3.5"></i>Search TikTok</a>
+            <a href="${igUrl}" target="_blank" rel="noopener" class="btn-interactive h-[42px] flex items-center justify-center gap-1.5 text-white text-xs font-medium rounded-xl" style="background:linear-gradient(135deg,#F58529,#DD2A7B,#8134AF);"><i data-lucide="camera" class="w-3.5 h-3.5"></i>Search Instagram</a>
+          </div>
+        </div>
+        <button type="button" id="vibe-quiz-paste-btn" class="btn-interactive w-full h-[46px] bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl mb-2">Paste a link now</button>
+        <button type="button" id="vibe-quiz-retake-btn" class="w-full text-center text-xs text-gray-400 hover:text-gray-600">Retake the quiz</button>
+      `;
+      document.getElementById('vibe-quiz-paste-btn').addEventListener('click', () => {
+        closeVibeQuiz();
+        scrollToMagicBox();
+      });
+    }
     document.getElementById('vibe-quiz-retake-btn').addEventListener('click', () => {
       vibeQuizStep = 0; vibeQuizAnswers = []; renderVibeQuizStep();
     });
@@ -1342,8 +1467,17 @@
     const grid = document.getElementById('route-grid');
     grid.innerHTML = ROUTES.map((r, i) => {
       const photo = MEDIA.routes[r.slug] ? MEDIA.routes[r.slug].cardPhoto : "";
-      const tagCfg = primaryTagLabel(r.tags);
-      const tagLabelHtml = tagCfg ? `<div class="text-[10px] font-bold tracking-[0.14em] uppercase mb-1.5" style="color:${tagCfg.color}">${tagCfg.label}</div>` : '';
+      // Show every category the route actually has (not just the first
+      // one) as its own small colored pill, using the exact same colors as
+      // the filter chips above — a route tagged both "most_popular" and
+      // "beach" now shows both, instead of only whichever came first.
+      const tagLabelHtml = (r.tags && r.tags.length)
+        ? `<div class="flex flex-wrap gap-1 mb-1.5">${r.tags.map((t) => {
+            const cfg = ROUTE_TAG_CONFIG[t];
+            if (!cfg) return '';
+            return `<span class="text-[9px] font-bold tracking-[0.1em] uppercase px-1.5 py-0.5 rounded-md" style="color:${cfg.color};background:${cfg.color}1A;">${cfg.label}</span>`;
+          }).join('')}</div>`
+        : '';
       const funFactHtml = r.funFact ? `<div class="mt-3 flex items-start gap-1.5 bg-[#FAF8F3] rounded-xl px-3 py-2.5"><i data-lucide="lightbulb" class="w-3.5 h-3.5 text-[#8B5CF6] flex-shrink-0 mt-0.5"></i><span class="text-[11px] text-gray-600 italic leading-snug">${escapeHtml(r.funFact)}</span></div>` : '';
       return `
       <a href="#" data-slug="${r.slug}" data-search="${(r.destination + ' ' + r.creatorHandle).toLowerCase()}" data-days="${r.dayCount}" data-tags="${r.tags.join(',')}" data-aos="fade-up" data-aos-delay="${i * 80}" class="route-card group block bg-white rounded-[28px] overflow-hidden bento-card">
@@ -1892,13 +2026,12 @@
       const seed = 'ranking-' + slugify(item.destination);
       const routed = hasGetwayRoute(item.destination);
       const photo = RANKING_PHOTOS[item.key] ? RANKING_PHOTOS[item.key].url : '';
-      const photoStyle = photo
-        ? `background-image:url('${photo}');background-size:cover;background-position:center;`
-        : `background:${gradientFor(seed)}`;
       return `
       <div data-aos="fade-up" data-aos-delay="${i * 40}" class="bento-card bg-white rounded-[22px] p-4 md:p-5 flex items-center gap-4 ${item.highlight ? 'border border-[#C4B5FD]' : ''}">
         <div class="font-serif-display text-xl md:text-2xl text-gray-300 w-8 flex-shrink-0">${item.rank ? String(item.rank).padStart(2, '0') : '★'}</div>
-        <div class="w-12 h-12 rounded-2xl flex-shrink-0" style="${photoStyle}"></div>
+        <div class="relative w-12 h-12 rounded-2xl flex-shrink-0 overflow-hidden" style="background:${gradientFor(seed)}">
+          <img src="${photo}" alt="" class="absolute inset-0 w-full h-full object-cover" onerror="imgFallback(this,'map-pin','${seed}')">
+        </div>
         <div class="flex-1 min-w-0">
           <div class="text-sm font-medium truncate">${escapeHtml(item.destination)}</div>
           <div class="text-xs text-gray-500 truncate">${escapeHtml(item.detail)}</div>
@@ -2317,8 +2450,8 @@
       return `
       <div data-category="hotel" class="ai-stop-card mb-6 md:mb-8 md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
         <div class="md:w-2/5 md:flex-shrink-0">
-          <div class="relative h-[140px] md:h-52 mb-3 md:mb-0 rounded-2xl overflow-hidden ${stop.photo_url ? '' : 'media-placeholder'}" style="${stop.photo_url ? `background-image:url('${stop.photo_url}');background-size:cover;background-position:center;` : `background:${gradientFor(seed)}`}">
-            ${stop.photo_url ? '' : '<i data-lucide="bed" class="w-8 h-8 text-white/80"></i>'}
+          <div class="relative h-[140px] md:h-52 mb-3 md:mb-0 rounded-2xl overflow-hidden" style="background:${gradientFor(seed)}">
+            <img src="${stop.photo_url || ''}" alt="" class="absolute inset-0 w-full h-full object-cover" onerror="imgFallback(this,'bed','${seed}')">
           </div>
         </div>
         <div class="md:w-3/5 md:pt-2">
@@ -2341,8 +2474,8 @@
       <button data-maps-url="${mapsUrl}" onclick="window.open(this.dataset.mapsUrl,'_blank')" class="btn-interactive absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-white shadow flex items-center justify-center">
         <i data-lucide="map-pin" class="w-4 h-4 text-[#6D28D9]"></i>
       </button>
-      <div class="w-14 h-14 md:w-full md:h-44 rounded-xl md:rounded-none flex-shrink-0 ${stop.photo_url ? '' : 'media-placeholder'}" style="${stop.photo_url ? `background-image:url('${stop.photo_url}');background-size:cover;background-position:center;` : `background:${gradientFor(seed)}`}">
-        ${stop.photo_url ? '' : `<i data-lucide="${cfg.icon}" class="w-6 h-6 md:w-8 md:h-8 text-white/80"></i>`}
+      <div class="relative w-14 h-14 md:w-full md:h-44 rounded-xl md:rounded-none flex-shrink-0 overflow-hidden" style="background:${gradientFor(seed)}">
+        <img src="${stop.photo_url || ''}" alt="" class="absolute inset-0 w-full h-full object-cover" onerror="imgFallback(this,'${cfg.icon}','${seed}')">
       </div>
       <div class="flex-1 min-w-0 md:p-5">
         <div class="flex items-start gap-2 mb-1">
@@ -2676,22 +2809,16 @@
       gallery.push(url);
       galleryAttributions.push(rawGalleryAttributions[i]);
     });
-    if (itinerary.hero_photo_url) {
-      heroBg.style.backgroundImage = `url('${itinerary.hero_photo_url}')`;
-      heroBg.style.opacity = '1';
-    } else {
-      heroBg.style.backgroundImage = 'none';
-      heroBg.style.background = gradientFor(itinerary.destination || 'trip');
-      heroBg.style.opacity = '1';
-    }
+    setBgWithFallback(heroBg, itinerary.hero_photo_url, itinerary.destination || 'trip');
+    heroBg.style.opacity = '1';
     renderUnsplashCredit('ai-route-hero-credit', itinerary.hero_attribution);
     // Gallery thumbnails — click to swap the hero photo
     const galleryEl = document.getElementById('ai-route-gallery');
     const galleryHint = document.getElementById('ai-route-gallery-hint');
     if (gallery.length > 1) {
       galleryEl.innerHTML = gallery.map((url, i) => `
-        <button onclick="selectAiGalleryPhoto(${i})" class="ai-gallery-thumb flex-shrink-0 w-[54px] h-[54px] md:w-20 md:h-20 rounded-2xl overflow-hidden border-2 ${i === 0 ? 'border-[#8B5CF6]' : 'border-transparent'}">
-          <img src="${url}" alt="" class="w-full h-full object-cover">
+        <button onclick="selectAiGalleryPhoto(${i})" class="ai-gallery-thumb flex-shrink-0 w-[54px] h-[54px] md:w-20 md:h-20 rounded-2xl overflow-hidden border-2 ${i === 0 ? 'border-[#8B5CF6]' : 'border-transparent'}" style="background:${gradientFor((itinerary.destination || 'trip') + i)}">
+          <img src="${url}" alt="" class="w-full h-full object-cover" onerror="imgFallback(this,'image','${escapeHtml((itinerary.destination || 'trip') + i)}')">
         </button>`).join('');
       galleryHint.classList.remove('hidden');
     } else {
@@ -2701,6 +2828,7 @@
     window._aiRouteGallery = gallery;
     window._aiRouteGalleryAttributions = galleryAttributions;
     window._aiRouteActiveIndex = 0;
+    window._aiRouteDestination = itinerary.destination || 'trip';
     // Store for sharing
     window._aiRouteVideoId = videoId;
     initAiRouteMap(itinerary);
@@ -2764,7 +2892,7 @@
     if (!url) return;
     window._aiRouteActiveIndex = index;
     const heroBg = document.getElementById('ai-route-hero-bg');
-    heroBg.style.backgroundImage = `url('${url}')`;
+    setBgWithFallback(heroBg, url, (window._aiRouteDestination || 'trip') + index);
     document.querySelectorAll('.ai-gallery-thumb').forEach((el, i) => {
       el.classList.toggle('border-[#8B5CF6]', i === index);
       el.classList.toggle('border-transparent', i !== index);

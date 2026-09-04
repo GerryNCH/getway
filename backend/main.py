@@ -40,7 +40,7 @@ from models import (
     ReviewsResponse, RouteMeta, SiteSettings, TripCandidate, TripCandidatesRequest,
     TripCandidatesResponse, TripHotelRequest, TripHotelRecommendation, TripHotelResponse,
     TripBuildRequest, TripSaveRequest, TripSaveResponse, TripEditStateResponse,
-    TripFunFactRequest, TripFunFactResponse,
+    TripFunFactRequest, TripFunFactResponse, TripSearchRequest, TripSearchResponse,
 )
 import database
 from extractor import (
@@ -56,7 +56,7 @@ from places import (
     enrich_itinerary_with_photos, _unsplash_candidates, _attribution_from_candidate,
     _trigger_unsplash_download, _get_place_photo_and_location, search_attractions_broad,
     search_hotels_near, _get_destination_gallery_unsplash, search_activities_by_type,
-    _ACTIVITY_TYPE_QUERY_TERMS,
+    _ACTIVITY_TYPE_QUERY_TERMS, search_places_freetext,
 )
 from trip_builder import (
     is_open as trip_place_is_open, fits_budget, curate_candidates,
@@ -465,6 +465,37 @@ def get_trip_fun_fact(req: TripFunFactRequest):
         raise HTTPException(400, "Missing destination")
     fun_fact, _cost = generate_fun_fact(city)
     return TripFunFactResponse(fun_fact=fun_fact)
+
+
+@app.post("/trip/search-place", response_model=TripSearchResponse)
+def search_trip_place(req: TripSearchRequest):
+    """
+    Manual search-and-add: a free-text Places search for something the
+    curated attraction/activity-type candidate lists didn't surface (e.g.
+    the traveler knows a destination has diving but no diving operator
+    made it into the AI-curated list). No caching (one-off, user-driven),
+    and deliberately NOT budget-filtered — the traveler explicitly asked
+    for this specific thing, so trip_builder.fits_budget doesn't apply
+    here the way it does for /trip/candidates.
+    """
+    city = req.destination.strip()
+    query = req.query.strip()
+    if not city:
+        raise HTTPException(400, "Missing destination")
+    if not query:
+        raise HTTPException(400, "Missing search query")
+    raw_places = search_places_freetext(city, query)
+    for p in raw_places:
+        p["_section"] = "search"
+    raw_places = dedupe_places(raw_places)
+    open_places = [p for p in raw_places if trip_place_is_open(p)]
+    curated, cost_usd = curate_candidates(city, open_places)
+    print(f"[TripBuilder] Free-text search '{query}' in {city}: {len(raw_places)} raw -> "
+          f"{len(open_places)} open -> {len(curated)} after AI curation (${cost_usd:.4f})")
+    return TripSearchResponse(
+        destination=city, query=query,
+        candidates=[TripCandidate(**c) for c in curated],
+    )
 
 
 @app.post("/trip/hotel", response_model=TripHotelResponse)

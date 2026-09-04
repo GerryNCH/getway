@@ -203,6 +203,20 @@ def search_activities_by_type(city: str, activity_type: str, max_results: int = 
     return _text_search(query, _ATTRACTION_SEARCH_FIELD_MASK, max_results, _retries)
 
 
+def search_places_freetext(city: str, query: str, max_results: int = 10, _retries: int = 2) -> list[dict]:
+    """
+    Free-text Places Text Search for a specific traveler-typed query (e.g.
+    "diving") in `city` — Build Your Own Trip's manual search-and-add
+    feature, for something the curated attraction/activity-type candidate
+    lists didn't surface. Same field mask and retry/error handling as
+    search_attractions_broad; results are unclassified/uncurated — main.py
+    runs them through the same AI curation pass as everything else (no
+    budget filter, though — the traveler explicitly asked for this).
+    """
+    q = f"{query} in {city}"
+    return _text_search(q, _ATTRACTION_SEARCH_FIELD_MASK, max_results, _retries)
+
+
 # Field mask for the "Build Your Own Trip" hotel search (search_hotels_near)
 # — same signal fields as the attraction search above (priceLevel, rating,
 # userRatingCount, businessStatus) plus formattedAddress, which the plain

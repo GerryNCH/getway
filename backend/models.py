@@ -312,3 +312,19 @@ class TripHotelResponse(BaseModel):
                                                         # hotel found near the
                                                         # selected attractions.
     cached: bool = False
+
+
+# ── Build Your Own Trip (Phase C: itinerary assembly) ───────────────────────
+
+class TripBuildRequest(BaseModel):
+    destination: str
+    days: int
+    people: int = 1
+    budget: str  # cheap | mid | luxury
+    selected_attractions: list[TripCandidate]  # the candidates the traveler
+                                                 # checked off from
+                                                 # /trip/candidates — reused
+                                                 # as-is (name/description/
+                                                 # category/photo_url/lat/lng)
+                                                 # so Phase C needs no extra
+                                                 # Places lookups.

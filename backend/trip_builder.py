@@ -167,10 +167,25 @@ def fits_budget(place: dict, budget: str) -> bool:
         return True
     price_level = place.get("priceLevel", "")
     if not price_level:
-        # No price signal, not free-by-type, not famous — most likely a
-        # paid attraction Google just hasn't priced. Only surface it on
-        # "mid" (the safe middle default) rather than guessing wrong on
-        # "cheap" or "luxury".
+        # ACTIVITY-TYPE search results (guided tours, classes, boat trips,
+        # workshops — see places.search_activities_by_type) almost never
+        # have Google's priceLevel set at all — that field is really meant
+        # for restaurants/bars/hotels, not tour operators — and a real,
+        # well-reviewed local tour company routinely has well under the
+        # 2000 reviews _is_famous requires. Gating these on budget=="mid"
+        # was silently excluding nearly every genuine activity whenever
+        # the traveler picked "cheap" or "luxury" — real bug: this is why
+        # a Norway search once returned only 2 activities total. Let them
+        # through regardless of tier when there's no price signal; the AI
+        # curation pass's own is_free/estimated_price judgment (real
+        # knowledge, not a blunt Places-data guess) is a far better filter
+        # for these than assuming "mid" by default.
+        if place.get("_section") == "activity":
+            return True
+        # A plain ATTRACTION with no price signal is most likely a
+        # landmark Google just hasn't priced — only surface it on "mid"
+        # (the safe middle default) rather than guessing wrong on "cheap"
+        # or "luxury".
         return budget == "mid"
     return price_level in _PRICE_LEVEL_BY_TIER.get(budget, set())
 

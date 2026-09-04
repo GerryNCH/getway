@@ -328,3 +328,33 @@ class TripBuildRequest(BaseModel):
                                                  # category/photo_url/lat/lng)
                                                  # so Phase C needs no extra
                                                  # Places lookups.
+
+
+# ── Build Your Own Trip (Phase D: save + share) ──────────────────────────────
+
+class TripSaveRequest(BaseModel):
+    destination: str
+    days: int
+    people: int = 1
+    budget: str  # cheap | mid | luxury
+    selected_attractions: list[TripCandidate]  # kept alongside the built
+                                                 # itinerary so the trip can
+                                                 # later be reopened in the
+                                                 # builder — see edit-state.
+    itinerary: Itinerary  # the built snapshot, as returned by /trip/build
+    slug: Optional[str] = None  # pass an existing slug to update that saved
+                                  # trip in place (the edit-and-resave flow);
+                                  # omit to save a brand-new trip.
+
+
+class TripSaveResponse(BaseModel):
+    slug: str
+
+
+class TripEditStateResponse(BaseModel):
+    slug: str
+    destination: str
+    days: int
+    people: int
+    budget: str
+    selected_attractions: list[TripCandidate]

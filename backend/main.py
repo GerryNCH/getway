@@ -36,9 +36,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from models import (
-    ExtractRequest, ExtractResponse, Itinerary, Comment, ReviewCreate, Review,
+    ExtractRequest, ExtractResponse, Itinerary, DayPlan, Comment, ReviewCreate, Review,
     ReviewsResponse, RouteMeta, SiteSettings, TripCandidate, TripCandidatesRequest,
     TripCandidatesResponse, TripHotelRequest, TripHotelRecommendation, TripHotelResponse,
+    TripBuildRequest,
 )
 import database
 from extractor import (
@@ -53,11 +54,12 @@ from quality_check import ai_quality_check
 from places import (
     enrich_itinerary_with_photos, _unsplash_candidates, _attribution_from_candidate,
     _trigger_unsplash_download, _get_place_photo_and_location, search_attractions_broad,
-    search_hotels_near,
+    search_hotels_near, _get_destination_gallery_unsplash,
 )
 from trip_builder import (
     is_open as trip_place_is_open, fits_budget, curate_candidates,
     cluster_center, pick_hotel, hotel_to_recommendation_dict,
+    assemble_days, recommend_car_rental,
 )
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -457,6 +459,95 @@ def get_trip_hotel(req: TripHotelRequest):
     return TripHotelResponse(
         destination=city, budget=budget,
         hotel=TripHotelRecommendation(**hotel_dict) if hotel_dict else None,
+        cached=False,
+    )
+
+
+_BUDGET_PRICE_CATEGORY = {"cheap": "€", "mid": "€€", "luxury": "€€€"}
+
+
+@app.post("/trip/build", response_model=ExtractResponse)
+def build_trip(req: TripBuildRequest):
+    """
+    "Build Your Own Trip" Phase C — assembles a full Itinerary from the
+    traveler's selected attractions, in the SAME Stop/DayPlan/Itinerary
+    shape the video-generated routes already use (trip_builder.assemble_days),
+    including a Phase B hotel recommendation and a car rental recommendation
+    from real-world destination knowledge (trip_builder.recommend_car_rental
+    — NOT a distance heuristic). Nothing is saved to the database here —
+    this only builds and returns the object for a frontend preview; saving
+    is a later phase.
+
+    source="custom_builder" in the response — deliberately distinct from
+    "ai_generated"/"cache" so nothing downstream that branches on source
+    confuses a self-built trip with a video-extracted route.
+    """
+    city = req.destination.strip()
+    budget = req.budget.strip().lower()
+    if not city:
+        raise HTTPException(400, "Missing destination")
+    if budget not in _TRIP_BUDGET_TIERS:
+        raise HTTPException(400, f"budget must be one of: {', '.join(sorted(_TRIP_BUDGET_TIERS))}")
+    if req.days < 1:
+        raise HTTPException(400, "days must be at least 1")
+    if not req.selected_attractions:
+        raise HTTPException(400, "selected_attractions must not be empty")
+
+    selected_dicts = [a.model_dump() for a in req.selected_attractions]
+
+    # Hotel: same cluster-anchored search + cache as /trip/hotel, called
+    # directly here (not a second HTTP round-trip) so a build always
+    # reflects exactly the same hotel logic a separate preview call would
+    # have shown for this same selection.
+    center = cluster_center([(a.lat, a.lng) for a in req.selected_attractions])
+    hotel_dict = None
+    if center is not None:
+        lat, lng = center
+        cached_hotel = database.get_trip_hotel_cache(city, budget, lat, lng)
+        if cached_hotel is not None:
+            hotel_dict = cached_hotel or None
+        else:
+            raw_hotels = search_hotels_near(lat, lng, city)
+            chosen = pick_hotel(raw_hotels, budget)
+            hotel_dict = hotel_to_recommendation_dict(chosen, city) if chosen else None
+            database.save_trip_hotel_cache(city, budget, lat, lng, hotel_dict, ttl_days=_TRIP_CACHE_TTL_DAYS)
+
+    days = assemble_days(selected_dicts, req.days, hotel_dict)
+
+    car_recommended, car_note, car_cost_usd = recommend_car_rental(city)
+    print(f"[TripBuilder] Car rental for {city}: recommended={car_recommended} (${car_cost_usd:.4f})")
+
+    itinerary = Itinerary(
+        destination=city,
+        duration=f"{req.days} day{'s' if req.days != 1 else ''}",
+        days=[DayPlan(**d) for d in days],
+        price_category=_BUDGET_PRICE_CATEGORY.get(budget, ""),
+        car_rental_recommended=car_recommended,
+        car_rental_note=car_note,
+    )
+
+    # Hero/gallery: reuse the existing destination Unsplash logic exactly
+    # as-is (places._get_destination_gallery_unsplash — the same function
+    # enrich_itinerary_with_photos() itself calls for this). Deliberately
+    # NOT calling enrich_itinerary_with_photos() wholesale here: that
+    # function also re-fetches a fresh Places photo for every STOP, which
+    # would waste API calls re-confirming photos the Phase A/B searches
+    # already gave us and risks swapping in a different (not necessarily
+    # better) match than the one the traveler saw and picked.
+    try:
+        gallery = _get_destination_gallery_unsplash(city, count=1)
+        itinerary.gallery_photo_urls = [g["url"] for g in gallery]
+        itinerary.gallery_attributions = [g["attribution"] for g in gallery]
+        best = max(gallery, key=lambda g: g["likes"]) if gallery else None
+        itinerary.hero_photo_url = best["url"] if best else ""
+        itinerary.hero_attribution = best["attribution"] if best else None
+    except Exception as e:
+        print(f"[TripBuilder] Hero/gallery photo fetch failed (non-fatal): {e}")
+
+    return ExtractResponse(
+        itinerary=itinerary,
+        source="custom_builder",
+        video_id="",
         cached=False,
     )
 

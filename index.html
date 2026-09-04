@@ -59,6 +59,15 @@
   .btn-outline-interactive { transition: all 0.25s ease; }
   .btn-outline-interactive:hover { color: #6D28D9; background: #F8F6FF; }
   .btn-outline-interactive:active { transform: scale(0.97); }
+  /* The vibe-quiz teaser uses the full bento-card width (2-column layout),
+     but the active question/result state is a single narrow centered
+     column (max-w-md) — left at the card's full width, that reads as a
+     small floating box lost in a huge white card, almost like a separate
+     popup rather than a natural continuation of the teaser. Narrowing the
+     card itself while the quiz is active keeps it feeling like the same
+     contained element throughout. */
+  #vibe-quiz-card { transition: max-width 0.3s ease; }
+  #vibe-quiz-card.vibe-quiz-active { max-width: 42rem; margin-left: auto; margin-right: auto; }
   .hero-bottom-overlay {
     background: linear-gradient(to top, rgba(10,12,16,0.80), rgba(10,12,16,0.35) 45%, rgba(10,12,16,0.05) 75%, rgba(10,12,16,0) 100%);
   }
@@ -654,7 +663,7 @@
        copy, no time estimate — kept deliberately quiet/minimal. -->
   <div id="magicbox-loading" class="hidden mx-5 md:mx-0 px-6 md:px-10 py-16 md:py-20 text-center glass-card rounded-[28px]">
     <div class="w-16 h-16 bg-[#F1EEFF] rounded-full flex items-center justify-center mx-auto mb-6">
-      <i data-lucide="wand-2" class="w-6 h-6 text-[#8B5CF6] animate-pulse"></i>
+      <span id="magicbox-loading-globe" class="text-2xl">🌍</span>
     </div>
     <div class="text-sm font-medium mb-6">Video is generating…</div>
     <div class="min-h-[40px] flex items-center justify-center px-2">
@@ -962,7 +971,7 @@
     </div>
     <div id="build-trip-candidates-loading" class="text-center py-14">
       <div class="w-14 h-14 bg-[#F1EEFF] rounded-full flex items-center justify-center mx-auto mb-4">
-        <i data-lucide="wand-2" class="w-6 h-6 text-[#8B5CF6] animate-pulse"></i>
+        <span id="build-trip-loading-globe" class="text-2xl">🌍</span>
       </div>
       <div class="text-sm font-medium">Finding great places…</div>
       <!-- Fun fact fetched in parallel via a separate, much faster
@@ -971,7 +980,7 @@
            fetchBuildTripFunFact(). -->
       <div id="build-trip-loading-fun-fact" class="hidden max-w-xs mx-auto mt-4 flex items-start gap-1.5 bg-[#FAF8F3] rounded-xl px-3 py-2.5 text-left">
         <i data-lucide="lightbulb" class="w-3.5 h-3.5 text-[#8B5CF6] flex-shrink-0 mt-0.5"></i>
-        <span id="build-trip-loading-fun-fact-text" class="text-[11px] text-gray-600 italic leading-snug"></span>
+        <span id="build-trip-loading-fun-fact-text" class="text-[11px] text-gray-600 italic leading-snug transition-opacity duration-500"></span>
       </div>
     </div>
     <div id="build-trip-attractions-empty" class="hidden text-center py-14">
@@ -1041,12 +1050,12 @@
        as-is; see buildAndPreviewTrip(). -->
   <div id="build-trip-step6" class="hidden mx-5 md:mx-0 px-6 md:px-10 py-16 md:py-20 text-center glass-card rounded-[28px]">
     <div class="w-16 h-16 bg-[#F1EEFF] rounded-full flex items-center justify-center mx-auto mb-6">
-      <i data-lucide="route" class="w-6 h-6 text-[#8B5CF6] animate-pulse"></i>
+      <span id="build-trip-step6-globe" class="text-2xl">🌍</span>
     </div>
     <div class="text-sm font-medium mb-4">Building your itinerary…</div>
     <div id="build-trip-step6-fun-fact" class="hidden max-w-xs mx-auto flex items-start gap-1.5 bg-[#FAF8F3] rounded-xl px-3 py-2.5 text-left">
       <i data-lucide="lightbulb" class="w-3.5 h-3.5 text-[#8B5CF6] flex-shrink-0 mt-0.5"></i>
-      <span id="build-trip-step6-fun-fact-text" class="text-[11px] text-gray-600 italic leading-snug"></span>
+      <span id="build-trip-step6-fun-fact-text" class="text-[11px] text-gray-600 italic leading-snug transition-opacity duration-500"></span>
     </div>
   </div>
 </div>
@@ -1542,12 +1551,17 @@
     document.getElementById('vibe-quiz-teaser').classList.add('hidden');
     document.getElementById('vibe-quiz-inline').classList.remove('hidden');
     const card = document.getElementById('vibe-quiz-card');
-    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (card) {
+      card.classList.add('vibe-quiz-active');
+      card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
     renderVibeQuizStep();
   }
   function closeVibeQuiz() {
     document.getElementById('vibe-quiz-inline').classList.add('hidden');
     document.getElementById('vibe-quiz-teaser').classList.remove('hidden');
+    const card = document.getElementById('vibe-quiz-card');
+    if (card) card.classList.remove('vibe-quiz-active');
   }
   function vibeQuizAnswer(option) {
     vibeQuizAnswers.push(option);
@@ -1606,6 +1620,21 @@
 
     const destination = pickVibeDestination(topTag, modifierTag, region);
     const matchedRoute = findGetwayRouteForDestination(destination.name);
+    const tiktokUrl = `https://www.tiktok.com/search?q=${encodeURIComponent(destination.name + ' travel')}`;
+    const igUrl = `https://www.instagram.com/explore/tags/${destination.hashtag}/`;
+    // Every OTHER way to plan this destination — search TikTok/Instagram
+    // yourself, or build a route yourself — shown regardless of whether
+    // GetWay already has a matching route, so a match never hides the
+    // rest of the traveler's options.
+    const moreOptionsHtml = `
+      <div class="bg-[#FAF8F3] rounded-2xl p-4 mb-4 text-center">
+        <div class="text-xs text-gray-600 mb-3">Or find your own clip, or build a route yourself:</div>
+        <div class="grid grid-cols-2 gap-2.5 mb-2.5">
+          <a href="${tiktokUrl}" target="_blank" rel="noopener" class="btn-interactive h-[42px] flex items-center justify-center gap-1.5 bg-black text-white text-xs font-medium rounded-xl"><i data-lucide="music-2" class="w-3.5 h-3.5"></i>Search TikTok</a>
+          <a href="${igUrl}" target="_blank" rel="noopener" class="btn-interactive h-[42px] flex items-center justify-center gap-1.5 text-white text-xs font-medium rounded-xl" style="background:linear-gradient(135deg,#F58529,#DD2A7B,#8134AF);"><i data-lucide="camera" class="w-3.5 h-3.5"></i>Search Instagram</a>
+        </div>
+        <button type="button" id="vibe-quiz-build-trip-btn" class="btn-outline-interactive w-full h-[42px] bg-white border border-gray-200 text-gray-700 text-xs font-medium rounded-xl">Build your own trip to ${escapeHtml(destination.name.split(',')[0])}</button>
+      </div>`;
 
     const body = document.getElementById('vibe-quiz-body');
     if (matchedRoute) {
@@ -1622,6 +1651,7 @@
             <div class="text-[11px] text-gray-500">${escapeHtml(matchedRoute.duration)} · ${matchedRoute.stopCount} stops — already on GetWay</div>
           </div>
         </button>
+        ${moreOptionsHtml}
         <button type="button" id="vibe-quiz-retake-btn" class="w-full text-center text-xs text-gray-400 hover:text-gray-600">Retake the quiz</button>
       `;
       document.getElementById('vibe-quiz-route-card').addEventListener('click', () => {
@@ -1629,33 +1659,29 @@
         openRouteCard(matchedRoute.slug);
       });
     } else {
-      // No GetWay route for this destination yet — nudge toward finding a
-      // real clip and pasting it into the Magic Box, rather than showing
-      // an unrelated "closest" GetWay route as if it were the real match.
-      const tiktokUrl = `https://www.tiktok.com/search?q=${encodeURIComponent(destination.name + ' travel')}`;
-      const igUrl = `https://www.instagram.com/explore/tags/${destination.hashtag}/`;
+      // No GetWay route for this destination yet — same moreOptionsHtml
+      // block, plus the more prominent "Paste a link now" CTA.
       body.innerHTML = `
         <div class="text-center mb-5">
           <div class="text-[10px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">Your best match</div>
           <div class="font-serif-display text-3xl mb-2">${escapeHtml(destination.name)}</div>
           <div class="text-xs text-gray-500">${escapeHtml(destination.blurb)}</div>
         </div>
-        <div class="bg-[#FAF8F3] rounded-2xl p-4 mb-4 text-center">
-          <div class="text-xs text-gray-600 mb-3">GetWay doesn't have a route for ${escapeHtml(destination.name.split(',')[0])} yet — find a clip, paste it, and your route is created.</div>
-          <div class="grid grid-cols-2 gap-2.5">
-            <a href="${tiktokUrl}" target="_blank" rel="noopener" class="btn-interactive h-[42px] flex items-center justify-center gap-1.5 bg-black text-white text-xs font-medium rounded-xl"><i data-lucide="music-2" class="w-3.5 h-3.5"></i>Search TikTok</a>
-            <a href="${igUrl}" target="_blank" rel="noopener" class="btn-interactive h-[42px] flex items-center justify-center gap-1.5 text-white text-xs font-medium rounded-xl" style="background:linear-gradient(135deg,#F58529,#DD2A7B,#8134AF);"><i data-lucide="camera" class="w-3.5 h-3.5"></i>Search Instagram</a>
-          </div>
-        </div>
+        ${moreOptionsHtml}
         <button type="button" id="vibe-quiz-paste-btn" class="btn-interactive w-full h-[46px] bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl mb-2">Paste a link now</button>
-        <button type="button" id="vibe-quiz-build-trip-btn" class="btn-outline-interactive w-full h-[46px] bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-2xl mb-2">Build your own trip to ${escapeHtml(destination.name.split(',')[0])}</button>
         <button type="button" id="vibe-quiz-retake-btn" class="w-full text-center text-xs text-gray-400 hover:text-gray-600">Retake the quiz</button>
       `;
       document.getElementById('vibe-quiz-paste-btn').addEventListener('click', () => {
         closeVibeQuiz();
         scrollToMagicBox();
       });
-      document.getElementById('vibe-quiz-build-trip-btn').addEventListener('click', () => {
+    }
+    // Build-your-own-trip button now lives in the SHARED moreOptionsHtml
+    // block present in BOTH branches — wire it up once, here, rather than
+    // duplicating the listener per branch.
+    const buildTripBtn = document.getElementById('vibe-quiz-build-trip-btn');
+    if (buildTripBtn) {
+      buildTripBtn.addEventListener('click', () => {
         closeVibeQuiz();
         startBuildTrip(destination.name);
       });
@@ -3278,6 +3304,50 @@
       showFact(factIndex);
     }, 3200);
   }
+  // Same rotating "did you know" pattern as startMagicBoxFactRotation
+  // above, generalized for Build Your Own Trip's two loading states (the
+  // candidates spinner and the final build/preview screen) — reused
+  // rather than duplicated so both keep cycling instead of showing one
+  // static line. `destinationFact` (when known — the real per-destination
+  // fact from POST /trip/fun-fact), when given, is spliced in as the
+  // FIRST fact shown, ahead of the generic COUNTRY_FACTS pool, so the
+  // traveler sees something relevant to THEIR trip before it cycles into
+  // general trivia. Returns the interval id so the caller can clear it
+  // once that loading state ends.
+  function startBuildTripFactRotation(elId, destinationFact) {
+    const factEl = document.getElementById(elId);
+    if (!factEl) return null;
+    const pool = destinationFact ? [destinationFact, ...COUNTRY_FACTS] : COUNTRY_FACTS.slice();
+    let factIndex = 0;
+    function showFact(idx) {
+      factEl.style.opacity = '0';
+      setTimeout(() => {
+        factEl.textContent = pool[idx];
+        factEl.style.opacity = '1';
+      }, 250);
+    }
+    showFact(factIndex);
+    return setInterval(() => {
+      factIndex = (factIndex + 1) % pool.length;
+      showFact(factIndex);
+    }, 3200);
+  }
+  // Small spinning-globe animation shown alongside the rotating facts
+  // during any "generating a trip" loading state, so there's something
+  // visually alive besides the fact text. Cycles through the three
+  // Lucide/Unicode globe emoji (Americas/Europe-Africa/Asia-Australia)
+  // to read as the Earth turning. Returns the interval id to clear later.
+  function startGlobeSpin(elId) {
+    const el = document.getElementById(elId);
+    if (!el) return null;
+    const frames = ['🌍', '🌎', '🌏'];
+    let i = 0;
+    el.textContent = frames[i];
+    return setInterval(() => {
+      i = (i + 1) % frames.length;
+      el.textContent = frames[i];
+    }, 700);
+  }
   async function startMagicBox() {
     const url = document.getElementById('tiktok-url').value.trim();
     if (!url) {
@@ -3292,6 +3362,7 @@
     // see COUNTRY_FACTS + startMagicBoxFactRotation() above. No stage-by-
     // stage progress copy, no time estimate.
     const interval = startMagicBoxFactRotation();
+    const globeInterval = startGlobeSpin('magicbox-loading-globe');
     try {
       const res = await fetch(`${BACKEND_URL}/extract`, {
         method: 'POST',
@@ -3299,6 +3370,7 @@
         body: JSON.stringify({ url: url, max_frames: 8 })
       });
       clearInterval(interval);
+      clearInterval(globeInterval);
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.detail || 'Server error');
@@ -3315,6 +3387,7 @@
       showScreen('ai-route');
     } catch (err) {
       clearInterval(interval);
+      clearInterval(globeInterval);
       document.getElementById('magicbox-loading').classList.add('hidden');
       document.getElementById('magicbox-form').classList.remove('hidden');
       alert('Something went wrong: ' + err.message + '\n\nMake sure you pasted a valid TikTok or YouTube link.');
@@ -3374,6 +3447,13 @@
     slug: null,                // set once saved — reused for the edit-and-resave flow
   };
   function startBuildTrip(prefillDestination) {
+    // A restart (e.g. from the vibe quiz result while a previous attempt
+    // was still loading) must not leave an orphaned fact-rotation timer
+    // running in the background.
+    if (window._buildTripLoadingFactInterval) { clearInterval(window._buildTripLoadingFactInterval); window._buildTripLoadingFactInterval = null; }
+    if (window._buildTripStep6FactInterval) { clearInterval(window._buildTripStep6FactInterval); window._buildTripStep6FactInterval = null; }
+    if (window._buildTripLoadingGlobeInterval) { clearInterval(window._buildTripLoadingGlobeInterval); window._buildTripLoadingGlobeInterval = null; }
+    if (window._buildTripStep6GlobeInterval) { clearInterval(window._buildTripStep6GlobeInterval); window._buildTripStep6GlobeInterval = null; }
     _buildTripState = {
       destination: prefillDestination || '', days: 3, people: 2, budget: '',
       activityTypeSelection: new Set(), activityTypes: [],
@@ -3512,7 +3592,13 @@
       if (!res.ok) return;
       const data = await res.json();
       _buildTripState.funFact = data.fun_fact || '';
-      renderBuildTripFunFactNote('loading');
+      if (_buildTripState.funFact) {
+        // Restart the loading spinner's rotation so the real destination
+        // fact gets spliced in as the first thing shown, instead of only
+        // ever cycling generic trivia.
+        if (window._buildTripLoadingFactInterval) clearInterval(window._buildTripLoadingFactInterval);
+        window._buildTripLoadingFactInterval = startBuildTripFactRotation('build-trip-loading-fun-fact-text', _buildTripState.funFact);
+      }
       renderBuildTripFunFactNote('checklist');
     } catch (err) {
       // Non-fatal — no note shown, candidates loading is unaffected.
@@ -3525,7 +3611,16 @@
     // Reset so a stale fact from a previous budget/activity-type attempt
     // never briefly flashes before the fresh one arrives.
     _buildTripState.funFact = '';
-    renderBuildTripFunFactNote('loading');
+    // Facts start rotating immediately (generic trivia first — see
+    // COUNTRY_FACTS) rather than waiting for the destination-specific one
+    // to arrive, so something is always visibly changing during the wait,
+    // never one static line sitting there.
+    if (window._buildTripLoadingFactInterval) clearInterval(window._buildTripLoadingFactInterval);
+    const loadingFactWrap = document.getElementById('build-trip-loading-fun-fact');
+    if (loadingFactWrap) loadingFactWrap.classList.remove('hidden');
+    window._buildTripLoadingFactInterval = startBuildTripFactRotation('build-trip-loading-fun-fact-text', '');
+    if (window._buildTripLoadingGlobeInterval) clearInterval(window._buildTripLoadingGlobeInterval);
+    window._buildTripLoadingGlobeInterval = startGlobeSpin('build-trip-loading-globe');
     fetchBuildTripFunFact();  // fire-and-forget — independent of the candidates fetch below
     try {
       const res = await fetch(`${BACKEND_URL}/trip/candidates`, {
@@ -3552,6 +3647,8 @@
       renderBuildTripAttractionsStep();
       renderBuildTripActivitiesStep();
     } catch (err) {
+      if (window._buildTripLoadingFactInterval) { clearInterval(window._buildTripLoadingFactInterval); window._buildTripLoadingFactInterval = null; }
+      if (window._buildTripLoadingGlobeInterval) { clearInterval(window._buildTripLoadingGlobeInterval); window._buildTripLoadingGlobeInterval = null; }
       document.getElementById('build-trip-candidates-loading').classList.add('hidden');
       alert('Something went wrong finding places: ' + err.message);
       showBuildTripStep(3);
@@ -3627,6 +3724,8 @@
   }
   function renderBuildTripAttractionsStep() {
     document.getElementById('build-trip-candidates-loading').classList.add('hidden');
+    if (window._buildTripLoadingFactInterval) { clearInterval(window._buildTripLoadingFactInterval); window._buildTripLoadingFactInterval = null; }
+    if (window._buildTripLoadingGlobeInterval) { clearInterval(window._buildTripLoadingGlobeInterval); window._buildTripLoadingGlobeInterval = null; }
     const count = renderBuildTripCandidateGroup('attraction', 'build-trip-attractions-items');
     document.getElementById('build-trip-attractions-empty').classList.toggle('hidden', count > 0);
     document.getElementById('build-trip-attractions-list').classList.toggle('hidden', count === 0);
@@ -3769,7 +3868,12 @@
     buildAndPreviewTrip();
   }
   async function buildAndPreviewTrip() {
-    renderBuildTripFunFactNote('step6');
+    if (window._buildTripStep6FactInterval) clearInterval(window._buildTripStep6FactInterval);
+    const step6FactWrap = document.getElementById('build-trip-step6-fun-fact');
+    if (step6FactWrap) step6FactWrap.classList.remove('hidden');
+    window._buildTripStep6FactInterval = startBuildTripFactRotation('build-trip-step6-fun-fact-text', _buildTripState.funFact);
+    if (window._buildTripStep6GlobeInterval) clearInterval(window._buildTripStep6GlobeInterval);
+    window._buildTripStep6GlobeInterval = startGlobeSpin('build-trip-step6-globe');
     showBuildTripStep(6);
     try {
       const res = await fetch(`${BACKEND_URL}/trip/build`, {
@@ -3797,6 +3901,9 @@
       alert('Something went wrong building your itinerary: ' + err.message);
       showBuildTripStep(5);
       showScreen('build-trip');
+    } finally {
+      if (window._buildTripStep6FactInterval) { clearInterval(window._buildTripStep6FactInterval); window._buildTripStep6FactInterval = null; }
+      if (window._buildTripStep6GlobeInterval) { clearInterval(window._buildTripStep6GlobeInterval); window._buildTripStep6GlobeInterval = null; }
     }
   }
   function backToBuildTripStep5() {

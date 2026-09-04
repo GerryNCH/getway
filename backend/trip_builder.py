@@ -695,6 +695,19 @@ def _drop_implausible_stop_coordinates(days: list[dict]) -> None:
     for day in days:
         with_coords = [s for s in day["stops"] if s.get("lat") is not None and s.get("lng") is not None]
         if len(with_coords) < 2:
+            # Distinguishes the two very different reasons a day's map can
+            # end up empty ("No map coordinates for this day yet." in
+            # index.html's renderMapForDay): this sanity check never ran
+            # (nothing to compare against), so if the day ALSO has zero
+            # stops with coordinates, those stops never had lat/lng coming
+            # IN — a Places/AI-curation upstream gap, not this function
+            # dropping anything. Logged so a recurrence of the "map won't
+            # load" report can be matched against this line instead of
+            # guessed at again.
+            if not with_coords and day["stops"]:
+                names = ", ".join(s.get("name", "?") for s in day["stops"])
+                print(f"[TripBuilder] Day {day.get('day')} has {len(day['stops'])} stop(s) with NO coordinates "
+                      f"at all (never dropped by the sanity check — they arrived without lat/lng): {names}")
             continue  # nothing to sanity-check this day against
         median_point = (
             statistics.median(s["lat"] for s in with_coords),

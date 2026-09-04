@@ -158,6 +158,7 @@ def _place_to_candidate_dict(place: dict, description: str = "", category: str =
         "rating": place.get("rating", 0) or 0,
         "user_rating_count": place.get("userRatingCount", 0) or 0,
         "price_level": place.get("priceLevel", "") or "",
+        "is_free": _is_free_by_type(place),
         "lat": loc.get("latitude"),
         "lng": loc.get("longitude"),
         "is_famous": _is_famous(place),

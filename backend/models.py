@@ -248,7 +248,17 @@ class TripCandidate(BaseModel):
     user_rating_count: int = 0
     price_level: str = ""  # Google's raw Places priceLevel enum, e.g.
                              # "PRICE_LEVEL_MODERATE" — empty if Google has
-                             # no price signal for this place.
+                             # no price signal for this place. NOTE: a
+                             # free-by-type place (see is_free below) also
+                             # has price_level="" — Google doesn't set
+                             # PRICE_LEVEL_FREE for parks/plazas/monuments,
+                             # so price_level alone can't distinguish "free"
+                             # from "no price data available". Use is_free
+                             # for that.
+    is_free: bool = False  # True = classified free by place type (park,
+                             # plaza, outdoor monument, etc. — see
+                             # trip_builder._is_free_by_type), regardless of
+                             # what price_level says.
     lat: Optional[float] = None
     lng: Optional[float] = None
     is_famous: bool = False  # True = included regardless of budget tier

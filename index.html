@@ -152,6 +152,7 @@
       <button type="button" onclick="scrollToRoutes()" class="nav-link text-xs font-medium">Routes</button>
       <button type="button" onclick="scrollToPopular()" class="nav-link text-xs font-medium">Popular</button>
       <button type="button" onclick="startVibeQuiz()" class="nav-link text-xs font-medium">Find your vibe</button>
+      <button type="button" onclick="startBuildTrip()" class="nav-link text-xs font-medium">Build your own trip</button>
       <button type="button" onclick="showScreen('route')" class="nav-link text-xs font-medium">Sample trip</button>
       <button type="button" onclick="scrollToHowItWorks()" class="nav-link text-xs font-medium">How it works</button>
     </div>
@@ -177,6 +178,7 @@
         <button type="button" onclick="mobileMenuGo(scrollToRoutes)" class="mobile-menu-link">Routes</button>
         <button type="button" onclick="mobileMenuGo(scrollToPopular)" class="mobile-menu-link">Popular</button>
         <button type="button" onclick="mobileMenuGo(startVibeQuiz)" class="mobile-menu-link">Find your vibe (game)</button>
+        <button type="button" onclick="mobileMenuGo(startBuildTrip)" class="mobile-menu-link">Build your own trip</button>
         <button type="button" onclick="mobileMenuGo(function(){ showScreen('route'); })" class="mobile-menu-link">Sample trip</button>
         <button type="button" onclick="mobileMenuGo(scrollToHowItWorks)" class="mobile-menu-link">How it works</button>
         <button type="button" onclick="mobileMenuGo(toggleSupportChat)" class="mobile-menu-link">Support</button>
@@ -251,6 +253,30 @@
       <div id="vibe-quiz-inline" class="hidden max-w-md mx-auto">
         <button type="button" onclick="closeVibeQuiz()" class="btn-interactive absolute top-5 right-5 md:top-8 md:right-8 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors"><i data-lucide="x" class="w-4 h-4"></i></button>
         <div id="vibe-quiz-body"></div>
+      </div>
+    </div>
+  </div>
+  <div class="h-4 md:h-6"></div>
+  <!-- ── Build your own trip — quiet secondary path for someone who'd
+       rather pick everything themselves instead of taking the quiz or
+       pasting a video link. Same bento-card two-column layout as the vibe
+       quiz teaser right above it, for visual consistency. ────────────── -->
+  <div class="max-w-6xl mx-auto px-6 md:px-14 mb-4 md:mb-8">
+    <div data-aos="fade-up" class="bento-card bg-white rounded-[32px] p-6 md:p-12 relative">
+      <div class="grid md:grid-cols-2 gap-8 md:gap-14 items-center">
+        <div>
+          <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-3">Do it yourself</div>
+          <div class="font-serif-display text-3xl md:text-4xl mb-3">Build your own trip</div>
+          <div class="text-sm text-gray-600 leading-relaxed mb-6 max-w-md">Want to choose everything yourself? No problem — pick your destination, your budget, and exactly what you want to see, and we'll turn it into a real route.</div>
+          <button onclick="startBuildTrip()" class="btn-interactive inline-flex items-center gap-2 h-[46px] px-6 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">Create your route <i data-lucide="arrow-right" class="w-4 h-4"></i></button>
+        </div>
+        <div class="bg-[#F8F6FF] rounded-[24px] p-6 md:p-8">
+          <div class="grid grid-cols-3 gap-2.5">
+            <div class="bg-white rounded-2xl p-3 text-center border border-gray-100"><i data-lucide="map-pin" class="w-5 h-5 mx-auto mb-1.5 text-[#7C3AED]"></i><span class="text-[11px] font-medium block">Destination</span></div>
+            <div class="bg-white rounded-2xl p-3 text-center border border-gray-100"><i data-lucide="list-checks" class="w-5 h-5 mx-auto mb-1.5 text-[#7C3AED]"></i><span class="text-[11px] font-medium block">Your picks</span></div>
+            <div class="bg-white rounded-2xl p-3 text-center border border-gray-100"><i data-lucide="route" class="w-5 h-5 mx-auto mb-1.5 text-[#7C3AED]"></i><span class="text-[11px] font-medium block">Your route</span></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>

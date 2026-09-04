@@ -31,12 +31,29 @@ traveler's selected attractions:
      affiliate links built via the SAME functions ai_analyzer.py already
      uses for video-extracted hotel stops (no new affiliate-link logic).
 
+Phase C assembles the actual day-by-day itinerary from the traveler's
+selections, in the SAME Stop/DayPlan/Itinerary shape the video-generated
+routes already use:
+  7. group_into_days() — one greedy nearest-neighbor path across ALL
+     selected attractions (_nearest_neighbor_order), split into `days`
+     contiguous chunks. A contiguous slice of an already-proximity-ordered
+     path is naturally a geographic cluster, and day N+1 starts near where
+     day N ended — minimizes backtracking both within a day and across the
+     whole trip without a full routing-optimization solve.
+  8. assemble_days() — turns those day-clusters (+ the Phase B hotel) into
+     DayPlan-shaped dicts of Stop-shaped dicts.
+  9. recommend_car_rental() — a SEPARATE Claude Haiku call reasoning from
+     real-world knowledge of the destination itself (driving conditions,
+     transit quality, parking) — deliberately NOT a geometric heuristic
+     based on how spread out the selected stops are.
+
 Deliberately does NOT touch the database — main.py owns the (city, budget[,
 location]) cache read/write, same division of responsibility as
 quality_check.py (this module is pure logic; main.py wires it to storage).
 """
 
 import json
+import math
 
 import anthropic
 from places import photo_url_from_places_photos
@@ -314,3 +331,206 @@ def hotel_to_recommendation_dict(hotel: dict, city: str) -> dict:
         "booking_url": _booking_affiliate_url(query),
         "expedia_url": _expedia_affiliate_url(query),
     }
+
+
+# ── Phase C: day-by-day itinerary assembly ──────────────────────────────
+
+def _haversine_km(a: tuple[float, float], b: tuple[float, float]) -> float:
+    """Great-circle distance between two (lat, lng) points, in km."""
+    lat1, lng1 = math.radians(a[0]), math.radians(a[1])
+    lat2, lng2 = math.radians(b[0]), math.radians(b[1])
+    dlat, dlng = lat2 - lat1, lng2 - lng1
+    h = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlng / 2) ** 2
+    return 2 * 6371 * math.asin(math.sqrt(h))
+
+
+def _nearest_neighbor_order(attractions: list[dict]) -> list[dict]:
+    """
+    Orders `attractions` (each a dict with "lat"/"lng") into a single
+    greedy nearest-neighbor path, starting from the westmost point (an
+    arbitrary but deterministic choice, so the same selection always
+    produces the same order) — a simple, defensible heuristic for
+    minimizing backtracking across the whole trip. NOT a full TSP solve;
+    Build Your Own Trip doesn't need routing-optimization-grade precision.
+
+    Attractions missing coordinates are appended at the end, in their
+    original order — there's nothing to route them by.
+    """
+    with_coords = [a for a in attractions if a.get("lat") is not None and a.get("lng") is not None]
+    without_coords = [a for a in attractions if a.get("lat") is None or a.get("lng") is None]
+    if not with_coords:
+        return without_coords
+
+    remaining = with_coords[:]
+    start = min(remaining, key=lambda a: a["lng"])
+    remaining.remove(start)
+    path = [start]
+
+    while remaining:
+        last = path[-1]
+        nxt = min(remaining, key=lambda a: _haversine_km((last["lat"], last["lng"]), (a["lat"], a["lng"])))
+        remaining.remove(nxt)
+        path.append(nxt)
+
+    return path + without_coords
+
+
+def group_into_days(attractions: list[dict], num_days: int) -> list[list[dict]]:
+    """
+    Groups `attractions` into up to `num_days` day-clusters, each already
+    ordered by proximity: builds one nearest-neighbor path across ALL
+    attractions (_nearest_neighbor_order), then splits it into contiguous
+    chunks. A contiguous slice of an already-proximity-ordered path is
+    naturally a geographic cluster, and day N+1 picks up near where day N
+    ended — this single algorithm satisfies both "group nearby stops
+    together" and "order within a day to minimize backtracking" at once.
+
+    Chunk sizes are as even as possible, with any remainder given to the
+    earlier days. If there are fewer attractions than `num_days`, trailing
+    days get an empty list — assemble_days() drops those rather than
+    padding the itinerary with content-free days.
+    """
+    num_days = max(1, num_days)
+    ordered = _nearest_neighbor_order(attractions)
+    n = len(ordered)
+    base, remainder = divmod(n, num_days)
+    days: list[list[dict]] = []
+    idx = 0
+    for day_i in range(num_days):
+        size = base + (1 if day_i < remainder else 0)
+        days.append(ordered[idx:idx + size])
+        idx += size
+    return days
+
+
+def _candidate_dict_to_stop(candidate: dict) -> dict:
+    """
+    Converts one selected TripCandidate-shaped dict into a Stop-shaped
+    dict. is_specific_name=True: this is a real, confirmed Places result
+    the traveler explicitly picked, not an AI guess at a name.
+    """
+    return {
+        "name": candidate.get("name", ""),
+        "category": candidate.get("category") or "sight",
+        "description": candidate.get("description", ""),
+        "photo_url": candidate.get("photo_url", ""),
+        "is_specific_name": True,
+        "lat": candidate.get("lat"),
+        "lng": candidate.get("lng"),
+    }
+
+
+def _hotel_dict_to_stop(hotel: dict) -> dict:
+    """Converts the Phase B TripHotelRecommendation-shaped dict into a Stop-shaped dict."""
+    return {
+        "name": hotel.get("name", ""),
+        "category": "hotel",
+        "description": hotel.get("description", ""),
+        "photo_url": hotel.get("photo_url", ""),
+        "is_specific_name": True,
+        "property_type": hotel.get("property_type", ""),
+        "area_label": hotel.get("area_label", ""),
+        "booking_url": hotel.get("booking_url", ""),
+        "expedia_url": hotel.get("expedia_url", ""),
+        "lat": hotel.get("lat"),
+        "lng": hotel.get("lng"),
+    }
+
+
+def assemble_days(attractions: list[dict], num_days: int, hotel: dict | None) -> list[dict]:
+    """
+    Turns selected TripCandidate-shaped attraction dicts (+ optionally a
+    Phase B TripHotelRecommendation-shaped hotel dict) into a list of
+    DayPlan-shaped dicts, ready for models.DayPlan(**d).
+
+    JUDGMENT CALL — flagged for review: the hotel Stop always goes first
+    in Day 1, matching the same convention ai_analyzer.py's video-
+    extraction prompt already uses ("put the hotel in Day 1 — it's the
+    base the traveler returns to"). This isn't a new rule invented for
+    Phase C, just applied consistently here too.
+
+    JUDGMENT CALL — flagged for review: day labels are plain "Day N" —
+    Phase C doesn't run an AI pass to write a themed label (e.g. "Old
+    Town & Harbour") the way video extraction does; that would need an
+    extra model call this phase's spec didn't ask for.
+
+    JUDGMENT CALL — flagged for review: if `num_days` exceeds how many
+    attractions were selected, trailing empty days are dropped — the
+    returned itinerary can have fewer days than requested rather than
+    padding with content-free days.
+    """
+    day_groups = group_into_days(attractions, num_days)
+    days: list[dict] = []
+    for i, group in enumerate(day_groups, start=1):
+        stops: list[dict] = []
+        if i == 1 and hotel:
+            stops.append(_hotel_dict_to_stop(hotel))
+        stops.extend(_candidate_dict_to_stop(a) for a in group)
+        if not stops:
+            continue  # drop empty trailing days
+        days.append({"day": i, "label": f"Day {i}", "stops": stops})
+
+    if not days:
+        # Edge case: no attractions selected and no hotel found — keep a
+        # single empty Day 1 rather than returning an itinerary with zero
+        # days at all.
+        days = [{"day": 1, "label": "Day 1", "stops": []}]
+    return days
+
+
+_CAR_RENTAL_SYSTEM = """You are a travel expert advising whether a traveler visiting a specific destination should rent a car for their trip.
+
+Decide based on REAL-WORLD knowledge of the destination itself — its actual driving conditions, parking availability, traffic, public transit quality, and geographic layout. Do NOT reason from a list of stop names or how spread out they are; reason about the destination as a place, using what you actually know about it.
+
+Examples of the judgment expected:
+- New York City: large and spread out, but driving is a nightmare (traffic, parking, one-way grids) and transit/walking covers it well — no car recommended.
+- A rural region, a multi-town or island destination, or somewhere with poor public transit — car recommended.
+- A dense, walkable European old-town city with good transit — no car recommended, even if the surrounding region is large.
+- A destination genuinely requiring travel between towns with no good transit link — car recommended.
+
+Reply with ONLY valid JSON, no markdown fences:
+{"car_rental_recommended": true, "car_rental_note": "Short, concrete reason, e.g. 'Public transit doesn't connect these towns well.'"}
+
+car_rental_note must be an empty string if car_rental_recommended is false. Keep the note under 20 words and concrete — not generic filler like "cars are convenient"."""
+
+
+def recommend_car_rental(destination: str) -> tuple[bool, str, float]:
+    """
+    Claude Haiku call reasoning with real-world knowledge about whether
+    `destination` is a car-rental-worthy trip — deliberately NOT a
+    geometric/distance heuristic based on how spread out the selected
+    stops are (a big, spread-out city like New York is still a driving
+    nightmare; a small but transit-poor island genuinely needs a car).
+    Populates the same car_rental_recommended/car_rental_note fields the
+    video-extraction pipeline already sets (see ai_analyzer.py's
+    SYSTEM_PROMPT) — same contract, different source, same locked logic.
+
+    Returns (recommended, note, cost_usd). Never raises — on any failure
+    falls back to (False, "", 0.0), same non-fatal philosophy as the rest
+    of this module and quality_check.py.
+    """
+    try:
+        response = _client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=200,
+            system=_CAR_RENTAL_SYSTEM,
+            messages=[{"role": "user", "content": f"Destination: {destination}"}],
+        )
+        usage = getattr(response, "usage", None)
+        cost_usd = 0.0
+        if usage:
+            cost_usd = (
+                usage.input_tokens * _HAIKU_INPUT_PER_MTOK
+                + usage.output_tokens * _HAIKU_OUTPUT_PER_MTOK
+            ) / 1_000_000
+
+        raw = response.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+        result = json.loads(raw)
+        recommended = bool(result.get("car_rental_recommended", False))
+        note = str(result.get("car_rental_note") or "").strip() if recommended else ""
+        return recommended, note, cost_usd
+    except Exception as e:
+        print(f"[TripBuilder] Car rental recommendation failed (non-fatal): {type(e).__name__}: {e}")
+        return False, "", 0.0

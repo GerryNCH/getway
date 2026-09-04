@@ -373,6 +373,23 @@ def list_approved_missing_fun_fact() -> list[dict]:
     return [{"video_id": r["video_id"], "destination": r["destination"]} for r in rows]
 
 
+def list_approved_for_fun_fact_refresh(force: bool = False) -> list[dict]:
+    """
+    Same as list_approved_missing_fun_fact(), except when force=True it
+    returns EVERY approved route regardless of whether fun_fact is already
+    filled — used by POST /admin/backfill-fun-facts?force=true to
+    re-generate facts that were written before a prompt change (e.g. to
+    make them more surprising/quirky), not just fill in blanks.
+    """
+    if not force:
+        return list_approved_missing_fun_fact()
+    with _conn() as conn:
+        rows = conn.execute(
+            """SELECT video_id, destination FROM itineraries WHERE status = 'approved'"""
+        ).fetchall()
+    return [{"video_id": r["video_id"], "destination": r["destination"]} for r in rows]
+
+
 def list_public_approved() -> list[dict]:
     """
     Lightweight summary of every approved route — everything the homepage

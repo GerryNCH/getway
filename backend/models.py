@@ -269,6 +269,11 @@ class TripCandidate(BaseModel):
 class TripCandidatesRequest(BaseModel):
     destination: str
     budget: str  # cheap | mid | luxury
+    activity_types: list[str] = []  # optional slugs from
+                                      # places._ACTIVITY_TYPE_QUERY_TERMS
+                                      # (e.g. "nightlife", "history") — empty
+                                      # (the default) means the old
+                                      # attractions-only behavior, unchanged.
 
 
 class TripCandidatesResponse(BaseModel):

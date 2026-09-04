@@ -3529,15 +3529,24 @@
       </label>`;
   }
   // Shared by both step4 (attractions) and step5 (activities) — filters
-  // the ONE already-fetched _buildTripState.candidates array by section
-  // and renders into `containerId`, keeping each card's original index so
-  // its checkbox always targets the right entry in the shared `selected`
-  // set regardless of which screen it's rendered on. Returns the item
-  // count so callers can toggle their own empty/list visibility.
-  function renderBuildTripCandidateGroup(section, containerId) {
+  // the ONE already-fetched _buildTripState.candidates array and renders
+  // into `containerId`, keeping each card's original index so its
+  // checkbox always targets the right entry in the shared `selected` set
+  // regardless of which screen it's rendered on. Returns the item count so
+  // callers can toggle their own empty/list visibility.
+  //
+  // Split by c.category ("activity" vs. everything else — sight/food/
+  // beach/village), NOT c.section. section only records which SEARCH
+  // found a candidate (the plain attraction search vs. one of the
+  // activity-type searches); category records what the place actually IS,
+  // per the AI curation pass's own judgment — the Sistine Chapel found via
+  // the "history" activity-type search is still a sight, not a bookable
+  // activity, and should land on the attractions screen. section stays on
+  // the data model for backend logging/dedup only.
+  function renderBuildTripCandidateGroup(group, containerId) {
     const items = _buildTripState.candidates
       .map((c, i) => ({ c, i }))
-      .filter(({ c }) => (section === 'attraction' ? c.section !== 'activity' : c.section === 'activity'));
+      .filter(({ c }) => (group === 'attraction' ? c.category !== 'activity' : c.category === 'activity'));
     const container = document.getElementById(containerId);
     if (container) container.innerHTML = items.map(({ c, i }) => buildTripCandidateCardHtml(c, i)).join('');
     if (typeof lucide !== 'undefined') lucide.createIcons();

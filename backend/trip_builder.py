@@ -54,6 +54,7 @@ quality_check.py (this module is pure logic; main.py wires it to storage).
 
 import json
 import math
+import re
 import statistics
 
 import anthropic
@@ -214,6 +215,30 @@ Reply with ONLY valid JSON, no markdown fences:
 Only include entries you decided to KEEP — dropped candidates simply don't appear in the array. "index" must exactly match an index from the input. "estimated_price" must be present on every kept entry, as "" when not applicable/not confident."""
 
 
+def _price_string_means_free(price: str) -> bool:
+    """
+    True if `price` (an AI-written estimated_price string) actually means
+    free — either literally "free" (case-insensitive) or a zero amount in
+    any common form ("€0", "$0", "0", "0€"). Real bug this fixes: the AI
+    curation pass sometimes correctly recognizes a place is free but
+    writes that into estimated_price as a zero-value price string instead
+    of leaving it blank and relying on is_free — without this check that
+    showed as a "~€0" badge instead of "Free".
+    """
+    normalized = (price or "").strip().lower()
+    if not normalized:
+        return False
+    if normalized == "free":
+        return True
+    digits = re.sub(r"[^\d.]", "", normalized)
+    if not digits:
+        return False
+    try:
+        return float(digits) == 0
+    except ValueError:
+        return False
+
+
 def curate_candidates(destination: str, raw_places: list[dict]) -> tuple[list[dict], float]:
     """
     Runs the AI curation pass over `raw_places` (already filtered for
@@ -268,13 +293,21 @@ def curate_candidates(destination: str, raw_places: list[dict]) -> tuple[list[di
             idx = item.get("index")
             if idx is None or not (0 <= idx < len(raw_places)):
                 continue
-            candidates.append(_place_to_candidate_dict(
+            estimated_price = item.get("estimated_price", "") or ""
+            candidate = _place_to_candidate_dict(
                 raw_places[idx],
                 description=item.get("description", ""),
                 category=item.get("category", "sight"),
                 section=raw_places[idx].get("_section", "attraction"),
-                estimated_price=item.get("estimated_price", "") or "",
-            ))
+                estimated_price=estimated_price,
+            )
+            if _price_string_means_free(estimated_price):
+                # The AI's real-world knowledge beats the Python type
+                # heuristic here — override whatever is_free the type
+                # check produced.
+                candidate["is_free"] = True
+                candidate["estimated_price"] = ""
+            candidates.append(candidate)
         return candidates, cost_usd
 
     except Exception as e:

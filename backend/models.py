@@ -98,6 +98,17 @@ class Stop(BaseModel):
                                    # the Map view entirely for a day with
                                    # no stop coordinates rather than
                                    # showing a broken/empty map.
+    is_free: bool = False  # Build Your Own Trip stops only — carried
+                             # through from TripCandidate.is_free. Video-
+                             # extracted stops always default False (no
+                             # equivalent classification runs on that path).
+                             # The frontend uses this to suppress the
+                             # GetYourGuide ticket button on free public
+                             # places (parks, plazas, viewpoints).
+    estimated_price: str = ""  # Build Your Own Trip stops only — carried
+                                 # through from TripCandidate.estimated_price
+                                 # (e.g. "€16"). Empty for video-extracted
+                                 # stops and whenever unknown/free.
 
 
 class DayPlan(BaseModel):
@@ -264,6 +275,22 @@ class TripCandidate(BaseModel):
     is_famous: bool = False  # True = included regardless of budget tier
                                # (see trip_builder.fits_budget) because it's
                                # a must-see by rating x review count.
+    section: str = "attraction"  # "attraction" | "activity" — which search
+                                   # this candidate came from: the plain
+                                   # destination-wide attraction search, or
+                                   # one of the traveler's requested activity
+                                   # types (places._ACTIVITY_TYPE_QUERY_TERMS).
+                                   # Lets the checklist UI group results
+                                   # instead of showing one flat list.
+    estimated_price: str = ""  # Short human string, e.g. "€16" or "€10-15" —
+                                 # the AI curation pass's own ballpark price
+                                 # estimate for paid attractions/activities/
+                                 # tours it has reasonably confident general
+                                 # knowledge of (see trip_builder's
+                                 # _CURATION_SYSTEM). Empty when free or when
+                                 # the AI isn't confident enough to avoid a
+                                 # misleading guess — NOT the same as
+                                 # price_level (Google's own signal).
 
 
 class TripCandidatesRequest(BaseModel):
@@ -281,6 +308,12 @@ class TripCandidatesResponse(BaseModel):
     budget: str
     candidates: list[TripCandidate]
     cached: bool = False
+    fun_fact: str = ""  # One real fact about the destination itself (see
+                          # ai_analyzer.generate_fun_fact) — a separate cheap
+                          # Haiku call, NOT part of the cached candidate
+                          # list, so it's generated fresh on every request
+                          # (cache hit or miss) rather than stored alongside
+                          # candidates_json. Empty on failure (non-fatal).
 
 
 # ── Build Your Own Trip (Phase B: hotel recommendation) ─────────────────────

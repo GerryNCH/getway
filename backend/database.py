@@ -11,6 +11,7 @@ Upgrade path: swap engine URL for PostgreSQL when you scale.
 
 import json
 import os
+import secrets
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -108,6 +109,18 @@ def init_db() -> None:
                 hotel_json  TEXT,               -- TripHotelRecommendation as JSON, or '' if none found
                 created_at  TEXT NOT NULL,
                 expires_at  TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS custom_trips (
+                slug                       TEXT PRIMARY KEY,   -- short, random, URL-safe — NOT sequential/guessable
+                destination                TEXT NOT NULL,
+                days                       INTEGER NOT NULL,
+                people                     INTEGER NOT NULL DEFAULT 1,
+                budget                     TEXT NOT NULL,
+                selected_attractions_json  TEXT NOT NULL,       -- list[TripCandidate] as saved by the traveler — needed to reopen the builder pre-filled (edit-state)
+                itinerary_json             TEXT NOT NULL,       -- full Itinerary as JSON — the locked, rendered snapshot (/trip/build's output)
+                created_at                 TEXT NOT NULL,
+                updated_at                 TEXT NOT NULL
             );
         """)
 
@@ -868,6 +881,94 @@ def save_trip_hotel_cache(city: str, budget: str, lat: float, lng: float, hotel:
              now.isoformat(), expires_at.isoformat()),
         )
     print(f"[DB] Cached hotel for {city} / {budget} near ({r_lat}, {r_lng}) (expires {expires_at.date()})")
+
+
+# ── Custom-built trips (Build Your Own Trip Phase D: save + share) ─────────
+# Separate table from `itineraries` on purpose — a custom trip has no
+# video/URL, no troll-filter/quality-check history, and no approval
+# workflow, so forcing it into the same table would mean a lot of
+# always-empty columns. Keyed by a short random slug (not the sequential
+# rowid) so a shared link can't be enumerated to browse other people's
+# trips. No auth/ownership check anywhere here — matches the rest of the
+# site, which has no user accounts at all.
+
+def _generate_trip_slug() -> str:
+    """8 URL-safe characters (6 random bytes) — short, shareable, not sequential/guessable."""
+    return secrets.token_urlsafe(6)
+
+
+def save_custom_trip(destination: str, days: int, people: int, budget: str,
+                      selected_attractions: list[dict], itinerary: Itinerary,
+                      slug: str | None = None) -> str:
+    """
+    Saves a custom-built trip (from /trip/build) and returns its slug.
+
+    Pass `slug` to update an existing saved trip IN PLACE (the edit flow:
+    GET /trip/{slug}/edit-state to reopen the builder pre-filled, rebuild
+    via /trip/build, then save again with the same slug) — the same slug
+    is returned. If that slug doesn't actually exist (e.g. a stale/typo'd
+    value), this falls back to inserting a new row under it rather than
+    raising, since there's no ownership model to violate here anyway.
+
+    Omit `slug` (or pass None) to save a brand-new trip under a freshly
+    generated one.
+    """
+    now = datetime.utcnow().isoformat()
+    itinerary_json = json.dumps(itinerary.model_dump(), ensure_ascii=False)
+    attractions_json = json.dumps(selected_attractions, ensure_ascii=False)
+
+    with _conn() as conn:
+        if slug:
+            cur = conn.execute(
+                """UPDATE custom_trips
+                   SET destination = ?, days = ?, people = ?, budget = ?,
+                       selected_attractions_json = ?, itinerary_json = ?, updated_at = ?
+                   WHERE slug = ?""",
+                (destination, days, people, budget, attractions_json, itinerary_json, now, slug),
+            )
+            if cur.rowcount > 0:
+                print(f"[DB] Updated custom trip '{slug}' ({destination})")
+                return slug
+            final_slug = slug  # given but not found — save fresh under it instead of erroring
+        else:
+            final_slug = _generate_trip_slug()
+            while conn.execute("SELECT 1 FROM custom_trips WHERE slug = ?", (final_slug,)).fetchone():
+                final_slug = _generate_trip_slug()
+
+        conn.execute(
+            """INSERT INTO custom_trips
+               (slug, destination, days, people, budget, selected_attractions_json,
+                itinerary_json, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (final_slug, destination, days, people, budget, attractions_json, itinerary_json, now, now),
+        )
+    print(f"[DB] Saved custom trip '{final_slug}' ({destination})")
+    return final_slug
+
+
+def get_custom_trip(slug: str) -> dict | None:
+    """
+    Returns {"slug", "destination", "days", "people", "budget",
+    "selected_attractions", "itinerary", "created_at", "updated_at"} for a
+    saved custom trip, or None if the slug doesn't exist. "itinerary" and
+    "selected_attractions" are returned as plain dicts/lists (already
+    json.loads'd) — ready for Itinerary(**...) / TripCandidate(**...).
+    """
+    with _conn() as conn:
+        row = conn.execute("SELECT * FROM custom_trips WHERE slug = ?", (slug,)).fetchone()
+    if not row:
+        return None
+    return {
+        "slug": row["slug"],
+        "destination": row["destination"],
+        "days": row["days"],
+        "people": row["people"],
+        "budget": row["budget"],
+        "selected_attractions": json.loads(row["selected_attractions_json"]),
+        "itinerary": json.loads(row["itinerary_json"]),
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
 
 
 def cache_stops_from_itinerary(destination: str, itinerary: Itinerary) -> None:

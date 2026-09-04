@@ -35,7 +35,11 @@ from fastapi import FastAPI, HTTPException, File, UploadFile, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from models import ExtractRequest, ExtractResponse, Itinerary, Comment, ReviewCreate, Review, ReviewsResponse, RouteMeta, SiteSettings
+from models import (
+    ExtractRequest, ExtractResponse, Itinerary, Comment, ReviewCreate, Review,
+    ReviewsResponse, RouteMeta, SiteSettings, TripCandidate, TripCandidatesRequest,
+    TripCandidatesResponse,
+)
 import database
 from extractor import (
     extract_video_id, fetch_metadata, download_video, extract_frames,
@@ -48,8 +52,9 @@ from ai_analyzer import analyse_frames, generate_fun_fact
 from quality_check import ai_quality_check
 from places import (
     enrich_itinerary_with_photos, _unsplash_candidates, _attribution_from_candidate,
-    _trigger_unsplash_download, _get_place_photo_and_location,
+    _trigger_unsplash_download, _get_place_photo_and_location, search_attractions_broad,
 )
+from trip_builder import is_open as trip_place_is_open, fits_budget, curate_candidates
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 
@@ -352,6 +357,55 @@ def list_reviews(video_id: str):
     count = len(reviews)
     average = round(sum(r.rating for r in reviews) / count, 1) if count else 0.0
     return ReviewsResponse(reviews=reviews, average_rating=average, count=count)
+
+
+# ── Build Your Own Trip (Phase A: candidate search) ───────────────────────────
+
+_TRIP_BUDGET_TIERS = {"cheap", "mid", "luxury"}
+_TRIP_CACHE_TTL_DAYS = 30
+
+
+@app.post("/trip/candidates", response_model=TripCandidatesResponse)
+def get_trip_candidates(req: TripCandidatesRequest):
+    """
+    "Build Your Own Trip" secondary feature — Phase A (backend only, no
+    frontend yet). Returns a curated, budget-appropriate list of candidate
+    attractions for a destination: a broad Places search
+    (places.search_attractions_broad), filtered for open/budget-fit
+    (trip_builder.is_open / fits_budget), then run through an AI curation
+    pass (trip_builder.curate_candidates) that drops junk/duplicates and
+    rewrites descriptions in site tone. Cached by (city, budget) — see
+    database.get_trip_candidates_cache/save_trip_candidates_cache.
+    """
+    city = req.destination.strip()
+    budget = req.budget.strip().lower()
+    if not city:
+        raise HTTPException(400, "Missing destination")
+    if budget not in _TRIP_BUDGET_TIERS:
+        raise HTTPException(400, f"budget must be one of: {', '.join(sorted(_TRIP_BUDGET_TIERS))}")
+
+    cached = database.get_trip_candidates_cache(city, budget)
+    if cached is not None:
+        print(f"[TripBuilder] Cache HIT for {city} / {budget} ({len(cached)} candidates)")
+        return TripCandidatesResponse(
+            destination=city, budget=budget,
+            candidates=[TripCandidate(**c) for c in cached],
+            cached=True,
+        )
+
+    print(f"[TripBuilder] Cache MISS for {city} / {budget} — searching Places")
+    raw_places = search_attractions_broad(city)
+    fitted = [p for p in raw_places if trip_place_is_open(p) and fits_budget(p, budget)]
+    curated, cost_usd = curate_candidates(city, fitted)
+    print(f"[TripBuilder] {city}/{budget}: {len(raw_places)} raw -> {len(fitted)} fit budget -> "
+          f"{len(curated)} after AI curation (${cost_usd:.4f})")
+
+    database.save_trip_candidates_cache(city, budget, curated, ttl_days=_TRIP_CACHE_TTL_DAYS)
+    return TripCandidatesResponse(
+        destination=city, budget=budget,
+        candidates=[TripCandidate(**c) for c in curated],
+        cached=False,
+    )
 
 
 # ── Admin endpoints (basic — full panel comes later) ─────────────────────────

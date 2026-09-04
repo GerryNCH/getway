@@ -906,7 +906,7 @@
     <div class="text-center mb-6">
       <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">Build Your Own Trip</div>
       <div class="font-serif-display text-[26px] md:text-3xl mb-2">Pick what you want to see</div>
-      <div class="text-xs md:text-sm text-gray-600 leading-relaxed px-2.5">Everything's checked by default — untick anything you'd rather skip.</div>
+      <div class="text-xs md:text-sm text-gray-600 leading-relaxed px-2.5">Tap the ones you want to include — nothing's picked yet.</div>
     </div>
     <div id="build-trip-candidates-loading" class="text-center py-14">
       <div class="w-14 h-14 bg-[#F1EEFF] rounded-full flex items-center justify-center mx-auto mb-4">
@@ -919,7 +919,12 @@
       <button type="button" onclick="showBuildTripStep(2)" class="btn-interactive h-[42px] px-5 bg-[#8B5CF6] text-white text-xs font-medium rounded-xl">Try a different budget</button>
     </div>
     <div id="build-trip-candidates-list" class="hidden">
-      <div id="build-trip-candidates-items" class="space-y-2.5 max-h-[50vh] overflow-y-auto mb-6 pr-1"></div>
+      <div id="build-trip-fun-fact" class="hidden flex items-start gap-1.5 bg-[#FAF8F3] rounded-xl px-3 py-2.5 mb-4">
+        <i data-lucide="lightbulb" class="w-3.5 h-3.5 text-[#8B5CF6] flex-shrink-0 mt-0.5"></i>
+        <span id="build-trip-fun-fact-text" class="text-[11px] text-gray-600 italic leading-snug"></span>
+      </div>
+      <div class="text-[10px] text-gray-400 mb-3">Prices shown are rough estimates, not live rates.</div>
+      <div id="build-trip-candidates-items" class="space-y-4 max-h-[50vh] overflow-y-auto mb-6 pr-1"></div>
       <div class="flex items-center justify-between mb-3">
         <span id="build-trip-selected-count" class="text-[11px] text-gray-400">Select at least one place</span>
         <button type="button" onclick="showBuildTripStep(3)" class="text-xs text-gray-400 hover:text-gray-600">&larr; Back</button>
@@ -936,7 +941,11 @@
     <div class="w-16 h-16 bg-[#F1EEFF] rounded-full flex items-center justify-center mx-auto mb-6">
       <i data-lucide="route" class="w-6 h-6 text-[#8B5CF6] animate-pulse"></i>
     </div>
-    <div class="text-sm font-medium">Building your itinerary…</div>
+    <div class="text-sm font-medium mb-4">Building your itinerary…</div>
+    <div id="build-trip-step5-fun-fact" class="hidden max-w-xs mx-auto flex items-start gap-1.5 bg-[#FAF8F3] rounded-xl px-3 py-2.5 text-left">
+      <i data-lucide="lightbulb" class="w-3.5 h-3.5 text-[#8B5CF6] flex-shrink-0 mt-0.5"></i>
+      <span id="build-trip-step5-fun-fact-text" class="text-[11px] text-gray-600 italic leading-snug"></span>
+    </div>
   </div>
 </div>
 </div>
@@ -2677,7 +2686,7 @@
         ${stop.transfer_note ? `<div class="pl-6 md:pl-0 mt-1.5"><span class="inline-flex items-center gap-1 text-[11px] text-gray-500 bg-gray-50 rounded-full px-2.5 py-1"><i data-lucide="navigation" class="w-3 h-3"></i>${escapeHtml(stop.transfer_note)}</span></div>` : ''}
         ${stop.tip ? `<div class="pl-6 md:pl-0 text-xs text-[#8B5CF6] mt-1.5">💡 ${stop.tip}</div>` : ''}
         ${stop.category === 'food' ? `<a href="${stop.booking_url || `https://www.google.com/maps/search/${encodeURIComponent(mapsQuery)}`}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-interactive inline-flex items-center gap-1.5 mt-2.5 ml-6 md:ml-0 h-[36px] px-4 bg-[#8B5CF6] text-white text-xs font-medium rounded-lg"><i data-lucide="calendar" class="w-3.5 h-3.5"></i>Reserve a table</a>` : ''}
-        ${(stop.category === 'activity' || stop.category === 'sight') ? `<a href="${stop.booking_url || gygFallbackUrl}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-interactive inline-flex items-center gap-1.5 mt-2.5 ml-6 md:ml-0 h-[36px] px-4 bg-[#8B5CF6] text-white text-xs font-medium rounded-lg"><i data-lucide="ticket" class="w-3.5 h-3.5"></i>${stop.category === 'sight' ? 'Get tickets via GetYourGuide' : 'Book via GetYourGuide'}</a>` : ''}
+        ${((stop.category === 'activity' || stop.category === 'sight') && !stop.is_free) ? `<div class="mt-2.5 ml-6 md:ml-0 flex items-center gap-2 flex-wrap"><a href="${stop.booking_url || gygFallbackUrl}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-interactive inline-flex items-center gap-1.5 h-[36px] px-4 bg-[#8B5CF6] text-white text-xs font-medium rounded-lg"><i data-lucide="ticket" class="w-3.5 h-3.5"></i>${stop.category === 'sight' ? 'Get tickets via GetYourGuide' : 'Book via GetYourGuide'}</a>${stop.estimated_price ? `<span class="text-[11px] text-gray-500">~${escapeHtml(stop.estimated_price)}</span>` : ''}</div>` : ''}
       </div>
     </div>`;
   }
@@ -3246,6 +3255,7 @@
     activityTypes: [],        // expanded final slug list sent to /trip/candidates + /trip/build
     candidates: [],           // raw TripCandidate objects from /trip/candidates
     selected: new Set(),      // indices into `candidates` currently checked
+    funFact: '',              // destination fun fact from /trip/candidates' fun_fact
     selectedAttractions: [],  // the TripCandidate objects actually sent to /trip/build
     previewItinerary: null,   // itinerary returned by /trip/build
     slug: null,                // set once saved — reused for the edit-and-resave flow
@@ -3254,7 +3264,8 @@
     _buildTripState = {
       destination: '', days: 3, people: 2, budget: '',
       activityTypeSelection: new Set(), activityTypes: [],
-      candidates: [], selected: new Set(), selectedAttractions: [],
+      candidates: [], selected: new Set(), funFact: '',
+      selectedAttractions: [],
       previewItinerary: null, slug: null,
     };
     const destInput = document.getElementById('bt-destination');
@@ -3376,16 +3387,64 @@
       }
       const data = await res.json();
       _buildTripState.candidates = data.candidates || [];
-      // Everything starts checked — friendlier default than an empty list
-      // the traveler has to build up one tap at a time; unticking a place
-      // they don't want is one tap either way.
-      _buildTripState.selected = new Set(_buildTripState.candidates.map((_, i) => i));
+      // Nothing pre-checked — the traveler builds up their own list from
+      // scratch rather than having to notice and untick everything they
+      // don't want.
+      _buildTripState.selected = new Set();
+      _buildTripState.funFact = data.fun_fact || '';
       renderBuildTripCandidates();
     } catch (err) {
       document.getElementById('build-trip-candidates-loading').classList.add('hidden');
       alert('Something went wrong finding places: ' + err.message);
       showBuildTripStep(3);
     }
+  }
+  function buildTripCandidateCardHtml(c, i) {
+    const seed = slugify(c.name || ('candidate-' + i));
+    const checked = _buildTripState.selected.has(i);
+    const ratingLabel = c.rating ? Number(c.rating).toFixed(1) : '';
+    // Price/free signal, in priority order:
+    //   1. "Free" (park/plaza/monument-type places, see
+    //      trip_builder._is_free_by_type) — a distinct, more useful signal
+    //      than "no price data at all".
+    //   2. estimated_price (the AI curation pass's own ballpark, e.g.
+    //      "€16") when set — more specific than the price_level bucket, so
+    //      it replaces rather than joins that badge. Styled with a dashed
+    //      border + "~" prefix specifically so it reads as an estimate,
+    //      not a confirmed price.
+    //   3. Otherwise the price_level bucket (€/€€/€€€/€€€€), styled like
+    //      the existing route-card price pill (see renderRoutes'
+    //      priceCategory badge) — same small rounded-full chip, just on a
+    //      light row instead of a photo overlay.
+    const priceLabel = BUILD_TRIP_PRICE_LEVEL_LABEL[c.price_level] || '';
+    const priceBadge = c.is_free
+      ? `<span class="text-[10px] font-medium text-[#16A34A] bg-[#EFFCF3] px-2 py-0.5 rounded-full">Free</span>`
+      : c.estimated_price
+      ? `<span class="text-[10px] font-medium text-gray-600 border border-dashed border-gray-300 px-2 py-0.5 rounded-full">~${escapeHtml(c.estimated_price)}</span>`
+      : priceLabel
+      ? `<span class="text-[10px] font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full">${priceLabel}</span>`
+      : '';
+    return `
+      <label class="flex items-center gap-3 bg-white bento-card rounded-2xl p-3 cursor-pointer">
+        <input type="checkbox" data-idx="${i}" ${checked ? 'checked' : ''} onchange="toggleBuildTripCandidate(${i})" class="w-5 h-5 rounded-md accent-[#8B5CF6] flex-shrink-0">
+        <div class="w-14 h-14 rounded-xl flex-shrink-0 overflow-hidden relative" style="background:${gradientFor(seed)}">
+          <img src="${c.photo_url || ''}" alt="" class="absolute inset-0 w-full h-full object-cover" onerror="imgFallback(this,'map-pin','${seed}')">
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-medium truncate">${escapeHtml(c.name || '')}</div>
+          <div class="text-xs text-gray-500 leading-snug">${escapeHtml(c.description || '')}</div>
+          <div class="flex items-center gap-2 mt-1 text-[11px] text-gray-400">
+            ${ratingLabel ? `<span class="inline-flex items-center gap-0.5"><i data-lucide="star" class="w-3 h-3 text-amber-500"></i>${ratingLabel}</span>` : ''}
+            ${priceBadge}
+          </div>
+        </div>
+      </label>`;
+  }
+  function buildTripCandidateSectionHtml(title, items) {
+    if (!items.length) return '';
+    return `
+      <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mt-4 mb-2 first:mt-0">${title}</div>
+      <div class="space-y-2.5">${items.map(({ c, i }) => buildTripCandidateCardHtml(c, i)).join('')}</div>`;
   }
   function renderBuildTripCandidates() {
     document.getElementById('build-trip-candidates-loading').classList.add('hidden');
@@ -3397,40 +3456,28 @@
     }
     document.getElementById('build-trip-candidates-empty').classList.add('hidden');
     document.getElementById('build-trip-candidates-list').classList.remove('hidden');
+    // "Did you know?" note about the destination — shown once candidates
+    // load, same visual language as the existing route-card fun fact chip
+    // (see renderRoutes' funFactHtml) rather than a new style.
+    const funFactEl = document.getElementById('build-trip-fun-fact');
+    const funFactTextEl = document.getElementById('build-trip-fun-fact-text');
+    if (_buildTripState.funFact) {
+      funFactTextEl.textContent = _buildTripState.funFact;
+      funFactEl.classList.remove('hidden');
+    } else {
+      funFactEl.classList.add('hidden');
+    }
+    // Split into two groups by which search each candidate came from (see
+    // TripCandidate.section), keeping each item's original index into
+    // _buildTripState.candidates so its checkbox/toggle still targets the
+    // right entry regardless of which group it renders in.
+    const indexed = candidates.map((c, i) => ({ c, i }));
+    const attractionItems = indexed.filter(({ c }) => c.section !== 'activity');
+    const activityItems = indexed.filter(({ c }) => c.section === 'activity');
     const container = document.getElementById('build-trip-candidates-items');
-    container.innerHTML = candidates.map((c, i) => {
-      const seed = slugify(c.name || ('candidate-' + i));
-      const checked = _buildTripState.selected.has(i);
-      const priceLabel = BUILD_TRIP_PRICE_LEVEL_LABEL[c.price_level] || '';
-      const ratingLabel = c.rating ? Number(c.rating).toFixed(1) : '';
-      // Price/free signal — "Free" (park/plaza/monument-type places, see
-      // trip_builder._is_free_by_type) takes priority since it's a
-      // distinct, more useful signal than "no price data at all"; a plain
-      // price-level pill (€/€€/€€€/€€€€) otherwise, styled like the
-      // existing route-card price pill (see renderRoutes' priceCategory
-      // badge) — same small rounded-full chip, just on a light row instead
-      // of a photo overlay.
-      const priceBadge = c.is_free
-        ? `<span class="text-[10px] font-medium text-[#16A34A] bg-[#EFFCF3] px-2 py-0.5 rounded-full">Free</span>`
-        : priceLabel
-        ? `<span class="text-[10px] font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full">${priceLabel}</span>`
-        : '';
-      return `
-        <label class="flex items-center gap-3 bg-white bento-card rounded-2xl p-3 cursor-pointer">
-          <input type="checkbox" data-idx="${i}" ${checked ? 'checked' : ''} onchange="toggleBuildTripCandidate(${i})" class="w-5 h-5 rounded-md accent-[#8B5CF6] flex-shrink-0">
-          <div class="w-14 h-14 rounded-xl flex-shrink-0 overflow-hidden relative" style="background:${gradientFor(seed)}">
-            <img src="${c.photo_url || ''}" alt="" class="absolute inset-0 w-full h-full object-cover" onerror="imgFallback(this,'map-pin','${seed}')">
-          </div>
-          <div class="flex-1 min-w-0">
-            <div class="text-sm font-medium truncate">${escapeHtml(c.name || '')}</div>
-            <div class="text-xs text-gray-500 leading-snug">${escapeHtml(c.description || '')}</div>
-            <div class="flex items-center gap-2 mt-1 text-[11px] text-gray-400">
-              ${ratingLabel ? `<span class="inline-flex items-center gap-0.5"><i data-lucide="star" class="w-3 h-3 text-amber-500"></i>${ratingLabel}</span>` : ''}
-              ${priceBadge}
-            </div>
-          </div>
-        </label>`;
-    }).join('');
+    container.innerHTML =
+      buildTripCandidateSectionHtml('Attractions', attractionItems) +
+      buildTripCandidateSectionHtml('Activities', activityItems);
     if (typeof lucide !== 'undefined') lucide.createIcons();
     updateBuildTripContinueBtn();
   }
@@ -3457,6 +3504,14 @@
     buildAndPreviewTrip();
   }
   async function buildAndPreviewTrip() {
+    const fact5El = document.getElementById('build-trip-step5-fun-fact');
+    const fact5TextEl = document.getElementById('build-trip-step5-fun-fact-text');
+    if (_buildTripState.funFact) {
+      fact5TextEl.textContent = _buildTripState.funFact;
+      fact5El.classList.remove('hidden');
+    } else {
+      fact5El.classList.add('hidden');
+    }
     showBuildTripStep(5);
     try {
       const res = await fetch(`${BACKEND_URL}/trip/build`, {

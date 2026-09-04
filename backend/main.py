@@ -40,6 +40,7 @@ from models import (
     ReviewsResponse, RouteMeta, SiteSettings, TripCandidate, TripCandidatesRequest,
     TripCandidatesResponse, TripHotelRequest, TripHotelRecommendation, TripHotelResponse,
     TripBuildRequest, TripSaveRequest, TripSaveResponse, TripEditStateResponse,
+    TripFunFactRequest, TripFunFactResponse,
 )
 import database
 from extractor import (
@@ -413,12 +414,6 @@ def get_trip_candidates(req: TripCandidatesRequest):
         raise HTTPException(400, f"budget must be one of: {', '.join(sorted(_TRIP_BUDGET_TIERS))}")
     activity_types = _normalize_activity_types(req.activity_types)
 
-    # A separate, cheap Haiku call — NOT part of the cached candidate list,
-    # so it runs fresh on both the cache-hit and cache-miss paths below
-    # rather than being stored alongside candidates_json. Never raises;
-    # falls back to "" on failure per generate_fun_fact's own contract.
-    fun_fact, _fun_fact_cost = generate_fun_fact(city)
-
     cached = database.get_trip_candidates_cache(city, budget, activity_types)
     if cached is not None:
         print(f"[TripBuilder] Cache HIT for {city} / {budget} / activity_types={activity_types or 'none'} ({len(cached)} candidates)")
@@ -426,7 +421,6 @@ def get_trip_candidates(req: TripCandidatesRequest):
             destination=city, budget=budget,
             candidates=[TripCandidate(**c) for c in cached],
             cached=True,
-            fun_fact=fun_fact,
         )
 
     print(f"[TripBuilder] Cache MISS for {city} / {budget} / activity_types={activity_types or 'none'} — searching Places")
@@ -453,8 +447,24 @@ def get_trip_candidates(req: TripCandidatesRequest):
         destination=city, budget=budget,
         candidates=[TripCandidate(**c) for c in curated],
         cached=False,
-        fun_fact=fun_fact,
     )
+
+
+@app.post("/trip/fun-fact", response_model=TripFunFactResponse)
+def get_trip_fun_fact(req: TripFunFactRequest):
+    """
+    Thin wrapper around ai_analyzer.generate_fun_fact — its own endpoint,
+    separate from /trip/candidates, specifically so the frontend can fire
+    it in parallel with the slower candidates search and show it during
+    the "finding places" spinner rather than only after candidates finish
+    loading. No caching (it's already a single cheap Haiku call); never
+    raises, per generate_fun_fact's own non-fatal contract.
+    """
+    city = req.destination.strip()
+    if not city:
+        raise HTTPException(400, "Missing destination")
+    fun_fact, _cost = generate_fun_fact(city)
+    return TripFunFactResponse(fun_fact=fun_fact)
 
 
 @app.post("/trip/hotel", response_model=TripHotelResponse)

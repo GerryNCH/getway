@@ -308,12 +308,22 @@ class TripCandidatesResponse(BaseModel):
     budget: str
     candidates: list[TripCandidate]
     cached: bool = False
+
+
+class TripFunFactRequest(BaseModel):
+    destination: str
+
+
+class TripFunFactResponse(BaseModel):
     fun_fact: str = ""  # One real fact about the destination itself (see
-                          # ai_analyzer.generate_fun_fact) — a separate cheap
-                          # Haiku call, NOT part of the cached candidate
-                          # list, so it's generated fresh on every request
-                          # (cache hit or miss) rather than stored alongside
-                          # candidates_json. Empty on failure (non-fatal).
+                          # ai_analyzer.generate_fun_fact). Deliberately its
+                          # own endpoint (POST /trip/fun-fact), not part of
+                          # /trip/candidates: it's fast (one cheap Haiku
+                          # call, no Places search), so the frontend fires
+                          # it in parallel with the slower candidates call
+                          # and can show it during the "finding places"
+                          # spinner instead of only after candidates finish
+                          # loading. Empty on failure (non-fatal).
 
 
 # ── Build Your Own Trip (Phase B: hotel recommendation) ─────────────────────

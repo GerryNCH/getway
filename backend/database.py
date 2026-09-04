@@ -122,6 +122,15 @@ def init_db() -> None:
                 created_at                 TEXT NOT NULL,
                 updated_at                 TEXT NOT NULL
             );
+
+            -- Tracks one-time DATA migrations (e.g. "clear this cache table
+            -- once") that need a run-exactly-once guard — schema changes
+            -- (new columns) instead use the PRAGMA table_info pattern below,
+            -- which is naturally idempotent and doesn't need this table.
+            CREATE TABLE IF NOT EXISTS _schema_migrations (
+                name        TEXT PRIMARY KEY,
+                applied_at  TEXT NOT NULL
+            );
         """)
 
         # Migration: earlier versions of this table didn't store the hero
@@ -194,6 +203,28 @@ def init_db() -> None:
         existing_trip_candidates_cols = {row["name"] for row in conn.execute("PRAGMA table_info(trip_candidates_cache)")}
         if "activity_types" not in existing_trip_candidates_cols:
             conn.execute("ALTER TABLE trip_candidates_cache ADD COLUMN activity_types TEXT DEFAULT ''")
+
+        # One-time migration: wipe trip_candidates_cache entirely. Rows
+        # cached before TripCandidate.is_free's free-type logic was fixed
+        # (Colosseum/monument-type places were wrongly marked free) and
+        # before estimated_price existed at all are stale in a way that
+        # silently masks both fixes — a cache HIT just returns the old
+        # dicts as-is, so Pydantic fills estimated_price with its default
+        # "" and it looks like the feature never worked, even though the
+        # code is correct. Guarded by _schema_migrations so this runs
+        # exactly once, not on every deploy — it's a one-time reset, not a
+        # standing "always clear the cache" behavior.
+        _CACHE_RESET_MIGRATION = "clear_trip_candidates_cache_for_estimated_price_and_free_type_fix"
+        already_applied = conn.execute(
+            "SELECT 1 FROM _schema_migrations WHERE name = ?", (_CACHE_RESET_MIGRATION,)
+        ).fetchone()
+        if not already_applied:
+            cleared = conn.execute("DELETE FROM trip_candidates_cache").rowcount
+            conn.execute(
+                "INSERT INTO _schema_migrations (name, applied_at) VALUES (?, ?)",
+                (_CACHE_RESET_MIGRATION, datetime.utcnow().isoformat()),
+            )
+            print(f"[DB] One-time migration: cleared {cleared} stale trip_candidates_cache row(s)")
 
         # Seed the singleton site_settings row once, with the hero slides
         # that were previously hardcoded in index.html — so nothing changes

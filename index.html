@@ -987,7 +987,18 @@
         <span id="build-trip-checklist-fun-fact-text" class="text-[11px] text-gray-600 italic leading-snug"></span>
       </div>
       <div class="text-[10px] text-gray-400 mb-3">Prices shown are rough estimates, not live rates.</div>
-      <div id="build-trip-attractions-items" class="space-y-2.5 max-h-[50vh] overflow-y-auto mb-6 pr-1"></div>
+      <div id="build-trip-attractions-items" class="space-y-2.5 max-h-[50vh] overflow-y-auto mb-4 pr-1"></div>
+      <!-- Manual search-and-add — for something the curated list missed
+           (e.g. "diving"). Real Places search, same as everything else on
+           this screen; see searchBuildTripPlace()/addBuildTripSearchResult(). -->
+      <div class="border-t border-gray-100 pt-4 mb-4">
+        <div class="text-xs text-gray-500 mb-2">Don't see something you know is here? Search for it.</div>
+        <div class="flex items-center gap-2 mb-3">
+          <input id="build-trip-search-input-4" type="text" onkeydown="if(event.key==='Enter'){searchBuildTripPlace(4);}" placeholder="e.g. diving, cooking class…" class="flex-1 min-w-0 h-[42px] px-3 bg-white/70 border border-gray-200 rounded-xl text-sm outline-none placeholder:text-gray-400">
+          <button type="button" onclick="searchBuildTripPlace(4)" class="btn-interactive flex-shrink-0 h-[42px] px-4 bg-gray-900 text-white text-xs font-medium rounded-xl flex items-center gap-1.5"><i data-lucide="search" class="w-3.5 h-3.5"></i>Search</button>
+        </div>
+        <div id="build-trip-search-results-4" class="space-y-2.5"></div>
+      </div>
       <div class="flex items-center justify-between mb-3">
         <span class="build-trip-selected-count text-[11px] text-gray-400">Select at least one place</span>
         <button type="button" onclick="showBuildTripStep(3)" class="text-xs text-gray-400 hover:text-gray-600">&larr; Back</button>
@@ -1008,7 +1019,15 @@
       <div class="text-sm text-gray-500 mb-1">No specific bookable activities found for your picks.</div>
       <div class="text-xs text-gray-400">That's okay — your attractions are enough.</div>
     </div>
-    <div id="build-trip-activities-items" class="hidden space-y-2.5 max-h-[50vh] overflow-y-auto mb-6 pr-1"></div>
+    <div id="build-trip-activities-items" class="hidden space-y-2.5 max-h-[50vh] overflow-y-auto mb-4 pr-1"></div>
+    <div class="border-t border-gray-100 pt-4 mb-4">
+      <div class="text-xs text-gray-500 mb-2">Don't see something you know is here? Search for it.</div>
+      <div class="flex items-center gap-2 mb-3">
+        <input id="build-trip-search-input-5" type="text" onkeydown="if(event.key==='Enter'){searchBuildTripPlace(5);}" placeholder="e.g. diving, cooking class…" class="flex-1 min-w-0 h-[42px] px-3 bg-white/70 border border-gray-200 rounded-xl text-sm outline-none placeholder:text-gray-400">
+        <button type="button" onclick="searchBuildTripPlace(5)" class="btn-interactive flex-shrink-0 h-[42px] px-4 bg-gray-900 text-white text-xs font-medium rounded-xl flex items-center gap-1.5"><i data-lucide="search" class="w-3.5 h-3.5"></i>Search</button>
+      </div>
+      <div id="build-trip-search-results-5" class="space-y-2.5"></div>
+    </div>
     <div class="flex items-center justify-between mb-3">
       <span class="build-trip-selected-count text-[11px] text-gray-400">Select at least one place</span>
       <button type="button" onclick="showBuildTripStep(4)" class="text-xs text-gray-400 hover:text-gray-600">&larr; Back</button>
@@ -3574,9 +3593,10 @@
         <div class="flex-1 min-w-0">
           <div class="text-sm font-medium truncate">${escapeHtml(c.name || '')}</div>
           <div class="text-xs text-gray-500 leading-snug">${escapeHtml(c.description || '')}</div>
-          <div class="flex items-center gap-2 mt-1 text-[11px] text-gray-400">
+          <div class="flex items-center gap-2 mt-1 text-[11px] text-gray-400 flex-wrap">
             ${ratingLabel ? `<span class="inline-flex items-center gap-0.5"><i data-lucide="star" class="w-3 h-3 text-amber-500"></i>${ratingLabel}</span>` : ''}
             ${priceBadge}
+            ${c.is_full_day ? `<span class="inline-flex items-center gap-0.5 text-[10px] font-medium text-[#7C3AED] bg-[#F1EEFF] px-2 py-0.5 rounded-full"><i data-lucide="sun" class="w-3 h-3"></i>Full day</span>` : ''}
           </div>
         </div>
       </label>`;
@@ -3624,6 +3644,80 @@
     document.getElementById('build-trip-activities-items').classList.toggle('hidden', count === 0);
     updateBuildTripSelectionUI();
   }
+  // ── Manual search-and-add — for something the curated attraction/
+  // activity-type lists missed (e.g. "diving"). Real Places search
+  // (POST /trip/search-place), same data source and AI curation pass as
+  // everything else, just not budget-filtered — the traveler explicitly
+  // asked for this one thing. `screenNum` (4 or 5) is which screen's
+  // search box/input triggered the search, purely to read/write the right
+  // DOM ids — the actual result placement (attractions vs activities) is
+  // decided by each result's own category, same as everywhere else.
+  async function searchBuildTripPlace(screenNum) {
+    const input = document.getElementById('build-trip-search-input-' + screenNum);
+    const resultsEl = document.getElementById('build-trip-search-results-' + screenNum);
+    const query = (input.value || '').trim();
+    if (!query || !resultsEl) return;
+    // Only one active search result set at a time (window._buildTripSearchResults
+    // is shared/overwritten below) — clear the OTHER screen's stale results
+    // too, so a leftover "+ Add" button there can never point at the wrong
+    // index once a fresh search overwrites the stash.
+    const otherScreenNum = screenNum === 4 ? 5 : 4;
+    const otherResultsEl = document.getElementById('build-trip-search-results-' + otherScreenNum);
+    if (otherResultsEl) otherResultsEl.innerHTML = '';
+    resultsEl.innerHTML = '<div class="text-xs text-gray-400 py-2">Searching…</div>';
+    try {
+      const res = await fetch(`${BACKEND_URL}/trip/search-place`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ destination: _buildTripState.destination, query })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Server error');
+      }
+      const data = await res.json();
+      const results = data.candidates || [];
+      window._buildTripSearchResults = results; // stashed for addBuildTripSearchResult's index lookup
+      if (!results.length) {
+        resultsEl.innerHTML = '<div class="text-xs text-gray-400 py-2">Nothing found for that — try a different search.</div>';
+        return;
+      }
+      resultsEl.innerHTML = results.map((c, i) => buildTripSearchResultCardHtml(c, i)).join('');
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    } catch (err) {
+      resultsEl.innerHTML = `<div class="text-xs text-red-500 py-2">Something went wrong: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+  function buildTripSearchResultCardHtml(c, i) {
+    const seed = slugify(c.name || ('search-' + i));
+    return `
+      <div class="flex items-center gap-3 bg-white bento-card rounded-2xl p-3">
+        <div class="w-14 h-14 rounded-xl flex-shrink-0 overflow-hidden relative" style="background:${gradientFor(seed)}">
+          <img src="${c.photo_url || ''}" alt="" class="absolute inset-0 w-full h-full object-cover" onerror="imgFallback(this,'map-pin','${seed}')">
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-medium truncate">${escapeHtml(c.name || '')}</div>
+          <div class="text-xs text-gray-500 leading-snug">${escapeHtml(c.description || '')}</div>
+        </div>
+        <button type="button" onclick="addBuildTripSearchResult(${i})" class="btn-interactive flex-shrink-0 h-9 px-3 bg-[#8B5CF6] text-white text-xs font-medium rounded-lg">+ Add</button>
+      </div>`;
+  }
+  function addBuildTripSearchResult(i) {
+    const results = window._buildTripSearchResults || [];
+    const candidate = results[i];
+    if (!candidate) return;
+    const newIndex = _buildTripState.candidates.length;
+    _buildTripState.candidates.push(candidate);
+    _buildTripState.selected.add(newIndex); // they searched for it on purpose — pre-check it
+    renderBuildTripAttractionsStep();
+    renderBuildTripActivitiesStep();
+    [4, 5].forEach(n => {
+      const input = document.getElementById('build-trip-search-input-' + n);
+      const resultsEl = document.getElementById('build-trip-search-results-' + n);
+      if (input) input.value = '';
+      if (resultsEl) resultsEl.innerHTML = '';
+    });
+  }
   function toggleBuildTripCandidate(i) {
     if (_buildTripState.selected.has(i)) _buildTripState.selected.delete(i);
     else _buildTripState.selected.add(i);
@@ -3653,9 +3747,25 @@
   function buildTripStep4Continue() {
     showBuildTripStep(5);
   }
+  // Rough pacing estimate used only for the "that's a lot for N days"
+  // heads-up below — matches how trip_builder.group_into_days actually
+  // paces a day (an is_full_day item claims a whole day on its own;
+  // everything else is assumed to fit ~4-per-day). Not a hard limit —
+  // the traveler can always proceed anyway.
+  const BUILD_TRIP_REGULAR_STOPS_PER_DAY = 4;
   function buildTripStep5Continue() {
     if (!_buildTripState.selected.size) return;  // defensive — button is disabled in this case
-    _buildTripState.selectedAttractions = _buildTripState.candidates.filter((_, i) => _buildTripState.selected.has(i));
+    const selectedCandidates = _buildTripState.candidates.filter((_, i) => _buildTripState.selected.has(i));
+    const fullDayCount = selectedCandidates.filter(c => c.is_full_day).length;
+    const regularCount = selectedCandidates.length - fullDayCount;
+    const estimatedDaysNeeded = fullDayCount + Math.ceil(regularCount / BUILD_TRIP_REGULAR_STOPS_PER_DAY);
+    if (estimatedDaysNeeded > _buildTripState.days) {
+      const proceed = confirm(
+        `You've picked ${selectedCandidates.length} place${selectedCandidates.length !== 1 ? 's' : ''} for a ${_buildTripState.days}-day trip — that's roughly ${estimatedDaysNeeded} days' worth, more than you'll likely have time to comfortably see. Build it anyway?`
+      );
+      if (!proceed) return;
+    }
+    _buildTripState.selectedAttractions = selectedCandidates;
     buildAndPreviewTrip();
   }
   async function buildAndPreviewTrip() {

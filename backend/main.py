@@ -413,6 +413,12 @@ def get_trip_candidates(req: TripCandidatesRequest):
         raise HTTPException(400, f"budget must be one of: {', '.join(sorted(_TRIP_BUDGET_TIERS))}")
     activity_types = _normalize_activity_types(req.activity_types)
 
+    # A separate, cheap Haiku call — NOT part of the cached candidate list,
+    # so it runs fresh on both the cache-hit and cache-miss paths below
+    # rather than being stored alongside candidates_json. Never raises;
+    # falls back to "" on failure per generate_fun_fact's own contract.
+    fun_fact, _fun_fact_cost = generate_fun_fact(city)
+
     cached = database.get_trip_candidates_cache(city, budget, activity_types)
     if cached is not None:
         print(f"[TripBuilder] Cache HIT for {city} / {budget} / activity_types={activity_types or 'none'} ({len(cached)} candidates)")
@@ -420,12 +426,21 @@ def get_trip_candidates(req: TripCandidatesRequest):
             destination=city, budget=budget,
             candidates=[TripCandidate(**c) for c in cached],
             cached=True,
+            fun_fact=fun_fact,
         )
 
     print(f"[TripBuilder] Cache MISS for {city} / {budget} / activity_types={activity_types or 'none'} — searching Places")
     raw_places = search_attractions_broad(city)
+    for p in raw_places:
+        p["_section"] = "attraction"
     for activity_type in activity_types:
-        raw_places += search_activities_by_type(city, activity_type)
+        activity_places = search_activities_by_type(city, activity_type)
+        for p in activity_places:
+            p["_section"] = "activity"
+        raw_places += activity_places
+    # Order-preserving/first-occurrence-wins — a place found by both the
+    # attraction search (appended first) and an activity search correctly
+    # keeps its "attraction" tag.
     raw_places = dedupe_places(raw_places)
     fitted = [p for p in raw_places if trip_place_is_open(p) and fits_budget(p, budget)]
     curated, cost_usd = curate_candidates(city, fitted)
@@ -438,6 +453,7 @@ def get_trip_candidates(req: TripCandidatesRequest):
         destination=city, budget=budget,
         candidates=[TripCandidate(**c) for c in curated],
         cached=False,
+        fun_fact=fun_fact,
     )
 
 

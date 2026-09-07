@@ -2142,6 +2142,31 @@
     div.textContent = str == null ? '' : String(str);
     return div.innerHTML;
   }
+  // Picks a themed emoji for one Tips & Tricks tip based on its content —
+  // keyword-matched client-side rather than a second AI field, so the
+  // fact-accuracy of travel_tips itself (ai_analyzer._TRAVEL_TIPS_SYSTEM's
+  // job) stays completely separate from how it's decorated. Order matters:
+  // more specific patterns are checked before general ones (e.g. a transit
+  // tap-in/out rule should read as 🎫, not the more generic 🚇).
+  const TIP_EMOJI_RULES = [
+    [/tap (in|out)|check.?in.*check.?out|maximum fare|single journey fare/i, '🎫'],
+    [/pickpocket|scam|theft|steal|be (careful|cautious|aware|vigilant)|watch (your|out)/i, '👀'],
+    [/tip(ping)?\b|gratuity|service charge/i, '💁'],
+    [/grocery|groceries|supermarket|convenience store/i, '🛒'],
+    [/cash|card.?only|contactless|currency|coin|atm|exchange rate/i, '💳'],
+    [/metro|subway|tram|bus|train|transit|taxi|uber|ferry/i, '🚇'],
+    [/queue|line|crowd|book (ahead|in advance)|reservation|sold out|sells out|advance/i, '⏰'],
+    [/dress code|wear|clothing|shoes|modest/i, '👕'],
+    [/tap water|drinking water|hydrat/i, '💧'],
+    [/language|phrase|speak|english/i, '🗣️'],
+    [/weather|rain|season|temperature|sun\b/i, '🌦️'],
+    [/wifi|sim card|data plan|internet/i, '📶'],
+    [/tax|refund|vat\b/i, '🧾'],
+  ];
+  function tipEmoji(tip) {
+    const match = TIP_EMOJI_RULES.find(([pattern]) => pattern.test(tip));
+    return match ? match[1] : '💡';
+  }
   // Turns a name into a safe id/seed for use inside inline onclick="..."
   // handlers and as an HTML id. Whitespace-only replacement (the old
   // approach) left apostrophes intact — a hotel like "S'Almunia Resort"
@@ -3353,9 +3378,9 @@
         <div class="text-xs md:text-sm text-gray-500 mb-6 md:mb-8">Good to know before you go</div>
         <div class="flex flex-col gap-3">
           ${tips.map(tip => `
-            <div class="bento-card bg-white rounded-2xl p-4 flex items-start gap-3">
-              <div class="w-8 h-8 rounded-xl bg-[#F1EEFF] flex items-center justify-center flex-shrink-0"><i data-lucide="lightbulb" class="w-4 h-4 text-[#7C3AED]"></i></div>
-              <div class="text-sm text-gray-700 leading-relaxed pt-1">${escapeHtml(tip)}</div>
+            <div class="bento-card bg-white rounded-2xl p-4 flex items-start gap-3.5 border-l-[3px] border-[#8B5CF6]">
+              <div class="w-9 h-9 rounded-xl bg-[#F1EEFF] flex items-center justify-center flex-shrink-0 text-lg">${tipEmoji(tip)}</div>
+              <div class="text-sm text-gray-700 leading-relaxed pt-1.5">${escapeHtml(tip)}</div>
             </div>`).join('')}
         </div>`;
       tipsSection.classList.remove('hidden');

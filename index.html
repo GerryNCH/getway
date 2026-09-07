@@ -878,6 +878,12 @@
        fun_fact. Hidden entirely when travel_tips is empty (older routes
        not yet backfilled — see renderAiRoute). -->
   <div id="ai-route-tips-section" class="hidden px-5 md:px-14 lg:px-24 pb-16 md:pb-24 max-w-4xl mx-auto"></div>
+  <!-- "If you liked this, you'll love X" — 2-3 OTHER published routes with
+       a similar vibe (shared tags/budget tier), computed client-side
+       against the already-loaded ROUTES list — no new backend endpoint.
+       Hidden entirely (not just "no results" text) when fewer than 2
+       genuinely similar routes exist — see renderCrossRecommendations. -->
+  <div id="ai-route-cross-recs-section" class="hidden px-5 md:px-14 lg:px-24 pb-16 md:pb-24 max-w-4xl mx-auto"></div>
   <!-- Travel insurance — small banner at the end of the route. Admin-
        toggleable, see isAffiliateSectionEnabled('insurance'). -->
   <div id="ai-route-insurance-banner" class="px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-6 md:mb-8"></div>
@@ -2041,6 +2047,12 @@
       });
       renderRoutes();
       if (typeof renderRankings === 'function') renderRankings(); // refresh "Has a route" badges now that real routes are in
+      // Cross-recommendations may have rendered (or hidden itself) before
+      // this fetch resolved, using an empty/partial ROUTES list — refresh
+      // now that the real list is in, same reasoning as renderRankings above.
+      if (typeof renderCrossRecommendations === 'function' && window._aiRouteFullItinerary) {
+        renderCrossRecommendations(window._aiRouteFullItinerary, window._aiRouteVideoId);
+      }
       const countLabel = document.getElementById('routes-count-label');
       if (countLabel) {
         countLabel.textContent = ROUTES.length
@@ -3542,8 +3554,76 @@
       tipsSection.innerHTML = '';
       tipsSection.classList.add('hidden');
     }
+    renderCrossRecommendations(itinerary, videoId);
     if (typeof lucide !== 'undefined') { lucide.createIcons(); }
     if (typeof AOS !== 'undefined') { AOS.refreshHard(); }
+  }
+  // "If you liked this, you'll love X" — similarity is shared category
+  // tags first (2 points each), a matching budget tier as a secondary
+  // signal (1 point) — computed against the already-loaded ROUTES list
+  // (see loadRealRoutes), no new backend endpoint. The current route's
+  // OWN tags come from its own ROUTES entry (found by slug) since tags
+  // live on RouteMeta, not the Itinerary object itself; a trip with no
+  // ROUTES entry (Build Your Own Trip preview, or ROUTES not loaded yet)
+  // falls back to a budget-tier-only comparison. Called again from
+  // loadRealRoutes() once the real routes list finishes fetching, same
+  // "refresh once real data is in" pattern renderRankings already uses,
+  // since this can run before that fetch resolves.
+  function renderCrossRecommendations(itinerary, videoId) {
+    const section = document.getElementById('ai-route-cross-recs-section');
+    if (!section) return;
+    if (!ROUTES || ROUTES.length < 3) { section.classList.add('hidden'); return; }
+
+    const currentRoute = ROUTES.find(r => r.slug === videoId);
+    const currentTags = currentRoute ? (currentRoute.tags || []) : [];
+    const currentPrice = (itinerary && itinerary.price_category) || (currentRoute ? currentRoute.priceCategory : '');
+    const currentDestination = ((itinerary && itinerary.destination) || '').trim().toLowerCase();
+
+    const scored = ROUTES
+      .filter(r => r.slug !== videoId && r.destination.trim().toLowerCase() !== currentDestination)
+      .map(r => {
+        const sharedTags = currentTags.filter(t => (r.tags || []).includes(t));
+        let score = sharedTags.length * 2;
+        if (currentPrice && r.priceCategory === currentPrice) score += 1;
+        return { route: r, score, sharedTags };
+      })
+      // Require at least one genuinely shared tag when we have tags to
+      // compare — a bare budget-tier match alone is too weak to call
+      // "similar vibe". Only fall back to budget-tier-only when we have
+      // no tags for the current route at all (e.g. a BYOT preview).
+      .filter(c => currentTags.length ? c.sharedTags.length > 0 : c.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    const picks = scored.slice(0, 3);
+    if (picks.length < 2) { section.classList.add('hidden'); return; }
+
+    section.innerHTML = `
+      <div class="font-serif-display text-[26px] md:text-4xl leading-tight mb-1">If you liked this...</div>
+      <div class="text-xs md:text-sm text-gray-500 mb-6 md:mb-8">You might love these too</div>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        ${picks.map(({ route: r }) => {
+          const photo = MEDIA.routes[r.slug] ? MEDIA.routes[r.slug].cardPhoto : '';
+          return `
+          <a href="#" data-slug="${r.slug}" class="cross-rec-card group block bg-white rounded-2xl overflow-hidden bento-card">
+            <div class="h-32 relative overflow-hidden" style="background:${r.fallbackColor}">
+              <img src="${photo}" alt="" class="absolute inset-0 w-full h-full object-cover" onerror="imgFallback(this,'map-pin','${r.slug}')">
+              <div class="absolute top-2 right-2 bg-white/90 text-[10px] font-medium px-2 py-0.5 rounded-full">${r.priceCategory}</div>
+            </div>
+            <div class="p-3.5">
+              <div class="text-sm font-semibold uppercase tracking-tight truncate">${escapeHtml(r.destination)}</div>
+              <div class="text-[11px] text-gray-500">${escapeHtml(r.duration)} · ${r.stopCount} stops</div>
+            </div>
+          </a>`;
+        }).join('')}
+      </div>`;
+    section.querySelectorAll('.cross-rec-card').forEach(card => {
+      card.addEventListener('click', (e) => {
+        e.preventDefault();
+        openRouteCard(card.dataset.slug);
+      });
+    });
+    section.classList.remove('hidden');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
   }
   function selectAiGalleryPhoto(index) {
     const gallery = window._aiRouteGallery || [];

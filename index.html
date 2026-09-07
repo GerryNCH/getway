@@ -773,7 +773,7 @@
     <div class="absolute inset-0 hero-top-overlay h-32"></div>
     <div class="absolute top-[22px] left-[18px] right-[18px] md:top-8 md:left-14 md:right-14 flex items-center justify-between z-10">
       <div class="flex items-center gap-2.5 md:gap-4">
-        <button onclick="showScreen('home')" aria-label="Back" class="btn-interactive flex items-center gap-1 text-[11px] md:text-xs font-medium text-white/90 hover:text-white bg-black/20 hover:bg-black/30 backdrop-blur-sm rounded-full pl-2 pr-3 py-1.5" style="text-shadow: 0 1px 4px rgba(0,0,0,0.3);">
+        <button onclick="aiRouteGoBack()" aria-label="Back" class="btn-interactive flex items-center gap-1 text-[11px] md:text-xs font-medium text-white/90 hover:text-white bg-black/20 hover:bg-black/30 backdrop-blur-sm rounded-full pl-2 pr-3 py-1.5" style="text-shadow: 0 1px 4px rgba(0,0,0,0.3);">
           <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Back
         </button>
         <button onclick="showScreen('home')" class="text-base md:text-2xl font-medium font-serif-display text-white" style="text-shadow: 0 1px 8px rgba(0,0,0,0.4);">GetWay<span class="text-[#C4B5FD]">.</span></button>
@@ -2090,14 +2090,56 @@
     // so it needs its own call here too, not just at DOMContentLoaded.
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
+  // ── In-app "Back" history for the ai-route screen ────────────────────
+  // Real bug this fixes: the header's Back button was hardcoded to
+  // showScreen('home') — fine for the FIRST route someone opens, but
+  // navigating from one route to ANOTHER (e.g. clicking a cross-
+  // recommendation card, see renderCrossRecommendations) and then hitting
+  // Back skipped straight past the route you came FROM, straight to the
+  // homepage. Confirmed as real data loss: an unsaved Build Your Own Trip
+  // preview has no slug to reload, so this permanently lost the traveler's
+  // just-built trip the moment they clicked away from it once.
+  //
+  // window._aiRouteHistory holds full itinerary snapshots (not just slugs)
+  // specifically so an unsaved preview survives being navigated away from
+  // — restoring it is just re-rendering the same object, no re-fetch.
+  window._aiRouteHistory = window._aiRouteHistory || [];
+  function pushAiRouteHistory() {
+    const screen = document.getElementById('screen-ai-route');
+    if (!screen.classList.contains('active') || !window._aiRouteFullItinerary) return;
+    const bar = document.getElementById('build-trip-preview-bar');
+    window._aiRouteHistory.push({
+      itinerary: window._aiRouteFullItinerary,
+      videoId: window._aiRouteVideoId || '',
+      sourceUrl: window._aiRouteSourceUrl || '',
+      isBuildTripPreview: !!(bar && !bar.classList.contains('hidden')),
+    });
+  }
+  function aiRouteGoBack() {
+    const stack = window._aiRouteHistory;
+    if (stack && stack.length) {
+      const prev = stack.pop();
+      renderAiRoute(prev.itinerary, prev.videoId, prev.sourceUrl, true);
+      const bar = document.getElementById('build-trip-preview-bar');
+      if (bar) bar.classList.toggle('hidden', !prev.isBuildTripPreview);
+      showScreen('ai-route');
+      return;
+    }
+    showScreen('home');
+  }
   function openRouteCard(slug) {
     if (STATIC_ROUTE_SLUGS.has(slug)) {
+      pushAiRouteHistory();
       showScreen('route');
       return;
     }
     fetch(`${BACKEND_URL}/itinerary/${encodeURIComponent(slug)}`)
       .then(res => { if (!res.ok) throw new Error('Route not found: ' + res.status); return res.json(); })
-      .then(data => { renderAiRoute(data.itinerary, data.video_id, ''); showScreen('ai-route'); })
+      .then(data => {
+        pushAiRouteHistory();
+        renderAiRoute(data.itinerary, data.video_id, '');
+        showScreen('ai-route');
+      })
       .catch(err => { console.error('Could not open route "' + slug + '":', err); alert('Sorry, this route could not be loaded.'); });
   }
   // Fetches every approved AI-generated route from the backend and merges

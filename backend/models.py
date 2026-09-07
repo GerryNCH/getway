@@ -202,6 +202,18 @@ class Itinerary(BaseModel):
                           # POST /admin/backfill-fun-facts. Empty until
                           # filled — the homepage fact chip (index.html)
                           # just doesn't render for that route until it is.
+    fun_facts: list[str] = []  # 3-4 facts at the same real/verifiable bar
+                                 # as fun_fact — the richer version used by
+                                 # the route page's "getting to know
+                                 # [destination]" intro section (fun_fact
+                                 # singular is often just one of these
+                                 # four, kept separate for its own existing
+                                 # homepage-chip/loading-screen callers).
+                                 # Same generation split as fun_fact/
+                                 # travel_tips: free from the Sonnet call
+                                 # for new video routes, or
+                                 # ai_analyzer.generate_fun_facts for Build
+                                 # Your Own Trip / backfill.
     travel_tips: list[str] = []  # 3-5 short, practical, destination-specific
                                    # tips — e.g. "Cash is still king outside
                                    # Amsterdam's centre" or "Check in AND

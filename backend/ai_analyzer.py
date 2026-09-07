@@ -161,6 +161,7 @@ Schema:
   "duration": "X days",
   "summary": "2-3 sentence intro: what makes this destination special, and what this specific route covers (e.g. its vibe, standout stops, or theme)",
   "fun_fact": "One genuinely true fact about the destination itself that's surprising, quirky, or slightly odd — the kind that makes someone think 'huh, no way' or 'okay, now I want to go there.' NOT about any specific stop in this route, and NOT a flat postcard statement. One sentence, max ~20 words.",
+  "fun_facts": ["3-4 DIFFERENT genuinely true facts about the destination, same bar as fun_fact above (surprising/quirky, never generic) — for the route page's 'getting to know [destination]' intro section. fun_fact above can be (and usually is) one of these four; don't strain to make all four distinct topics if the destination doesn't support it, but never repeat the exact same fact twice."],
   "travel_tips": ["3-5 short, practical, destination-specific tips a first-time visitor genuinely needs — see guidance below"],
   "price_category": "€ | €€ | €€€",
   "tags": ["0-3 of: most_popular, luxury, budget_friendly, exotic, mountain, city, beach"],
@@ -201,6 +202,16 @@ actually true, fall back to a more general but definitely-true fact
 instead (e.g. a well-established geographic or historical fact) rather
 than risk a wrong specific statistic. One sentence. No source citation
 needed, just the fact itself.
+
+"fun_facts" — 3-4 facts meeting that exact same bar (real, verifiable,
+genuinely surprising, never generic filler), for the route page's
+"getting to know [destination]" intro section — a richer version of the
+single fun_fact above, not a different kind of content. Vary the angle
+across the 3-4 where the destination genuinely supports it (e.g. one
+historical, one about a local custom, one a surprising number) rather
+than four facts about the same narrow topic — but never force a stretch
+just to hit variety; a destination that only supports 3 solid facts
+should return 3, not pad to 4 with something weak or invented.
 
 "travel_tips" — 3-5 short, practical, destination-specific tips a
 first-time visitor genuinely needs to know before they go — the kind of
@@ -426,6 +437,7 @@ def analyse_frames(frame_paths: list[str], comments: list[dict] | None = None) -
         ) / 1_000_000
 
     data["fun_fact"] = str(data.get("fun_fact") or "").strip()
+    data["fun_facts"] = [str(f).strip() for f in (data.get("fun_facts") or []) if str(f).strip()]
     data["travel_tips"] = [str(t).strip() for t in (data.get("travel_tips") or []) if str(t).strip()]
 
     return Itinerary(**data), price_category, tags, cost_usd
@@ -478,6 +490,59 @@ def generate_fun_fact(destination: str) -> tuple[str, float]:
     except Exception as e:
         print(f"[FunFact] generate_fun_fact failed for '{destination}': {e}")
         return "", 0.0
+
+
+_FUN_FACTS_SYSTEM = """You write 3-4 short, genuinely true, surprising facts about a travel destination for a travel app's "getting to know [destination]" intro section on its route page — a richer version of the single homepage fun fact, same bar, more of them.
+
+Rules:
+- Every fact must be REAL and verifiable — never invent or guess. If you aren't confident a surprising fact is true, use a more general but definitely-true fact instead of risking a wrong specific detail.
+- About the destination itself (the city/region/country) — not about any specific hotel, restaurant, or attraction.
+- Favor quirky, little-known, or counter-intuitive angles: an unusual law or custom, a record the place quietly holds, a strange bit of history, an oddly specific number, a "most people don't know this" detail.
+- Avoid flat, generic filler — "has beautiful beaches", "is known for its rich culture", "is a popular tourist destination" say nothing and should never appear.
+- Vary the angle across the 3-4 facts where the destination genuinely supports it (e.g. one historical, one a local custom, one a surprising number) — never repeat the same fact twice, and never pad with something weak just to hit 4; return fewer if that's all you're confident in.
+- Each fact is one sentence, max ~20 words.
+
+Reply with ONLY valid JSON, no markdown fences:
+{"facts": ["fact one", "fact two", "fact three"]}"""
+
+
+def generate_fun_facts(destination: str) -> tuple[list[str], float]:
+    """
+    Cheap, standalone Haiku call that returns 3-4 real, surprising facts
+    about `destination` — the richer, multi-fact version of
+    generate_fun_fact, for the route page's "getting to know [destination]"
+    intro section. Used by Build Your Own Trip (no video to get facts from
+    for free) and to backfill routes generated before this field existed,
+    same role generate_fun_fact/generate_travel_tips play for their own
+    fields. New video-extracted routes get fun_facts for free as part of
+    the same analyse_frames() call instead (see SYSTEM_PROMPT above).
+
+    Returns (facts, cost_usd). Never raises — returns ([], 0.0) on any
+    failure, same non-fatal contract as generate_fun_fact.
+    """
+    try:
+        response = _client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=350,
+            system=_FUN_FACTS_SYSTEM,
+            messages=[{"role": "user", "content": f"Destination: {destination}"}],
+        )
+        usage = getattr(response, "usage", None)
+        cost_usd = 0.0
+        if usage:
+            cost_usd = (
+                usage.input_tokens * _HAIKU_INPUT_PER_MTOK
+                + usage.output_tokens * _HAIKU_OUTPUT_PER_MTOK
+            ) / 1_000_000
+        raw = response.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+        result = json.loads(raw)
+        facts = [str(f).strip() for f in (result.get("facts") or []) if str(f).strip()]
+        return facts, cost_usd
+    except Exception as e:
+        print(f"[FunFacts] generate_fun_facts failed for '{destination}': {e}")
+        return [], 0.0
 
 
 _TRIP_SUMMARY_SYSTEM = """You write a short intro for a travel app's route page — the same "summary" a video-extracted route gets, just for a traveler who built their own trip instead of pasting a video link.

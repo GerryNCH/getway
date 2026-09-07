@@ -642,7 +642,12 @@ def enrich_itinerary_with_photos(itinerary) -> None:
     # the hero, not just whichever of the 5 queries happened to run first
     # (that previously meant "aerial view" always won the hero slot even
     # when "sunset" or "landmark" returned a much more striking photo).
-    gallery = _get_destination_gallery_unsplash(itinerary.destination, count=1)
+    # count=5, not 1: the route page's "getting to know [destination]"
+    # intro section shows a swipeable photo gallery. Safe to raise now
+    # (this used to be kept at 1 to conserve Unsplash's free-tier quota)
+    # because this function is cached by (destination, count) — see
+    # database.get/save_destination_gallery_cache.
+    gallery = _get_destination_gallery_unsplash(itinerary.destination, count=5)
     itinerary.gallery_photo_urls = [p["url"] for p in gallery]
     itinerary.gallery_attributions = [p["attribution"] for p in gallery]
     hero = max(gallery, key=lambda p: p["likes"]) if gallery else None

@@ -53,7 +53,7 @@ from extractor import (
 from troll_filter import check_is_travel
 from ai_analyzer import (
     analyse_frames, generate_fun_fact, generate_vibe_match, generate_travel_tips,
-    generate_trip_summary, generate_month_destinations,
+    generate_trip_summary, generate_month_destinations, generate_fun_facts,
 )
 from quality_check import ai_quality_check
 from places import (
@@ -122,16 +122,30 @@ def _backfill_fun_facts_background():
     """
     try:
         targets = database.list_approved_missing_fun_fact()
-        if not targets:
-            return
-        print(f"[FunFact] Backfilling {len(targets)} route(s) missing a fun_fact...")
-        filled = 0
-        for row in targets:
-            fact, _cost = generate_fun_fact(row["destination"])
-            if fact:
-                database.set_fun_fact(row["video_id"], fact)
-                filled += 1
-        print(f"[FunFact] Backfill done — {filled}/{len(targets)} filled")
+        if targets:
+            print(f"[FunFact] Backfilling {len(targets)} route(s) missing a fun_fact...")
+            filled = 0
+            for row in targets:
+                fact, _cost = generate_fun_fact(row["destination"])
+                if fact:
+                    database.set_fun_fact(row["video_id"], fact)
+                    filled += 1
+            print(f"[FunFact] Backfill done — {filled}/{len(targets)} filled")
+
+        # Same pass, for the richer fun_facts array (route page's "getting
+        # to know [destination]" intro section) — independent "missing"
+        # criteria from the singular fun_fact above, so a route could need
+        # one, the other, or both.
+        facts_targets = database.list_approved_missing_fun_facts()
+        if facts_targets:
+            print(f"[FunFacts] Backfilling {len(facts_targets)} route(s) missing fun_facts...")
+            facts_filled = 0
+            for row in facts_targets:
+                facts, _cost = generate_fun_facts(row["destination"])
+                if facts:
+                    database.set_fun_facts(row["video_id"], facts)
+                    facts_filled += 1
+            print(f"[FunFacts] Backfill done — {facts_filled}/{len(facts_targets)} filled")
     except Exception as e:
         print(f"[FunFact] Background backfill crashed (non-fatal): {e}")
 
@@ -727,6 +741,12 @@ def build_trip(req: TripBuildRequest):
     summary, summary_cost_usd = generate_trip_summary(city, stop_names)
     print(f"[TripBuilder] Summary for {city}: {bool(summary)} (${summary_cost_usd:.4f})")
 
+    # Same gap again — the route page's "getting to know [destination]"
+    # intro section needs a richer fact set than the single fun_fact a
+    # video-extracted route already gets for free.
+    fun_facts, facts_cost_usd = generate_fun_facts(city)
+    print(f"[TripBuilder] Fun facts for {city}: {len(fun_facts)} fact(s) (${facts_cost_usd:.4f})")
+
     itinerary = Itinerary(
         destination=city,
         duration=f"{req.days} day{'s' if req.days != 1 else ''}",
@@ -738,6 +758,7 @@ def build_trip(req: TripBuildRequest):
         car_rental_photo_url=car_photo_url,
         car_rental_attribution=car_attribution,
         travel_tips=travel_tips,
+        fun_facts=fun_facts,
     )
 
     # Hero/gallery: reuse the existing destination Unsplash logic exactly
@@ -748,8 +769,16 @@ def build_trip(req: TripBuildRequest):
     # would waste API calls re-confirming photos the Phase A/B searches
     # already gave us and risks swapping in a different (not necessarily
     # better) match than the one the traveler saw and picked.
+    #
+    # count=5, not 1: the route page's new "getting to know [destination]"
+    # intro section shows a swipeable photo gallery, not just a single
+    # hero shot. Safe to raise now (this used to be kept at 1 to conserve
+    # Unsplash's free-tier quota) because _get_destination_gallery_unsplash
+    # is now cached by (destination, count) — see
+    # database.get/save_destination_gallery_cache — so this only costs
+    # real Unsplash queries on the FIRST request for a given destination.
     try:
-        gallery = _get_destination_gallery_unsplash(city, count=1)
+        gallery = _get_destination_gallery_unsplash(city, count=5)
         itinerary.gallery_photo_urls = [g["url"] for g in gallery]
         itinerary.gallery_attributions = [g["attribution"] for g in gallery]
         best = max(gallery, key=lambda g: g["likes"]) if gallery else None
@@ -1100,6 +1129,11 @@ def admin_backfill_fun_facts(secret: str, force: bool = False):
     upgrade facts that were already written under the old prompt, not just
     fill in blanks. Costs roughly $0.0005 x number of approved routes.
 
+    Also backfills the richer fun_facts array (route page's "getting to
+    know [destination]" intro section) in the same pass, using its own
+    independent "missing" criteria — a route could need one, the other,
+    or both.
+
     Returns how many were checked, how many got filled, and the real
     Anthropic cost of this run.
     """
@@ -1113,7 +1147,24 @@ def admin_backfill_fun_facts(secret: str, force: bool = False):
         if fact:
             database.set_fun_fact(row["video_id"], fact)
             filled += 1
-    return {"status": "ok", "checked": len(targets), "filled": filled, "cost_usd": round(total_cost, 6)}
+
+    facts_targets = database.list_approved_for_fun_facts_refresh(force=force)
+    facts_filled = 0
+    for row in facts_targets:
+        facts, cost = generate_fun_facts(row["destination"])
+        total_cost += cost
+        if facts:
+            database.set_fun_facts(row["video_id"], facts)
+            facts_filled += 1
+
+    return {
+        "status": "ok",
+        "checked": len(targets),
+        "filled": filled,
+        "fun_facts_checked": len(facts_targets),
+        "fun_facts_filled": facts_filled,
+        "cost_usd": round(total_cost, 6),
+    }
 
 
 @app.post("/admin/backfill-travel-tips")

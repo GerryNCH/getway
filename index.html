@@ -791,9 +791,28 @@
        destination filled in automatically. Admin-toggleable, see
        isAffiliateSectionEnabled('visa'). -->
   <div id="ai-route-visa-banner" class="px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mt-6 md:mt-8"></div>
-  <!-- Photo gallery thumbnails -->
-  <div id="ai-route-gallery" class="flex justify-center gap-1.5 md:gap-3 px-4 pt-6 pb-2 md:pt-8"></div>
-  <div id="ai-route-gallery-hint" class="hidden text-center px-4 pb-8 md:pb-10 text-[10px] md:text-xs text-gray-400">Tap a thumbnail to preview</div>
+  <!-- ── Destination intro ("getting to know X") — editorial, not a spec
+       sheet: photo carousel (same gallery data that used to power a small
+       thumbnail-swap-hero strip here — now the strip itself, bigger and
+       swipeable, see renderAiRoute), 3-4 surprising facts, and a "know
+       before you go" paragraph built from travel_tips. Deliberately
+       different background treatment from the white bento-cards below it
+       so it reads as "the vibe of this place" before "the plan" — see
+       renderAiRoute. Hidden entirely when there's nothing to show (older
+       routes not yet backfilled with fun_facts/travel_tips, and gallery
+       came up empty). -->
+  <div id="ai-route-intro-section" class="hidden px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mt-6 md:mt-8 mb-8 md:mb-10">
+    <div class="rounded-[28px] p-5 md:p-9" style="background: linear-gradient(135deg, #FAF8F3 0%, #F1EEFF 100%);">
+      <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-4">Getting to know</div>
+      <div id="ai-route-intro-gallery" class="flex gap-3 overflow-x-auto pb-1 mb-6 -mx-1 px-1"></div>
+      <div id="ai-route-intro-gallery-hint" class="hidden text-[10px] md:text-xs text-gray-400 -mt-4 mb-6">Tap a photo to preview</div>
+      <div id="ai-route-intro-facts" class="grid sm:grid-cols-2 gap-3 mb-6"></div>
+      <div id="ai-route-intro-tips-wrap" class="hidden">
+        <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Know before you go</div>
+        <p id="ai-route-intro-tips-prose" class="text-sm text-gray-600 leading-relaxed"></p>
+      </div>
+    </div>
+  </div>
   <!-- In-route filters -->
   <div class="px-5 md:px-14 lg:px-24 py-6 md:py-8">
     <div class="max-w-fit md:mx-auto bg-white/70 backdrop-filter backdrop-blur border border-gray-200/80 rounded-full p-1.5 shadow-sm overflow-x-auto">
@@ -3384,12 +3403,16 @@
     setBgWithFallback(heroBg, itinerary.hero_photo_url, itinerary.destination || 'trip');
     heroBg.style.opacity = '1';
     renderUnsplashCredit('ai-route-hero-credit', itinerary.hero_attribution);
-    // Gallery thumbnails — click to swap the hero photo
-    const galleryEl = document.getElementById('ai-route-gallery');
-    const galleryHint = document.getElementById('ai-route-gallery-hint');
+    // Gallery carousel — click a photo to feature it as the hero. Lives in
+    // the "getting to know [destination]" intro section now (see
+    // ai-route-intro-section), bigger than the old thumbnail-swap strip
+    // this replaced, since count=5 (not 1) is actually requested server-
+    // side now — see places._get_destination_gallery_unsplash.
+    const galleryEl = document.getElementById('ai-route-intro-gallery');
+    const galleryHint = document.getElementById('ai-route-intro-gallery-hint');
     if (gallery.length > 1) {
       galleryEl.innerHTML = gallery.map((url, i) => `
-        <button onclick="selectAiGalleryPhoto(${i})" class="ai-gallery-thumb flex-shrink-0 w-[54px] h-[54px] md:w-20 md:h-20 rounded-2xl overflow-hidden border-2 ${i === 0 ? 'border-[#8B5CF6]' : 'border-transparent'}" style="background:${gradientFor((itinerary.destination || 'trip') + i)}">
+        <button onclick="selectAiGalleryPhoto(${i})" class="ai-gallery-thumb flex-shrink-0 w-[120px] h-[90px] md:w-[160px] md:h-[120px] rounded-2xl overflow-hidden border-2 ${i === 0 ? 'border-[#8B5CF6]' : 'border-transparent'}" style="background:${gradientFor((itinerary.destination || 'trip') + i)}">
           <img src="${url}" alt="" class="w-full h-full object-cover" onerror="imgFallback(this,'image','${escapeHtml((itinerary.destination || 'trip') + i)}')">
         </button>`).join('');
       galleryHint.classList.remove('hidden');
@@ -3403,6 +3426,29 @@
     window._aiRouteDestination = itinerary.destination || 'trip';
     // Store for sharing
     window._aiRouteVideoId = videoId;
+    // Fun facts — 3-4 surprising facts, part of the same intro section.
+    const introFacts = (itinerary.fun_facts || []).filter(f => f && f.trim());
+    const factsEl = document.getElementById('ai-route-intro-facts');
+    factsEl.innerHTML = introFacts.map(fact => `
+      <div class="bg-white/70 rounded-2xl p-3.5 flex items-start gap-2.5">
+        <span class="text-base flex-shrink-0">✨</span>
+        <span class="text-xs md:text-sm text-gray-700 leading-relaxed">${escapeHtml(fact)}</span>
+      </div>`).join('');
+    // "Know before you go" — the first few travel_tips read as flowing
+    // prose instead of the bulleted Tips & Tricks cards further down the
+    // page, per the customs/etiquette-first framing this intro wants.
+    const introTipsWrap = document.getElementById('ai-route-intro-tips-wrap');
+    const introTips = (itinerary.travel_tips || []).filter(t => t && t.trim()).slice(0, 3);
+    if (introTips.length) {
+      document.getElementById('ai-route-intro-tips-prose').textContent = introTips.join(' ');
+      introTipsWrap.classList.remove('hidden');
+    } else {
+      introTipsWrap.classList.add('hidden');
+    }
+    // Whole section hidden when there's genuinely nothing to show (older
+    // routes not yet backfilled, or every photo query came up empty).
+    const introSection = document.getElementById('ai-route-intro-section');
+    introSection.classList.toggle('hidden', gallery.length <= 1 && !introFacts.length && !introTips.length);
     initAiRouteMap(itinerary);
     // The route should always have a hotel box at the START of the trip —
     // either a real one (if the AI found it) or the generic "find hotels"

@@ -718,7 +718,17 @@
 <div class="w-full max-w-[390px] md:max-w-none mx-auto">
   <!-- Hero -->
   <div class="relative h-[280px] md:h-[50vh] md:min-h-[400px] w-full overflow-hidden" style="background: linear-gradient(135deg, #1c2128 0%, #334155 55%, #15171A 100%);">
-    <div id="ai-route-hero-bg" class="absolute inset-0 bg-cover bg-center" style="background-image:url('https://picsum.photos/seed/ai-route-hero/2000/1300');"></div>
+    <!-- No placeholder background-image here on purpose (used to be a
+         picsum.photos URL) — that's a third-party network dependency for a
+         random, destination-unrelated photo, and if it's blocked or slow
+         (ad-blockers, some networks) it silently renders nothing, leaving
+         a real trip's hero looking photo-less until/unless the real photo
+         also happens to load. The dark gradient on the container above
+         already reads as an intentional, on-brand loading state with zero
+         extra network calls; setBgWithFallback() below swaps in the real
+         photo (or its own gradientFor() fallback) once the itinerary data
+         is in. -->
+    <div id="ai-route-hero-bg" class="absolute inset-0 bg-cover bg-center"></div>
     <div class="absolute inset-0 hero-top-overlay h-32"></div>
     <div class="absolute top-[22px] left-[18px] right-[18px] md:top-8 md:left-14 md:right-14 flex items-center justify-between z-10">
       <div class="flex items-center gap-2.5 md:gap-4">

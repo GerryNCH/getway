@@ -66,6 +66,12 @@
   .wishlist-btn i { color: #6D28D9; }
   .wishlist-btn.is-saved { background: #8B5CF6 !important; }
   .wishlist-btn.is-saved i { color: #fff; fill: #fff; }
+  /* Build Your Own Trip step3b's "would you rather" picks — a dedicated
+     class (not dynamic Tailwind utility toggling, which the Play CDN
+     script doesn't reliably re-scan for classes added purely via
+     classList.toggle() after page load) so the selected pick reliably
+     shows as filled purple. */
+  .build-trip-vibe-btn.is-active { background: #8B5CF6 !important; color: #fff; border-color: #8B5CF6 !important; }
   /* The vibe-quiz teaser uses the full bento-card width (2-column layout),
      but the active question/result state is a single narrow centered
      column (max-w-md) — left at the card's full width, that reads as a
@@ -1064,6 +1070,48 @@
       Continue <i data-lucide="arrow-right" class="w-4 h-4"></i>
     </button>
     <button type="button" onclick="showBuildTripStep(2)" class="w-full text-center text-xs text-gray-400 hover:text-gray-600">&larr; Back</button>
+  </div>
+  <!-- Step 3b: two playful "would you rather" refinements — a soft nudge on
+       how the attractions/activities lists below get ordered (see
+       candidateVibeScore()), never a hard filter or a second backend call.
+       Both optional; Continue always enabled so this can't slow anyone
+       down who'd rather skip straight past it. -->
+  <div id="build-trip-step3b" class="hidden mx-5 md:mx-0 px-6 md:px-10 py-9 md:py-12 glass-card rounded-[28px]">
+    <div class="text-center mb-7">
+      <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">Build Your Own Trip</div>
+      <div class="font-serif-display text-[26px] md:text-3xl mb-2">Quick — would you rather?</div>
+      <div class="text-xs md:text-sm text-gray-600 leading-relaxed px-2.5">Two fast picks so we can put the right places first.</div>
+    </div>
+    <div class="mb-5">
+      <div class="text-xs font-medium text-gray-500 mb-2.5">Explore mostly...</div>
+      <div class="grid grid-cols-2 gap-3">
+        <button type="button" onclick="chooseBuildTripVibePref('terrain', 'nature')" data-vibe-group="terrain" data-vibe-value="nature" class="build-trip-vibe-btn btn-interactive bg-[#F8F6FF] hover:bg-[#F1EEFF] rounded-2xl p-4 text-center border border-transparent transition-colors">
+          <span class="text-2xl block mb-1.5">🌳</span>
+          <span class="text-xs font-medium">Nature &amp; outdoors</span>
+        </button>
+        <button type="button" onclick="chooseBuildTripVibePref('terrain', 'culture')" data-vibe-group="terrain" data-vibe-value="culture" class="build-trip-vibe-btn btn-interactive bg-[#F8F6FF] hover:bg-[#F1EEFF] rounded-2xl p-4 text-center border border-transparent transition-colors">
+          <span class="text-2xl block mb-1.5">🏛️</span>
+          <span class="text-xs font-medium">Museums &amp; history</span>
+        </button>
+      </div>
+    </div>
+    <div class="mb-7">
+      <div class="text-xs font-medium text-gray-500 mb-2.5">For meals, you'd rather have...</div>
+      <div class="grid grid-cols-2 gap-3">
+        <button type="button" onclick="chooseBuildTripVibePref('dining', 'splurge')" data-vibe-group="dining" data-vibe-value="splurge" class="build-trip-vibe-btn btn-interactive bg-[#F8F6FF] hover:bg-[#F1EEFF] rounded-2xl p-4 text-center border border-transparent transition-colors">
+          <span class="text-2xl block mb-1.5">🥂</span>
+          <span class="text-xs font-medium">One splurge dinner</span>
+        </button>
+        <button type="button" onclick="chooseBuildTripVibePref('dining', 'casual')" data-vibe-group="dining" data-vibe-value="casual" class="build-trip-vibe-btn btn-interactive bg-[#F8F6FF] hover:bg-[#F1EEFF] rounded-2xl p-4 text-center border border-transparent transition-colors">
+          <span class="text-2xl block mb-1.5">🍜</span>
+          <span class="text-xs font-medium">Several casual bites</span>
+        </button>
+      </div>
+    </div>
+    <button onclick="buildTripStep3bContinue()" class="btn-interactive w-full h-[50px] flex items-center justify-center gap-2 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl mb-3">
+      Continue <i data-lucide="arrow-right" class="w-4 h-4"></i>
+    </button>
+    <button type="button" onclick="showBuildTripStep(3)" class="w-full text-center text-xs text-gray-400 hover:text-gray-600">&larr; Back</button>
   </div>
   <!-- Step 4: attractions checklist (candidates where section !== "activity") -->
   <div id="build-trip-step4" class="hidden mx-5 md:mx-0 px-6 md:px-10 py-9 md:py-12 glass-card rounded-[28px]">
@@ -4223,12 +4271,17 @@
   // actual preview and the final saved trip page both reuse
   // screen-ai-route's own renderAiRoute() — no new rendering code.
   // Steps: 1 destination/days/people, 2 budget, 3 activity type,
-  // 4 attractions checklist, 5 activities checklist, 6 build/preview.
+  // 3b "would you rather" micro-refinements, 4 attractions checklist,
+  // 5 activities checklist, 6 build/preview.
   // ======================================================================
   let _buildTripState = {
     destination: '', days: 3, people: 2, budget: '',
     activityTypeSelection: new Set(),  // slugs (or 'mix') currently toggled in step3
     activityTypes: [],        // expanded final slug list sent to /trip/candidates + /trip/build
+    vibePrefs: {},            // step3b's "would you rather" picks — {terrain: 'nature'|'culture', dining: 'splurge'|'casual'}.
+                                // Both optional (an unanswered question just contributes no bias) — see
+                                // candidateVibeScore(), a soft sort nudge on the candidate lists below,
+                                // never a hard filter or a re-fetch from the backend.
     candidates: [],           // raw TripCandidate objects from /trip/candidates
     selected: new Set(),      // indices into `candidates` currently checked
     funFact: '',              // destination fun fact from the separate,
@@ -4249,7 +4302,7 @@
     if (window._buildTripStep6GlobeInterval) { clearInterval(window._buildTripStep6GlobeInterval); window._buildTripStep6GlobeInterval = null; }
     _buildTripState = {
       destination: prefillDestination || '', days: 3, people: 2, budget: '',
-      activityTypeSelection: new Set(), activityTypes: [],
+      activityTypeSelection: new Set(), activityTypes: [], vibePrefs: {},
       candidates: [], selected: new Set(), funFact: '',
       selectedAttractions: [],
       previewItinerary: null, slug: null,
@@ -4260,9 +4313,9 @@
     showScreen('build-trip');
   }
   function showBuildTripStep(n) {
-    [1, 2, 3, 4, 5, 6].forEach(i => {
+    ['1', '2', '3', '3b', '4', '5', '6'].forEach(i => {
       const el = document.getElementById('build-trip-step' + i);
-      if (el) el.classList.toggle('hidden', i !== n);
+      if (el) el.classList.toggle('hidden', String(n) !== i);
     });
   }
   function buildTripStep1Continue() {
@@ -4343,8 +4396,65 @@
     _buildTripState.activityTypes = selected.has(BUILD_TRIP_MIX_SLUG)
       ? BUILD_TRIP_ACTIVITY_TYPES.map(t => t.slug)
       : BUILD_TRIP_ACTIVITY_TYPES.map(t => t.slug).filter(s => selected.has(s));
+    showBuildTripStep('3b');
+  }
+  // ── Step 3b: "would you rather" micro-refinements ────────────────────
+  function chooseBuildTripVibePref(group, value) {
+    _buildTripState.vibePrefs[group] = value;
+    document.querySelectorAll(`.build-trip-vibe-btn[data-vibe-group="${group}"]`).forEach(btn => {
+      btn.classList.toggle('is-active', btn.dataset.vibeValue === value);
+    });
+  }
+  function buildTripStep3bContinue() {
     showBuildTripStep(4);
     loadBuildTripCandidates();
+  }
+  // Rough price tier (0=free .. 3=expensive) for the dining "would you
+  // rather" nudge — prefers the real Places priceLevel signal, falls back
+  // to parsing the AI curation pass's own estimated_price string (e.g.
+  // "€10-15") when Places had no priceLevel for this place.
+  function estimateCandidatePriceRank(c) {
+    if (c.is_free) return 0;
+    const byLevel = {
+      PRICE_LEVEL_FREE: 0, PRICE_LEVEL_INEXPENSIVE: 1,
+      PRICE_LEVEL_MODERATE: 2, PRICE_LEVEL_EXPENSIVE: 3, PRICE_LEVEL_VERY_EXPENSIVE: 3,
+    };
+    if (c.price_level && byLevel[c.price_level] !== undefined) return byLevel[c.price_level];
+    const nums = (c.estimated_price || '').match(/\d+/g);
+    if (nums && nums.length) {
+      const avg = nums.reduce((a, b) => a + parseInt(b, 10), 0) / nums.length;
+      if (avg === 0) return 0;
+      if (avg < 15) return 1;
+      if (avg < 40) return 2;
+      return 3;
+    }
+    return 1; // no signal either way — treat as middling rather than boosting or penalizing
+  }
+  // Soft ordering nudge from step3b's two "would you rather" picks — never
+  // a filter (nothing is hidden/excluded), just moves better-matching
+  // candidates earlier in the list the traveler scrolls through. Keyword-
+  // matched against name+description rather than category, since Places'
+  // own categories don't distinguish "nature" from "history" within
+  // "sight" the way these two questions need.
+  function candidateVibeScore(c) {
+    let score = 0;
+    const prefs = _buildTripState.vibePrefs || {};
+    const text = ((c.name || '') + ' ' + (c.description || '')).toLowerCase();
+    const natureWords = /park|garden|trail|hiking?|waterfall|nature|forest|mountain|beach|island|reserve|wildlife|lake|volcano|canyon/;
+    const cultureWords = /museum|gallery|historic|palace|cathedral|ruins?|monument|castle|basilica|temple|church|heritage/;
+    if (prefs.terrain === 'nature') {
+      if (natureWords.test(text)) score += 2;
+      if (cultureWords.test(text)) score -= 1;
+    } else if (prefs.terrain === 'culture') {
+      if (cultureWords.test(text)) score += 2;
+      if (natureWords.test(text)) score -= 1;
+    }
+    if (c.category === 'food' && prefs.dining) {
+      const priceRank = estimateCandidatePriceRank(c);
+      if (prefs.dining === 'splurge' && priceRank >= 2) score += 2;
+      if (prefs.dining === 'casual' && priceRank <= 1) score += 2;
+    }
+    return score;
   }
   const BUILD_TRIP_PRICE_LEVEL_LABEL = {
     PRICE_LEVEL_FREE: 'Free',
@@ -4510,6 +4620,12 @@
     const items = _buildTripState.candidates
       .map((c, i) => ({ c, i }))
       .filter(({ c }) => (group === 'attraction' ? c.category !== 'activity' : c.category === 'activity'));
+    // Soft nudge from step3b's "would you rather" picks — reorders which
+    // candidates the traveler sees FIRST, never hides anything. A stable
+    // sort (guaranteed by the spec since ES2019) keeps the backend's own
+    // ordering for anything tied on vibe score, rather than shuffling
+    // candidates that scored identically.
+    items.sort((a, b) => candidateVibeScore(b.c) - candidateVibeScore(a.c));
     const container = document.getElementById(containerId);
     if (container) container.innerHTML = items.map(({ c, i }) => buildTripCandidateCardHtml(c, i)).join('');
     if (typeof lucide !== 'undefined') lucide.createIcons();

@@ -247,6 +247,41 @@
     </div>
   </div>
   <div class="h-16 md:h-20"></div>
+  <!-- ── How it works — placed directly under the AI Magic Box since it
+       explains that specific feature (paste a video link -> AI reads it ->
+       get a route), not the quiz or Build Your Own Trip paths below. ──── -->
+  <div id="how-it-works-section" class="max-w-6xl mx-auto px-6 md:px-14 py-14 md:py-20">
+    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
+      <div data-aos="fade-up">
+        <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">How it works</div>
+        <div class="font-serif-display text-3xl md:text-4xl">From a saved video to a booked trip</div>
+      </div>
+      <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 max-w-xs md:text-right">Three steps, one AI pass. No spreadsheets, no fifteen open tabs.</div>
+    </div>
+    <div class="grid sm:grid-cols-3 gap-3 md:gap-4">
+      <div data-aos="fade-up" class="bento-card bg-white rounded-2xl p-4 flex sm:block items-start gap-3">
+        <div class="w-9 h-9 rounded-xl bg-[#F1EEFF] flex items-center justify-center flex-shrink-0 sm:mb-3"><i data-lucide="music-2" class="w-4 h-4 text-[#7C3AED]"></i></div>
+        <div>
+          <div class="flex items-center gap-1.5 mb-0.5"><span class="text-[10px] font-semibold text-[#8B5CF6]">01</span><span class="text-sm font-medium">Paste the link</span></div>
+          <div class="text-[11px] text-gray-500 leading-snug">Drop in any TikTok or Instagram clip you saved.</div>
+        </div>
+      </div>
+      <div data-aos="fade-up" data-aos-delay="100" class="bento-card bg-white rounded-2xl p-4 flex sm:block items-start gap-3">
+        <div class="w-9 h-9 rounded-xl bg-[#F1EEFF] flex items-center justify-center flex-shrink-0 sm:mb-3"><i data-lucide="sparkles" class="w-4 h-4 text-[#7C3AED]"></i></div>
+        <div>
+          <div class="flex items-center gap-1.5 mb-0.5"><span class="text-[10px] font-semibold text-[#8B5CF6]">02</span><span class="text-sm font-medium">AI reads the video</span></div>
+          <div class="text-[11px] text-gray-500 leading-snug">Every place shown or mentioned, checked and ordered into a route.</div>
+        </div>
+      </div>
+      <div data-aos="fade-up" data-aos-delay="200" class="bento-card bg-white rounded-2xl p-4 flex sm:block items-start gap-3">
+        <div class="w-9 h-9 rounded-xl bg-[#F1EEFF] flex items-center justify-center flex-shrink-0 sm:mb-3"><i data-lucide="route" class="w-4 h-4 text-[#7C3AED]"></i></div>
+        <div>
+          <div class="flex items-center gap-1.5 mb-0.5"><span class="text-[10px] font-semibold text-[#8B5CF6]">03</span><span class="text-sm font-medium">Get your route</span></div>
+          <div class="text-[11px] text-gray-500 leading-snug">Map, hotel picks, restaurant picks, booking buttons — all attached.</div>
+        </div>
+      </div>
+    </div>
+  </div>
   <!-- ── Find your travel vibe — plays INLINE right in this card, never a
        popup/overlay. #vibe-quiz-teaser and #vibe-quiz-inline are two states
        of the same bento-card; startVibeQuiz()/closeVibeQuiz() toggle which
@@ -312,6 +347,31 @@
     </div>
   </div>
   <div class="h-8 md:h-12"></div>
+  <!-- ── Rankings: Most visited destinations worldwide ──────────────────
+       Real, sourced tourism data (Euromonitor International's Top 100 City
+       Destinations Index + reported arrival volumes), not GetWay's own
+       Magic Box usage. Published annually each December for the prior
+       year — there is no publicly available global "most visited
+       destinations" dataset at monthly granularity, so this section shows
+       the Year ranking only, with a visible source citation, rather than
+       a fake monthly tab. Update GLOBAL_TOURISM_RANKINGS below each time
+       Euromonitor (or another cited source) publishes a new edition.
+       Placed BEFORE the routes grid — real-world tourism popularity, not
+       just what's already on GetWay, is the more credible opening claim. -->
+  <div id="rankings-section" class="max-w-6xl mx-auto px-6 md:px-14 py-14 md:py-20">
+    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
+      <div data-aos="fade-up">
+        <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">Rankings</div>
+        <div class="flex items-center gap-2.5 flex-wrap">
+          <div class="font-serif-display text-3xl md:text-4xl">Most visited destinations worldwide</div>
+          <span class="text-[10px] font-medium text-[#6D28D9] bg-[#F1EEFF] px-2.5 py-1 rounded-full whitespace-nowrap">Latest edition · Dec 2025</span>
+        </div>
+      </div>
+      <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 max-w-xs md:text-right">The world's actual most-visited cities, from the latest published global index — not just what's popular on GetWay. Some already have a route here; some are still on the list to build.</div>
+    </div>
+    <div id="rankings-list" class="space-y-3"></div>
+    <div data-aos="fade-up" class="text-[11px] text-gray-400 mt-5">Source: <a href="https://www.euromonitor.com/article/top-100-city-destinations-index-2025-driving-growth-and-innovation" target="_blank" rel="noopener" class="underline hover:text-gray-600">Euromonitor International, Top 100 City Destinations Index</a> — 2025 edition, published December 2025 — the most recent one that exists; Euromonitor's next edition (covering 2026) isn't published until December 2026, so this is genuinely today's most current real data, not a stale number. Updated here annually.</div>
+  </div>
   <div id="routes-section" class="max-w-6xl mx-auto px-6 md:px-14 pt-4">
     <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
       <div data-aos="fade-up">
@@ -350,62 +410,6 @@
     </div>
     <div id="route-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-10 pb-16"></div>
     <div id="route-search-empty" class="hidden text-center text-sm text-gray-400 py-10">No destinations match your search.</div>
-  </div>
-  <!-- ── Rankings: Most visited destinations worldwide ──────────────────
-       Real, sourced tourism data (Euromonitor International's Top 100 City
-       Destinations Index + reported arrival volumes), not GetWay's own
-       Magic Box usage. Published annually each December for the prior
-       year — there is no publicly available global "most visited
-       destinations" dataset at monthly granularity, so this section shows
-       the Year ranking only, with a visible source citation, rather than
-       a fake monthly tab. Update GLOBAL_TOURISM_RANKINGS below each time
-       Euromonitor (or another cited source) publishes a new edition. -->
-  <div id="rankings-section" class="max-w-6xl mx-auto px-6 md:px-14 py-14 md:py-20">
-    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
-      <div data-aos="fade-up">
-        <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">Rankings</div>
-        <div class="flex items-center gap-2.5 flex-wrap">
-          <div class="font-serif-display text-3xl md:text-4xl">Most visited destinations worldwide</div>
-          <span class="text-[10px] font-medium text-[#6D28D9] bg-[#F1EEFF] px-2.5 py-1 rounded-full whitespace-nowrap">Latest edition · Dec 2025</span>
-        </div>
-      </div>
-      <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 max-w-xs md:text-right">The world's actual most-visited cities, from the latest published global index — not just what's popular on GetWay. Some already have a route here; some are still on the list to build.</div>
-    </div>
-    <div id="rankings-list" class="space-y-3"></div>
-    <div data-aos="fade-up" class="text-[11px] text-gray-400 mt-5">Source: <a href="https://www.euromonitor.com/article/top-100-city-destinations-index-2025-driving-growth-and-innovation" target="_blank" rel="noopener" class="underline hover:text-gray-600">Euromonitor International, Top 100 City Destinations Index</a> — 2025 edition, published December 2025 — the most recent one that exists; Euromonitor's next edition (covering 2026) isn't published until December 2026, so this is genuinely today's most current real data, not a stale number. Updated here annually.</div>
-  </div>
-  <!-- ── How it works ──────────────────────────────────────────────── -->
-  <div id="how-it-works-section" class="max-w-6xl mx-auto px-6 md:px-14 py-14 md:py-20">
-    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
-      <div data-aos="fade-up">
-        <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">How it works</div>
-        <div class="font-serif-display text-3xl md:text-4xl">From a saved video to a booked trip</div>
-      </div>
-      <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 max-w-xs md:text-right">Three steps, one AI pass. No spreadsheets, no fifteen open tabs.</div>
-    </div>
-    <div class="grid sm:grid-cols-3 gap-3 md:gap-4">
-      <div data-aos="fade-up" class="bento-card bg-white rounded-2xl p-4 flex sm:block items-start gap-3">
-        <div class="w-9 h-9 rounded-xl bg-[#F1EEFF] flex items-center justify-center flex-shrink-0 sm:mb-3"><i data-lucide="music-2" class="w-4 h-4 text-[#7C3AED]"></i></div>
-        <div>
-          <div class="flex items-center gap-1.5 mb-0.5"><span class="text-[10px] font-semibold text-[#8B5CF6]">01</span><span class="text-sm font-medium">Paste the link</span></div>
-          <div class="text-[11px] text-gray-500 leading-snug">Drop in any TikTok or Instagram clip you saved.</div>
-        </div>
-      </div>
-      <div data-aos="fade-up" data-aos-delay="100" class="bento-card bg-white rounded-2xl p-4 flex sm:block items-start gap-3">
-        <div class="w-9 h-9 rounded-xl bg-[#F1EEFF] flex items-center justify-center flex-shrink-0 sm:mb-3"><i data-lucide="sparkles" class="w-4 h-4 text-[#7C3AED]"></i></div>
-        <div>
-          <div class="flex items-center gap-1.5 mb-0.5"><span class="text-[10px] font-semibold text-[#8B5CF6]">02</span><span class="text-sm font-medium">AI reads the video</span></div>
-          <div class="text-[11px] text-gray-500 leading-snug">Every place shown or mentioned, checked and ordered into a route.</div>
-        </div>
-      </div>
-      <div data-aos="fade-up" data-aos-delay="200" class="bento-card bg-white rounded-2xl p-4 flex sm:block items-start gap-3">
-        <div class="w-9 h-9 rounded-xl bg-[#F1EEFF] flex items-center justify-center flex-shrink-0 sm:mb-3"><i data-lucide="route" class="w-4 h-4 text-[#7C3AED]"></i></div>
-        <div>
-          <div class="flex items-center gap-1.5 mb-0.5"><span class="text-[10px] font-semibold text-[#8B5CF6]">03</span><span class="text-sm font-medium">Get your route</span></div>
-          <div class="text-[11px] text-gray-500 leading-snug">Map, hotel picks, restaurant picks, booking buttons — all attached.</div>
-        </div>
-      </div>
-    </div>
   </div>
   <!-- ── Final CTA ─────────────────────────────────────────────────── -->
   <div class="max-w-6xl mx-auto px-6 md:px-14 pb-14 md:pb-20">

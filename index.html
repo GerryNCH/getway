@@ -789,15 +789,18 @@
        e.g. cached routes generated before Stop.lat/Stop.lng existed on
        the backend show neither the button nor the section. -->
   <div id="ai-route-map-toggle-wrap" class="hidden px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-8 md:mb-10">
-    <button id="ai-route-map-toggle-btn" onclick="toggleAiRouteMap()" class="btn-interactive w-full flex items-center gap-4 bg-white rounded-[22px] p-4 md:p-5 bento-card text-left">
-      <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#8B5CF6] to-[#6D28D9] shadow-[0_4px_10px_-4px_rgba(124,58,237,0.5)] flex items-center justify-center flex-shrink-0">
-        <i data-lucide="map" class="w-5 h-5 text-white"></i>
-      </div>
+    <!-- Bold purple treatment (not another white bento-card, unlike every
+         banner around it) so this is the one thing on the page that's
+         impossible to scroll past without noticing — real feedback: a
+         tester spent 4 minutes unable to find this button when it looked
+         like just another white info card. -->
+    <button id="ai-route-map-toggle-btn" onclick="toggleAiRouteMap()" class="btn-interactive w-full flex items-center gap-4 rounded-[22px] p-4 md:p-5 shadow-[0_10px_24px_-8px_rgba(124,58,237,0.55)] text-left" style="background: linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%);">
+      <div class="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0 text-2xl">🗺️</div>
       <div class="flex-1 min-w-0">
-        <div id="ai-route-map-toggle-label" class="text-sm font-medium mb-0.5">View route on map</div>
-        <div class="text-xs text-gray-500">See every stop plotted, with walking &amp; driving times between them</div>
+        <div id="ai-route-map-toggle-label" class="text-sm md:text-base font-semibold text-white mb-0.5">View route on map</div>
+        <div class="text-xs text-white/75">See every stop plotted, with walking &amp; driving times between them</div>
       </div>
-      <i data-lucide="chevron-down" id="ai-route-map-toggle-chevron" class="w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-300"></i>
+      <i data-lucide="chevron-down" id="ai-route-map-toggle-chevron" class="w-5 h-5 text-white flex-shrink-0 transition-transform duration-300"></i>
     </button>
   </div>
   <div id="ai-route-map-section" class="hidden px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-10 md:mb-14">
@@ -2583,22 +2586,24 @@
     const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim() || destination || '';
     const skyscannerHref = skyscannerFlightsUrl(city);
     const kiwiHref = kiwiFlightsUrl(city);
+    // Same bold-purple-over-white-card treatment as the map toggle button
+    // right above it (see ai-route-map-toggle-btn) — real feedback: this
+    // was just as easy to miss as the map button when it looked like every
+    // other plain white banner on the page.
     return `
-      <div class="bento-card bg-white rounded-[26px] p-4 md:p-6 flex items-center gap-4 md:gap-5">
-        <div class="w-11 h-11 md:w-12 md:h-12 rounded-2xl bg-gradient-to-br from-[#8B5CF6] to-[#6D28D9] shadow-[0_4px_10px_-4px_rgba(124,58,237,0.5)] flex items-center justify-center flex-shrink-0">
-          <i data-lucide="plane" class="w-5 h-5 text-white"></i>
-        </div>
+      <div class="rounded-[26px] p-4 md:p-6 flex items-center gap-4 md:gap-5 shadow-[0_10px_24px_-8px_rgba(124,58,237,0.55)]" style="background: linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%);">
+        <div class="w-11 h-11 md:w-12 md:h-12 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0 text-2xl">✈️</div>
         <div class="flex-1 min-w-0">
-          <div class="text-sm font-medium mb-0.5">Find flights to ${escapeHtml(city)}</div>
-          <div class="text-xs text-gray-500 mb-3 md:mb-0">Compare fares before you book — opens in a new tab</div>
+          <div class="text-sm md:text-base font-semibold text-white mb-0.5">Find flights to ${escapeHtml(city)}</div>
+          <div class="text-xs text-white/75 mb-3 md:mb-0">Compare fares before you book — opens in a new tab</div>
           <div class="grid grid-cols-2 gap-2.5 md:hidden">
-            <a href="${skyscannerHref}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-outline-interactive h-[40px] flex items-center justify-center gap-1.5 bg-gray-50 text-gray-700 text-[11px] font-medium rounded-xl"><span>Skyscanner</span></a>
-            <a href="${kiwiHref}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-outline-interactive h-[40px] flex items-center justify-center gap-1.5 bg-gray-50 text-gray-700 text-[11px] font-medium rounded-xl"><span>Kiwi.com</span></a>
+            <a href="${skyscannerHref}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-outline-interactive h-[40px] flex items-center justify-center gap-1.5 bg-white text-[#6D28D9] text-[11px] font-semibold rounded-xl"><span>Skyscanner</span></a>
+            <a href="${kiwiHref}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-outline-interactive h-[40px] flex items-center justify-center gap-1.5 bg-white text-[#6D28D9] text-[11px] font-semibold rounded-xl"><span>Kiwi.com</span></a>
           </div>
         </div>
         <div class="hidden md:grid grid-cols-2 gap-2.5 flex-shrink-0">
-          <a href="${skyscannerHref}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-outline-interactive h-[40px] px-4 flex items-center justify-center gap-1.5 bg-gray-50 text-gray-700 text-xs font-medium rounded-xl"><span>Skyscanner</span></a>
-          <a href="${kiwiHref}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-outline-interactive h-[40px] px-4 flex items-center justify-center gap-1.5 bg-gray-50 text-gray-700 text-xs font-medium rounded-xl"><span>Kiwi.com</span></a>
+          <a href="${skyscannerHref}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-outline-interactive h-[40px] px-4 flex items-center justify-center gap-1.5 bg-white text-[#6D28D9] text-xs font-semibold rounded-xl"><span>Skyscanner</span></a>
+          <a href="${kiwiHref}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-outline-interactive h-[40px] px-4 flex items-center justify-center gap-1.5 bg-white text-[#6D28D9] text-xs font-semibold rounded-xl"><span>Kiwi.com</span></a>
         </div>
       </div>`;
   }

@@ -41,6 +41,7 @@ from models import (
     TripCandidatesResponse, TripHotelRequest, TripHotelRecommendation, TripHotelResponse,
     TripBuildRequest, TripSaveRequest, TripSaveResponse, TripEditStateResponse,
     TripFunFactRequest, TripFunFactResponse, TripSearchRequest, TripSearchResponse,
+    VibeQuizMatchRequest, VibeQuizMatchResponse,
 )
 import database
 from extractor import (
@@ -50,7 +51,7 @@ from extractor import (
     download_instagram_video, resolve_canonical_url,
 )
 from troll_filter import check_is_travel
-from ai_analyzer import analyse_frames, generate_fun_fact
+from ai_analyzer import analyse_frames, generate_fun_fact, generate_vibe_match
 from quality_check import ai_quality_check
 from places import (
     enrich_itinerary_with_photos, _unsplash_candidates, _attribution_from_candidate,
@@ -478,6 +479,23 @@ def get_trip_fun_fact(req: TripFunFactRequest):
         raise HTTPException(400, "Missing destination")
     fun_fact, _cost = generate_fun_fact(city)
     return TripFunFactResponse(fun_fact=fun_fact)
+
+
+@app.post("/vibe-quiz/match", response_model=VibeQuizMatchResponse)
+def get_vibe_quiz_match(req: VibeQuizMatchRequest):
+    """
+    Thin wrapper around ai_analyzer.generate_vibe_match — the homepage
+    "find your travel vibe" quiz's destination match, reasoned over all 7
+    answers by Claude instead of index.html's old fixed ~20-destination
+    list. No caching: each traveler's 7 answers are effectively unique, so
+    there's nothing worth caching. Never raises, per generate_vibe_match's
+    own non-fatal contract — an empty destination tells the frontend to
+    fall back to its own static-list matching rather than breaking the quiz.
+    """
+    if not req.answers:
+        raise HTTPException(400, "Missing answers")
+    match, _cost = generate_vibe_match([a.model_dump() for a in req.answers])
+    return VibeQuizMatchResponse(destination=match.get("destination", ""), blurb=match.get("blurb", ""))
 
 
 @app.post("/trip/search-place", response_model=TripSearchResponse)

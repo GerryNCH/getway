@@ -460,3 +460,69 @@ def generate_fun_fact(destination: str) -> tuple[str, float]:
     except Exception as e:
         print(f"[FunFact] generate_fun_fact failed for '{destination}': {e}")
         return "", 0.0
+
+
+_VIBE_MATCH_SYSTEM = """You are matching a traveler's "find your travel vibe" quiz answers to the single real-world travel destination that best fits ALL of their answers combined, for GetWay, a travel itinerary app.
+
+You will receive 7 question/answer pairs: dream terrain, pace, budget, food preference, dream photo, how far they'll travel, and which world region pulls them.
+
+Your job:
+1. Weigh ALL 7 answers together as one combined persona — never let a single answer (like terrain) override or ignore another (like budget or food preference). A traveler who wants mountains AND fine dining wants a sophisticated mountain destination with a real dining scene (e.g. a luxury alpine resort town) — NOT an extreme high-altitude trek just because "mountains" was one answer. A traveler who wants mountains AND street food/shoestring budget wants an affordable mountain town, not a five-star resort. Every answer should be visible in why you picked the place, not just the loudest one.
+2. Pick ONE real, specific, well-known travel destination (a city, town, or clearly-defined region — never a whole country) that a traveler could actually book and visit. Use real knowledge of the place: its actual price level, food scene, terrain, and vibe must genuinely fit the combined persona, not just share one keyword with one answer.
+3. Respect their region answer (Europe / Asia / Americas / Africa & Middle East) — the destination must be in that region.
+4. Write one short, engaging blurb in a travel-writer's voice (not a dry description) explaining why this place fits THEM — reference the specific combination of preferences that led you there, not a generic postcard line.
+
+Reply with ONLY valid JSON, no markdown fences:
+{"destination": "City, Country", "blurb": "One engaging sentence, max ~25 words."}"""
+
+
+def generate_vibe_match(answers: list[dict]) -> tuple[dict, float]:
+    """
+    AI-backed match for the homepage "find your travel vibe" quiz
+    (index.html) — reasons over ALL 7 quiz answers together rather than a
+    tag-tally-plus-fixed-20-destination-list, so a real dining/budget
+    preference can't be silently outvoted by whichever terrain answer got
+    the most votes, and the result isn't capped at a small curated pool.
+
+    Real bug this replaces: the old client-side matching tallied a single
+    "top tag" (e.g. mountain) and only used budget/food as a tiebreaker
+    among destinations already in that tag's pool — for regions where that
+    pool had exactly one entry (e.g. Asia's only "mountain" destination was
+    Everest Base Camp), the tiebreaker had nothing to break toward and a
+    fine-dining answer got silently ignored. An AI call reasoning over all
+    7 answers at once, against real-world knowledge instead of a fixed
+    list, doesn't have that failure mode.
+
+    `answers` is a list of {"question": ..., "answer": ...} dicts, in quiz
+    order. Returns ({"destination": ..., "blurb": ...}, cost_usd), or
+    ({}, 0.0) on any failure — never raises, same non-fatal philosophy as
+    generate_fun_fact, so the frontend can fall back to its own static-list
+    matching rather than breaking the quiz.
+    """
+    try:
+        response = _client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=200,
+            system=_VIBE_MATCH_SYSTEM,
+            messages=[{"role": "user", "content": json.dumps({"answers": answers}, ensure_ascii=False)}],
+        )
+        usage = getattr(response, "usage", None)
+        cost_usd = 0.0
+        if usage:
+            cost_usd = (
+                usage.input_tokens * _HAIKU_INPUT_PER_MTOK
+                + usage.output_tokens * _HAIKU_OUTPUT_PER_MTOK
+            ) / 1_000_000
+
+        raw = response.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+        result = json.loads(raw)
+        destination = str(result.get("destination") or "").strip()
+        blurb = str(result.get("blurb") or "").strip()
+        if not destination:
+            return {}, cost_usd
+        return {"destination": destination, "blurb": blurb}, cost_usd
+    except Exception as e:
+        print(f"[VibeQuiz] generate_vibe_match failed: {type(e).__name__}: {e}")
+        return {}, 0.0

@@ -346,6 +346,23 @@ class TripFunFactResponse(BaseModel):
                           # loading. Empty on failure (non-fatal).
 
 
+class VibeQuizAnswer(BaseModel):
+    question: str
+    answer: str
+
+
+class VibeQuizMatchRequest(BaseModel):
+    answers: list[VibeQuizAnswer]  # exactly 7, in quiz order — see
+                                     # ai_analyzer._VIBE_MATCH_SYSTEM
+
+
+class VibeQuizMatchResponse(BaseModel):
+    destination: str = ""  # "" on failure — frontend falls back to its own
+                             # static VIBE_DESTINATIONS matching, same
+                             # non-fatal contract as TripFunFactResponse
+    blurb: str = ""
+
+
 # ── Build Your Own Trip (Phase B: hotel recommendation) ─────────────────────
 
 class SelectedAttraction(BaseModel):

@@ -51,7 +51,7 @@ from extractor import (
     download_instagram_video, resolve_canonical_url,
 )
 from troll_filter import check_is_travel
-from ai_analyzer import analyse_frames, generate_fun_fact, generate_vibe_match
+from ai_analyzer import analyse_frames, generate_fun_fact, generate_vibe_match, generate_travel_tips
 from quality_check import ai_quality_check
 from places import (
     enrich_itinerary_with_photos, _unsplash_candidates, _attribution_from_candidate,
@@ -133,11 +133,39 @@ def _backfill_fun_facts_background():
         print(f"[FunFact] Background backfill crashed (non-fatal): {e}")
 
 
+def _backfill_travel_tips_background():
+    """
+    Fills `travel_tips` (see models.Itinerary.travel_tips) for every
+    already-approved route that doesn't have any yet, so the "Tips &
+    Tricks" section starts showing up on existing routes without needing
+    to re-run the full video analysis. Mirrors _backfill_fun_facts_background
+    exactly — runs once at every startup in a background thread, cheap
+    (one Haiku call per missing route), and a fast no-op once the catalog
+    is fully backfilled. New routes never need this — they get travel_tips
+    for free as part of the normal Sonnet analysis pass.
+    """
+    try:
+        targets = database.list_approved_missing_travel_tips()
+        if not targets:
+            return
+        print(f"[TravelTips] Backfilling {len(targets)} route(s) missing travel_tips...")
+        filled = 0
+        for row in targets:
+            tips, _cost = generate_travel_tips(row["destination"])
+            if tips:
+                database.set_travel_tips(row["video_id"], tips)
+                filled += 1
+        print(f"[TravelTips] Backfill done — {filled}/{len(targets)} filled")
+    except Exception as e:
+        print(f"[TravelTips] Background backfill crashed (non-fatal): {e}")
+
+
 @app.on_event("startup")
 def startup():
     database.init_db()
     print("[Startup] GetWay backend ready")
     threading.Thread(target=_backfill_fun_facts_background, daemon=True).start()
+    threading.Thread(target=_backfill_travel_tips_background, daemon=True).start()
 
 
 # ── Main extraction endpoint ──────────────────────────────────────────────────
@@ -639,6 +667,13 @@ def build_trip(req: TripBuildRequest):
         except Exception as e:
             print(f"[Places] Car rental photo fetch failed (non-fatal): {e}")
 
+    # Build Your Own Trip has no Sonnet video-analysis call to get
+    # travel_tips for free from (unlike video-extracted routes — see
+    # ai_analyzer.SYSTEM_PROMPT) — same reason recommend_car_rental above
+    # is its own dedicated call here rather than reusing a video analysis.
+    travel_tips, tips_cost_usd = generate_travel_tips(city)
+    print(f"[TripBuilder] Travel tips for {city}: {len(travel_tips)} tip(s) (${tips_cost_usd:.4f})")
+
     itinerary = Itinerary(
         destination=city,
         duration=f"{req.days} day{'s' if req.days != 1 else ''}",
@@ -648,6 +683,7 @@ def build_trip(req: TripBuildRequest):
         car_rental_note=car_note,
         car_rental_photo_url=car_photo_url,
         car_rental_attribution=car_attribution,
+        travel_tips=travel_tips,
     )
 
     # Hero/gallery: reuse the existing destination Unsplash logic exactly
@@ -1022,6 +1058,27 @@ def admin_backfill_fun_facts(secret: str, force: bool = False):
         total_cost += cost
         if fact:
             database.set_fun_fact(row["video_id"], fact)
+            filled += 1
+    return {"status": "ok", "checked": len(targets), "filled": filled, "cost_usd": round(total_cost, 6)}
+
+
+@app.post("/admin/backfill-travel-tips")
+def admin_backfill_travel_tips(secret: str, force: bool = False):
+    """
+    Manually re-triggers the same travel_tips backfill that already runs
+    automatically at every startup (see _backfill_travel_tips_background).
+    Mirrors POST /admin/backfill-fun-facts exactly — see that endpoint's
+    docstring for the force=true semantics.
+    """
+    _check_admin_secret(secret)
+    targets = database.list_approved_for_travel_tips_refresh(force=force)
+    filled = 0
+    total_cost = 0.0
+    for row in targets:
+        tips, cost = generate_travel_tips(row["destination"])
+        total_cost += cost
+        if tips:
+            database.set_travel_tips(row["video_id"], tips)
             filled += 1
     return {"status": "ok", "checked": len(targets), "filled": filled, "cost_usd": round(total_cost, 6)}
 

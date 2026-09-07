@@ -161,6 +161,7 @@ Schema:
   "duration": "X days",
   "summary": "2-3 sentence intro: what makes this destination special, and what this specific route covers (e.g. its vibe, standout stops, or theme)",
   "fun_fact": "One genuinely true fact about the destination itself that's surprising, quirky, or slightly odd — the kind that makes someone think 'huh, no way' or 'okay, now I want to go there.' NOT about any specific stop in this route, and NOT a flat postcard statement. One sentence, max ~20 words.",
+  "travel_tips": ["3-5 short, practical, destination-specific tips a first-time visitor genuinely needs — see guidance below"],
   "price_category": "€ | €€ | €€€",
   "tags": ["0-3 of: most_popular, luxury, budget_friendly, exotic, mountain, city, beach"],
   "car_rental_recommended": true,
@@ -200,6 +201,22 @@ actually true, fall back to a more general but definitely-true fact
 instead (e.g. a well-established geographic or historical fact) rather
 than risk a wrong specific statistic. One sentence. No source citation
 needed, just the fact itself.
+
+"travel_tips" — 3-5 short, practical, destination-specific tips a
+first-time visitor genuinely needs to know before they go — the kind of
+thing a knowledgeable local friend would warn them about, not generic
+travel-blog filler. Good angles: local payment norms ("cash is still
+expected at most small vendors"), a specific transit rule that trips
+people up ("tap OUT as well as in on the metro card or you're charged the
+maximum fare"), a common scam or pickpocket area to watch for, a tipping
+or etiquette norm that differs from what a Western traveler expects, a
+practical booking/timing tip (opening hours, when a popular sight sells
+out, best time to avoid crowds). Every tip must be REAL and genuinely true
+for this specific destination — never invent one. Bad examples to avoid:
+"bring comfortable shoes", "stay hydrated", "learn a few local phrases" —
+these apply everywhere and say nothing destination-specific. Each tip is
+one short sentence, max ~20 words. Return an empty array only if you
+genuinely can't produce confident, specific tips for this destination.
 
 "price_category" — your best estimate of the overall trip's price level based
 on what's actually visible: budget hostel/guesthouse, street food, public
@@ -409,6 +426,7 @@ def analyse_frames(frame_paths: list[str], comments: list[dict] | None = None) -
         ) / 1_000_000
 
     data["fun_fact"] = str(data.get("fun_fact") or "").strip()
+    data["travel_tips"] = [str(t).strip() for t in (data.get("travel_tips") or []) if str(t).strip()]
 
     return Itinerary(**data), price_category, tags, cost_usd
 
@@ -460,6 +478,58 @@ def generate_fun_fact(destination: str) -> tuple[str, float]:
     except Exception as e:
         print(f"[FunFact] generate_fun_fact failed for '{destination}': {e}")
         return "", 0.0
+
+
+_TRAVEL_TIPS_SYSTEM = """You write 3-5 short, practical, destination-specific travel tips for a travel app's "Tips & Tricks" section — the kind of thing a knowledgeable local friend would warn a first-time visitor about, not generic travel-blog filler.
+
+Good angles: local payment norms ("cash is still expected at most small vendors outside the centre"), a specific transit rule that trips people up ("tap OUT as well as in on the metro card or you're charged the maximum fare"), a common scam or pickpocket area to watch for, a tipping or etiquette norm that differs from what a Western traveler expects, a practical booking/timing tip (opening hours, when a popular sight sells out, best time to avoid crowds).
+
+Rules:
+- Every tip must be REAL and genuinely true for this specific destination — never invent one. If you aren't confident enough in a specific detail, leave it out rather than guess.
+- Bad examples to avoid — never write these or anything like them: "bring comfortable shoes", "stay hydrated", "learn a few local phrases", "respect the local culture". These apply everywhere and say nothing destination-specific.
+- Each tip is one short sentence, max ~20 words.
+- Return between 3 and 5 tips. Fewer than 3 only if you genuinely can't produce that many confident, specific tips for this destination.
+
+Reply with ONLY valid JSON, no markdown fences:
+{"tips": ["tip one", "tip two", "tip three"]}"""
+
+
+def generate_travel_tips(destination: str) -> tuple[list[str], float]:
+    """
+    Cheap, standalone Haiku call that returns 3-5 real, practical,
+    destination-specific travel tips for `destination` — used by Build
+    Your Own Trip (which has no Sonnet video-analysis call to get tips for
+    free from) and to backfill routes generated before this field existed,
+    same role generate_fun_fact plays for fun_fact. New video-extracted
+    routes get travel_tips for free as part of the same analyse_frames()
+    call instead (see SYSTEM_PROMPT above).
+
+    Returns (tips, cost_usd). Never raises — returns ([], 0.0) on any
+    failure, same non-fatal contract as generate_fun_fact.
+    """
+    try:
+        response = _client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=400,
+            system=_TRAVEL_TIPS_SYSTEM,
+            messages=[{"role": "user", "content": f"Destination: {destination}"}],
+        )
+        usage = getattr(response, "usage", None)
+        cost_usd = 0.0
+        if usage:
+            cost_usd = (
+                usage.input_tokens * _HAIKU_INPUT_PER_MTOK
+                + usage.output_tokens * _HAIKU_OUTPUT_PER_MTOK
+            ) / 1_000_000
+        raw = response.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+        result = json.loads(raw)
+        tips = [str(t).strip() for t in (result.get("tips") or []) if str(t).strip()]
+        return tips, cost_usd
+    except Exception as e:
+        print(f"[TravelTips] generate_travel_tips failed for '{destination}': {e}")
+        return [], 0.0
 
 
 _VIBE_MATCH_SYSTEM = """You are matching a traveler's "find your travel vibe" quiz answers to the single real-world travel destination that best fits ALL of their answers combined, for GetWay, a travel itinerary app.

@@ -202,6 +202,20 @@ class Itinerary(BaseModel):
                           # POST /admin/backfill-fun-facts. Empty until
                           # filled — the homepage fact chip (index.html)
                           # just doesn't render for that route until it is.
+    travel_tips: list[str] = []  # 3-5 short, practical, destination-specific
+                                   # tips — e.g. "Cash is still king outside
+                                   # Amsterdam's centre" or "Check in AND
+                                   # check out your OV-chipkaart or you're
+                                   # charged the maximum fare." Same
+                                   # generation split as fun_fact: new
+                                   # routes get it free from the same Sonnet
+                                   # call (ai_analyzer.py's SYSTEM_PROMPT) or
+                                   # Build Your Own Trip's dedicated Haiku
+                                   # call (ai_analyzer.generate_travel_tips);
+                                   # older routes are backfilled the same
+                                   # way fun_fact is. Empty list until
+                                   # filled — the itinerary page's "Tips &
+                                   # Tricks" section just doesn't render.
 
 
 class RouteMeta(BaseModel):

@@ -193,6 +193,13 @@ def init_db() -> None:
             # the itinerary; existing rows start empty and are backfilled
             # by main.py's startup task / POST /admin/backfill-fun-facts.
             conn.execute("ALTER TABLE itineraries ADD COLUMN fun_fact TEXT DEFAULT ''")
+        if "travel_tips_json" not in existing_cols:
+            # 3-5 short, practical, destination-specific tips — see
+            # models.Itinerary.travel_tips. Same split as fun_fact: new
+            # routes get it from the same Sonnet call; existing rows start
+            # empty and are backfilled by main.py's startup task / POST
+            # /admin/backfill-travel-tips.
+            conn.execute("ALTER TABLE itineraries ADD COLUMN travel_tips_json TEXT DEFAULT '[]'")
 
         # Migration: trip_candidates_cache gained an activity_types column
         # (Build Your Own Trip's "what kind of activities?" wizard step) —
@@ -325,6 +332,7 @@ def get_itinerary(video_id: str) -> Itinerary | None:
         gallery_attributions=gallery_attributions,
         comments=comments,
         fun_fact=row["fun_fact"] or "",
+        travel_tips=json.loads(row["travel_tips_json"] or "[]"),
     )
 
 
@@ -351,8 +359,8 @@ def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
                 hero_attribution_json, gallery_attributions_json, summary,
                 generation_cost_usd, car_rental_recommended, car_rental_note,
                 car_rental_photo_url, car_rental_attribution_json,
-                fun_fact)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                fun_fact, travel_tips_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 video_id,
                 url,
@@ -372,6 +380,7 @@ def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
                 itinerary.car_rental_photo_url,
                 json.dumps(_attr_to_dict(itinerary.car_rental_attribution)),
                 itinerary.fun_fact,
+                json.dumps(itinerary.travel_tips),
             ),
         )
     print(f"[DB] Saved itinerary for {video_id} ({itinerary.destination})")
@@ -416,6 +425,7 @@ def _row_to_admin_dict(row: sqlite3.Row) -> dict:
         "car_rental_photo_url": row["car_rental_photo_url"] or "",
         "quality_check": json.loads(row["qc_json"]) if row["qc_json"] else None,
         "fun_fact": row["fun_fact"] or "",
+        "travel_tips": json.loads(row["travel_tips_json"] or "[]"),
     }
 
 
@@ -518,6 +528,51 @@ def list_approved_for_fun_fact_refresh(force: bool = False) -> list[dict]:
     return [{"video_id": r["video_id"], "destination": r["destination"]} for r in rows]
 
 
+def set_travel_tips(video_id: str, travel_tips: list[str]) -> bool:
+    """
+    Updates ONLY the travel_tips_json column for an existing route — used
+    by the backfill path (main.py's startup task and POST
+    /admin/backfill-travel-tips) to fill in tips for a route that was
+    generated before this field existed. Returns False if video_id doesn't
+    exist. Mirrors set_fun_fact exactly.
+    """
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE itineraries SET travel_tips_json = ? WHERE video_id = ?",
+            (json.dumps(travel_tips), video_id),
+        )
+    return cur.rowcount > 0
+
+
+def list_approved_missing_travel_tips() -> list[dict]:
+    """
+    Returns [{"video_id": ..., "destination": ...}, ...] for every approved
+    route whose travel_tips is still empty. Mirrors
+    list_approved_missing_fun_fact exactly.
+    """
+    with _conn() as conn:
+        rows = conn.execute(
+            """SELECT video_id, destination FROM itineraries
+               WHERE status = 'approved' AND (travel_tips_json IS NULL OR travel_tips_json = '' OR travel_tips_json = '[]')"""
+        ).fetchall()
+    return [{"video_id": r["video_id"], "destination": r["destination"]} for r in rows]
+
+
+def list_approved_for_travel_tips_refresh(force: bool = False) -> list[dict]:
+    """
+    Same as list_approved_missing_travel_tips(), except when force=True it
+    returns EVERY approved route regardless of whether travel_tips is
+    already filled. Mirrors list_approved_for_fun_fact_refresh exactly.
+    """
+    if not force:
+        return list_approved_missing_travel_tips()
+    with _conn() as conn:
+        rows = conn.execute(
+            """SELECT video_id, destination FROM itineraries WHERE status = 'approved'"""
+        ).fetchall()
+    return [{"video_id": r["video_id"], "destination": r["destination"]} for r in rows]
+
+
 def list_public_approved() -> list[dict]:
     """
     Lightweight summary of every approved route — everything the homepage
@@ -590,7 +645,7 @@ def update_itinerary_content(video_id: str, itinerary: Itinerary) -> bool:
                SET destination = ?, duration = ?, days_json = ?,
                    hero_photo_url = ?, gallery_photo_urls_json = ?, summary = ?,
                    hotel_banner_photo_url = ?, car_rental_recommended = ?,
-                   car_rental_note = ?, fun_fact = ?
+                   car_rental_note = ?, fun_fact = ?, travel_tips_json = ?
                WHERE video_id = ?""",
             (
                 itinerary.destination,
@@ -603,6 +658,7 @@ def update_itinerary_content(video_id: str, itinerary: Itinerary) -> bool:
                 int(itinerary.car_rental_recommended),
                 itinerary.car_rental_note,
                 itinerary.fun_fact,
+                json.dumps(itinerary.travel_tips),
                 video_id,
             ),
         )

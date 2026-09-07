@@ -817,6 +817,11 @@
   <!-- Days + stops rendered here (the Day 1 / arrival-day group also gets
        an airport transfer banner injected inline — see renderAiRoute). -->
   <div id="ai-route-days" class="px-5 md:px-14 lg:px-24 pb-16 md:pb-24 max-w-4xl mx-auto"></div>
+  <!-- "Tips & Tricks" — destination-specific practical advice (payment
+       norms, transit gotchas, common scams, etc.), AI-generated same as
+       fun_fact. Hidden entirely when travel_tips is empty (older routes
+       not yet backfilled — see renderAiRoute). -->
+  <div id="ai-route-tips-section" class="hidden px-5 md:px-14 lg:px-24 pb-16 md:pb-24 max-w-4xl mx-auto"></div>
   <!-- Travel insurance — small banner at the end of the route. Admin-
        toggleable, see isAffiliateSectionEnabled('insurance'). -->
   <div id="ai-route-insurance-banner" class="px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-6 md:mb-8"></div>
@@ -3305,6 +3310,28 @@
           </div>
         </div>`;
     }).join('');
+    // "Tips & Tricks" — destination-specific practical advice (see
+    // models.Itinerary.travel_tips). Hidden entirely for older routes not
+    // yet backfilled, same "just don't render" contract as summaryWrap
+    // above for fun_fact/summary on legacy cached itineraries.
+    const tipsSection = document.getElementById('ai-route-tips-section');
+    const tips = (itinerary.travel_tips || []).filter(t => t && t.trim());
+    if (tips.length) {
+      tipsSection.innerHTML = `
+        <div class="font-serif-display text-[26px] md:text-4xl leading-tight mb-1">Tips &amp; Tricks</div>
+        <div class="text-xs md:text-sm text-gray-500 mb-6 md:mb-8">Good to know before you go</div>
+        <div class="flex flex-col gap-3">
+          ${tips.map(tip => `
+            <div class="bento-card bg-white rounded-2xl p-4 flex items-start gap-3">
+              <div class="w-8 h-8 rounded-xl bg-[#F1EEFF] flex items-center justify-center flex-shrink-0"><i data-lucide="lightbulb" class="w-4 h-4 text-[#7C3AED]"></i></div>
+              <div class="text-sm text-gray-700 leading-relaxed pt-1">${escapeHtml(tip)}</div>
+            </div>`).join('')}
+        </div>`;
+      tipsSection.classList.remove('hidden');
+    } else {
+      tipsSection.innerHTML = '';
+      tipsSection.classList.add('hidden');
+    }
     if (typeof lucide !== 'undefined') { lucide.createIcons(); }
     if (typeof AOS !== 'undefined') { AOS.refreshHard(); }
   }

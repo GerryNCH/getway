@@ -1138,6 +1138,21 @@
     <button onclick="closeIosOverlay()" class="btn-interactive w-full h-11 flex items-center justify-center bg-[#8B5CF6] text-white text-sm font-medium rounded-xl">Got it</button>
   </div>
 </div>
+<!-- Generic styled confirm modal — replaces the native browser confirm()
+     dialog everywhere on the site (that "www.gogetway.com says" popup
+     looks like a broken web bug, not part of the product). showConfirmModal()
+     returns a Promise<boolean>, so any `if (confirm(msg))` call site
+     becomes `if (await showConfirmModal(msg))`. -->
+<div id="confirm-modal-overlay" class="hidden fixed inset-0 z-[180] bg-black/50 flex items-center justify-center p-4">
+  <div class="bento-card bg-white rounded-[22px] p-6 w-full max-w-sm">
+    <div class="w-11 h-11 rounded-2xl bg-[#F1EEFF] flex items-center justify-center mb-4"><i data-lucide="info" class="w-5 h-5 text-[#7C3AED]"></i></div>
+    <div id="confirm-modal-message" class="text-sm text-gray-700 leading-relaxed mb-6"></div>
+    <div class="flex gap-2.5">
+      <button id="confirm-modal-cancel-btn" class="btn-outline-interactive flex-1 h-[44px] bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-xl">Cancel</button>
+      <button id="confirm-modal-ok-btn" class="btn-interactive flex-1 h-[44px] bg-[#8B5CF6] text-white text-sm font-medium rounded-xl">Continue</button>
+    </div>
+  </div>
+</div>
 <button onclick="toggleSupportChat()" class="btn-interactive fixed bottom-6 right-6 z-[150] w-14 h-14 rounded-full bg-[#8B5CF6] shadow-xl flex items-center justify-center">
   <i data-lucide="message-circle" class="w-6 h-6 text-white"></i>
 </button>
@@ -4199,15 +4214,16 @@
   // everything else is assumed to fit ~4-per-day). Not a hard limit —
   // the traveler can always proceed anyway.
   const BUILD_TRIP_REGULAR_STOPS_PER_DAY = 4;
-  function buildTripStep5Continue() {
+  async function buildTripStep5Continue() {
     if (!_buildTripState.selected.size) return;  // defensive — button is disabled in this case
     const selectedCandidates = _buildTripState.candidates.filter((_, i) => _buildTripState.selected.has(i));
     const fullDayCount = selectedCandidates.filter(c => c.is_full_day).length;
     const regularCount = selectedCandidates.length - fullDayCount;
     const estimatedDaysNeeded = fullDayCount + Math.ceil(regularCount / BUILD_TRIP_REGULAR_STOPS_PER_DAY);
     if (estimatedDaysNeeded > _buildTripState.days) {
-      const proceed = confirm(
-        `You've picked ${selectedCandidates.length} place${selectedCandidates.length !== 1 ? 's' : ''} for a ${_buildTripState.days}-day trip — that's roughly ${estimatedDaysNeeded} days' worth, more than you'll likely have time to comfortably see. Build it anyway?`
+      const proceed = await showConfirmModal(
+        `You've picked ${selectedCandidates.length} place${selectedCandidates.length !== 1 ? 's' : ''} for a ${_buildTripState.days}-day trip — that's roughly ${estimatedDaysNeeded} days' worth, more than you'll likely have time to comfortably see. Build it anyway?`,
+        'Build it anyway'
       );
       if (!proceed) return;
     }
@@ -4509,6 +4525,28 @@
   function closeIosOverlay() {
     document.getElementById('ios-install-overlay').classList.add('hidden');
   }
+  // Styled replacement for the native browser confirm() dialog — see
+  // #confirm-modal-overlay above. `await showConfirmModal(message)`
+  // resolves true (Continue clicked) or false (Cancel/backdrop clicked).
+  let _confirmModalResolve = null;
+  function showConfirmModal(message, confirmLabel) {
+    return new Promise((resolve) => {
+      _confirmModalResolve = resolve;
+      document.getElementById('confirm-modal-message').textContent = message;
+      document.getElementById('confirm-modal-ok-btn').textContent = confirmLabel || 'Continue';
+      document.getElementById('confirm-modal-overlay').classList.remove('hidden');
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    });
+  }
+  function _resolveConfirmModal(result) {
+    document.getElementById('confirm-modal-overlay').classList.add('hidden');
+    if (_confirmModalResolve) { _confirmModalResolve(result); _confirmModalResolve = null; }
+  }
+  document.getElementById('confirm-modal-cancel-btn').addEventListener('click', () => _resolveConfirmModal(false));
+  document.getElementById('confirm-modal-ok-btn').addEventListener('click', () => _resolveConfirmModal(true));
+  document.getElementById('confirm-modal-overlay').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) _resolveConfirmModal(false);
+  });
   function dismissInstallBanner(startCooldown) {
     const el = document.getElementById('install-banner');
     if (el) el.classList.add('hidden');

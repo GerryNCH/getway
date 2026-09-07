@@ -576,6 +576,66 @@ def generate_travel_tips(destination: str) -> tuple[list[str], float]:
         return [], 0.0
 
 
+_MONTH_DESTINATIONS_SYSTEM = """You recommend which real-world travel destinations are especially good to visit in a specific month, for GetWay, a travel app's "Best places to visit this month" homepage section.
+
+You will receive a single month name (e.g. "March").
+
+Your job: pick 5 real, well-known destinations (a country, region, or city) that are GENUINELY at their best in that specific month, for a REAL, well-established seasonal reason — not just "nice weather" generically. Good reasons: a specific, well-known seasonal event or natural phenomenon (cherry blossom season, a famous festival, a wildlife migration, monsoon/dry-season timing, ski season, shoulder-season pricing with still-good weather, whale-watching season). Every reason must be something you're genuinely confident is real and well-established — never invent a festival, date, or phenomenon you're not sure exists. Avoid vague, seasonless filler ("great weather", "beautiful scenery") that could apply to any month.
+
+Rules:
+- Describe timing qualitatively ("late March into early April", "the dry season") — never give a precise date or date range that could be wrong in a different year (exact cherry blossom or festival dates shift year to year).
+- Don't repeat the same reason-type for every entry (not 5 cherry-blossom-style entries) — vary the angle across the 5 picks: a festival, a climate/season window, a wildlife event, a shoulder-season value pick, etc.
+- Cover a mix of regions across the 5 picks — don't cluster all 5 in one continent.
+- One short, engaging sentence per destination explaining the specific reason — a travel-writer's voice, not a dry almanac entry.
+
+Reply with ONLY valid JSON, no markdown fences:
+{"destinations": [{"name": "Japan", "reason": "Cherry blossoms sweep the country in a short, spectacular window that draws visitors from everywhere."}]}"""
+
+
+def generate_month_destinations(month: str) -> tuple[list[dict], float]:
+    """
+    Cheap, standalone Haiku call that returns 5 real destinations genuinely
+    well-suited to `month` (e.g. "March"), each with a real, specific
+    seasonal reason — homepage "Best places to visit this month" section.
+    Only 12 possible inputs (month names), so main.py caches this
+    aggressively (see database.get/save_month_destinations_cache) — the
+    same "Japan in March" answer is correct for every visitor, and
+    seasonal patterns don't change year to year, unlike per-destination
+    content elsewhere in this file.
+
+    Returns (destinations, cost_usd), where each destination is
+    {"name": ..., "reason": ...}. Never raises — returns ([], 0.0) on any
+    failure, same non-fatal contract as generate_fun_fact.
+    """
+    try:
+        response = _client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=500,
+            system=_MONTH_DESTINATIONS_SYSTEM,
+            messages=[{"role": "user", "content": f"Month: {month}"}],
+        )
+        usage = getattr(response, "usage", None)
+        cost_usd = 0.0
+        if usage:
+            cost_usd = (
+                usage.input_tokens * _HAIKU_INPUT_PER_MTOK
+                + usage.output_tokens * _HAIKU_OUTPUT_PER_MTOK
+            ) / 1_000_000
+        raw = response.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+        result = json.loads(raw)
+        destinations = [
+            {"name": str(d.get("name") or "").strip(), "reason": str(d.get("reason") or "").strip()}
+            for d in (result.get("destinations") or [])
+        ]
+        destinations = [d for d in destinations if d["name"] and d["reason"]]
+        return destinations, cost_usd
+    except Exception as e:
+        print(f"[MonthDestinations] generate_month_destinations failed for '{month}': {e}")
+        return [], 0.0
+
+
 _VIBE_MATCH_SYSTEM = """You are matching a traveler's "find your travel vibe" quiz answers to the single real-world travel destination that best fits ALL of their answers combined, for GetWay, a travel itinerary app.
 
 You will receive 7 question/answer pairs, in this order: who the trip is for (solo / partner / friends / family), terrain, WHY they're really going (their emotional driver — recharge / adventure / discover / connect), budget, the scene they want after dark, the one concrete thing they want more of (photos / food / culture / hidden gems), and which world region pulls them.

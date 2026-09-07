@@ -41,7 +41,7 @@ from models import (
     TripCandidatesResponse, TripHotelRequest, TripHotelRecommendation, TripHotelResponse,
     TripBuildRequest, TripSaveRequest, TripSaveResponse, TripEditStateResponse,
     TripFunFactRequest, TripFunFactResponse, TripSearchRequest, TripSearchResponse,
-    VibeQuizMatchRequest, VibeQuizMatchResponse,
+    VibeQuizMatchRequest, VibeQuizMatchResponse, MonthDestinationsResponse,
 )
 import database
 from extractor import (
@@ -51,7 +51,10 @@ from extractor import (
     download_instagram_video, resolve_canonical_url,
 )
 from troll_filter import check_is_travel
-from ai_analyzer import analyse_frames, generate_fun_fact, generate_vibe_match, generate_travel_tips, generate_trip_summary
+from ai_analyzer import (
+    analyse_frames, generate_fun_fact, generate_vibe_match, generate_travel_tips,
+    generate_trip_summary, generate_month_destinations,
+)
 from quality_check import ai_quality_check
 from places import (
     enrich_itinerary_with_photos, _unsplash_candidates, _attribution_from_candidate,
@@ -524,6 +527,39 @@ def get_vibe_quiz_match(req: VibeQuizMatchRequest):
         raise HTTPException(400, "Missing answers")
     match, _cost = generate_vibe_match([a.model_dump() for a in req.answers])
     return VibeQuizMatchResponse(destination=match.get("destination", ""), blurb=match.get("blurb", ""))
+
+
+_VALID_MONTHS = {
+    "january", "february", "march", "april", "may", "june",
+    "july", "august", "september", "october", "november", "december",
+}
+
+
+@app.get("/destinations/by-month", response_model=MonthDestinationsResponse)
+def get_month_destinations(month: str):
+    """
+    Homepage "Best places to visit this month" section — 5 real
+    destinations genuinely well-suited to `month`, each with a real
+    seasonal reason (ai_analyzer.generate_month_destinations). Cached hard
+    (database.get/save_month_destinations_cache): only 12 possible inputs,
+    the same answer is correct for every visitor, and seasonal patterns
+    don't shift year to year — so after the first request for a given
+    month, every later one for that month is free. Never raises, per
+    generate_month_destinations' own non-fatal contract — an empty
+    destinations list tells the frontend to just not render that month.
+    """
+    month = month.strip().lower()
+    if month not in _VALID_MONTHS:
+        raise HTTPException(400, f"month must be one of: {', '.join(sorted(_VALID_MONTHS))}")
+    month = month.capitalize()
+
+    cached = database.get_month_destinations_cache(month)
+    if cached is not None:
+        return MonthDestinationsResponse(month=month, destinations=cached)
+
+    destinations, _cost = generate_month_destinations(month)
+    database.save_month_destinations_cache(month, destinations)
+    return MonthDestinationsResponse(month=month, destinations=destinations)
 
 
 @app.post("/trip/search-place", response_model=TripSearchResponse)

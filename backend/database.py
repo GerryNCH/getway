@@ -142,6 +142,19 @@ def init_db() -> None:
                 expires_at          TEXT NOT NULL
             );
 
+            -- Homepage "Best places to visit this month" section — only 12
+            -- possible keys (month names), and the same answer is correct
+            -- for every visitor (seasonal patterns don't change year to
+            -- year), so this is cached hard and long — see
+            -- ai_analyzer.generate_month_destinations.
+            CREATE TABLE IF NOT EXISTS month_destinations_cache (
+                cache_key         TEXT PRIMARY KEY,   -- month name, lowercased/trimmed
+                month             TEXT NOT NULL,
+                destinations_json TEXT NOT NULL,       -- list[{"name","reason"}] as JSON
+                created_at        TEXT NOT NULL,
+                expires_at        TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS custom_trips (
                 slug                       TEXT PRIMARY KEY,   -- short, random, URL-safe — NOT sequential/guessable
                 destination                TEXT NOT NULL,
@@ -1158,6 +1171,48 @@ def save_car_rental_photo_cache(destination: str, url: str, attribution: dict | 
              now.isoformat(), expires_at.isoformat()),
         )
     print(f"[DB] Cached car rental photo for '{destination}' (expires {expires_at.date()})")
+
+
+def get_month_destinations_cache(month: str) -> list[dict] | None:
+    """
+    Returns the cached destinations list for `month`, or None if there's
+    no cache entry or it has expired. An empty list IS a valid cached
+    result (the AI call failed and returned nothing) — only None means
+    "go generate".
+    """
+    key = month.strip().lower()
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT destinations_json, expires_at FROM month_destinations_cache WHERE cache_key = ?",
+            (key,),
+        ).fetchone()
+    if not row or row["expires_at"] < datetime.utcnow().isoformat():
+        return None
+    return json.loads(row["destinations_json"])
+
+
+def save_month_destinations_cache(month: str, destinations: list[dict], ttl_days: int = 180) -> None:
+    """
+    Saves/overwrites the destinations list cached for `month`. Long
+    default TTL (~6 months) — real, well-established seasonal patterns
+    (cherry blossom season, monsoon timing, festival months) don't shift
+    year to year, unlike per-destination content elsewhere in this file.
+    """
+    key = month.strip().lower()
+    now = datetime.utcnow()
+    expires_at = now + timedelta(days=ttl_days)
+    with _conn() as conn:
+        conn.execute(
+            """INSERT INTO month_destinations_cache
+               (cache_key, month, destinations_json, created_at, expires_at)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(cache_key) DO UPDATE SET
+                   destinations_json = excluded.destinations_json,
+                   created_at = excluded.created_at,
+                   expires_at = excluded.expires_at""",
+            (key, month, json.dumps(destinations, ensure_ascii=False), now.isoformat(), expires_at.isoformat()),
+        )
+    print(f"[DB] Cached {len(destinations)} destination(s) for month '{month}' (expires {expires_at.date()})")
 
 
 # ── Custom-built trips (Build Your Own Trip Phase D: save + share) ─────────

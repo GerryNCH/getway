@@ -377,6 +377,18 @@ class VibeQuizMatchResponse(BaseModel):
     blurb: str = ""
 
 
+class MonthDestination(BaseModel):
+    name: str
+    reason: str
+
+
+class MonthDestinationsResponse(BaseModel):
+    month: str
+    destinations: list[MonthDestination] = []  # empty on failure — the
+                                                  # frontend section just
+                                                  # doesn't render that month
+
+
 # ── Build Your Own Trip (Phase B: hotel recommendation) ─────────────────────
 
 class SelectedAttraction(BaseModel):

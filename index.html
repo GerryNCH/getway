@@ -3438,6 +3438,20 @@
       let startDay = itinerary.days.findIndex(d => d.stops.some(s => typeof s.lat === 'number' && typeof s.lng === 'number'));
       if (startDay < 0) startDay = 0;
       renderMapForDay(startDay);
+      // Real bug this fixes: the Leaflet map instance is a global
+      // singleton reused across DIFFERENT routes (see renderMapForDay),
+      // not recreated per route. For the very FIRST route opened in a
+      // session, L.map() measures #ai-route-map correctly because the
+      // section was just unhidden. For every route AFTER that, the
+      // REUSED instance never re-measures its container on its own —
+      // Leaflet doesn't auto-detect "the div got hidden/shown again in a
+      // new context" — so tiles rendered at a stale size or not at all
+      // (confirmed: pins showed, tiles didn't). invalidateSize() forces
+      // that remeasure; harmless no-op the first time since the map is
+      // already correctly sized then.
+      if (window._aiRouteLeafletMap) {
+        setTimeout(() => window._aiRouteLeafletMap.invalidateSize(), 60);
+      }
     } else if (window._aiRouteLeafletMap) {
       setTimeout(() => window._aiRouteLeafletMap.invalidateSize(), 60);
     }

@@ -62,7 +62,7 @@ from places import (
 from trip_builder import (
     is_open as trip_place_is_open, fits_budget, curate_candidates,
     cluster_center, pick_hotel, hotel_to_recommendation_dict,
-    assemble_days, recommend_car_rental, dedupe_places,
+    assemble_days, recommend_car_rental, dedupe_places, group_into_days,
 )
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -638,11 +638,21 @@ def build_trip(req: TripBuildRequest):
 
     selected_dicts = [a.model_dump() for a in req.selected_attractions]
 
-    # Hotel: same cluster-anchored search + cache as /trip/hotel, called
-    # directly here (not a second HTTP round-trip) so a build always
-    # reflects exactly the same hotel logic a separate preview call would
-    # have shown for this same selection.
-    center = cluster_center([(a.lat, a.lng) for a in req.selected_attractions])
+    # Hotel: anchored to DAY 1's specific cluster, not the whole trip's
+    # centroid. Real bug this fixes: assemble_days always places the hotel
+    # in Day 1 (matching the same convention ai_analyzer.py's video-
+    # extraction prompt uses), but for a geographically spread destination
+    # (e.g. a country-wide Norway trip), the whole-selection centroid can
+    # land nowhere near whichever cluster the day-splitting (see
+    # trip_builder.group_into_days) actually puts first — confirmed live:
+    # a hotel anchored to the whole-trip centroid ended up 158km/379min
+    # from Day 1's only other stop. group_into_days is itself deterministic
+    # given the same (attractions, num_days), so calling it here to find
+    # Day 1's members, then letting assemble_days() call it again below to
+    # build the actual days, always agrees with what gets rendered.
+    day1_preview = group_into_days(selected_dicts, req.days)
+    day1_attractions = day1_preview[0] if day1_preview else selected_dicts
+    center = cluster_center([(a.get("lat"), a.get("lng")) for a in day1_attractions])
     hotel_dict = None
     if center is not None:
         lat, lng = center

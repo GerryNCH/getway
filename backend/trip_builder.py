@@ -577,24 +577,59 @@ def _nearest_neighbor_order(attractions: list[dict]) -> list[dict]:
 
 def _split_evenly_by_proximity(attractions: list[dict], num_slots: int) -> list[list[dict]]:
     """
-    The original single-pass grouping: one nearest-neighbor path across
-    `attractions` (_nearest_neighbor_order), split into `num_slots`
-    contiguous chunks of as-even-as-possible size (remainder to the
-    earlier slots). A contiguous slice of an already-proximity-ordered
-    path is naturally a geographic cluster, and slot N+1 picks up near
-    where slot N ended — satisfies "group nearby stops together" and
-    "order within a slot to minimize backtracking" at once. Used by
+    One nearest-neighbor path across `attractions` (_nearest_neighbor_order),
+    cut into `num_slots` contiguous day-groups at that path's LARGEST
+    geographic gaps — not at fixed even-count boundaries. Used by
     group_into_days() for whichever attractions AREN'T full-day items.
+
+    Real bug this fixes: even-count slicing ignores where the actual
+    distance jumps in the path are. For a country-wide destination (e.g.
+    Norway) where selected attractions cluster into a handful of far-apart
+    regions, a fixed-size cut can land mid-cluster — pairing the last stop
+    of one region with the first stop of a totally different region into
+    the SAME day (observed: two same-day stops 160km / ~6.5 hours apart).
+    Cutting at the biggest gaps instead keeps each day's stops as close
+    together as the underlying candidate pool allows for the given number
+    of slots, while a contiguous slice of an already-proximity-ordered path
+    still means slot N+1 picks up near where slot N ended.
+
+    Attractions with no coordinates (nothing to compute a gap from) are
+    excluded from the gap search and distributed afterward across slots via
+    the old even-count-with-remainder rule — their day placement doesn't
+    affect same-day travel distance either way.
     """
     num_slots = max(1, num_slots)
     ordered = _nearest_neighbor_order(attractions)
-    n = len(ordered)
-    base, remainder = divmod(n, num_slots)
-    slots: list[list[dict]] = []
+    with_coords = [a for a in ordered if a.get("lat") is not None and a.get("lng") is not None]
+    without_coords = [a for a in ordered if a.get("lat") is None or a.get("lng") is None]
+
+    n = len(with_coords)
+    if n <= num_slots:
+        # Not enough located attractions to fill every slot — one per slot,
+        # same degenerate case the old even-count split already handled.
+        slots: list[list[dict]] = [[a] for a in with_coords]
+        slots.extend([] for _ in range(num_slots - n))
+    else:
+        gap_distances = [
+            _haversine_km((with_coords[i]["lat"], with_coords[i]["lng"]),
+                          (with_coords[i + 1]["lat"], with_coords[i + 1]["lng"]))
+            for i in range(n - 1)
+        ]
+        cut_after_indices = sorted(
+            sorted(range(n - 1), key=lambda i: gap_distances[i], reverse=True)[:num_slots - 1]
+        )
+        slots = []
+        start = 0
+        for i in cut_after_indices:
+            slots.append(with_coords[start:i + 1])
+            start = i + 1
+        slots.append(with_coords[start:])
+
+    base, remainder = divmod(len(without_coords), num_slots)
     idx = 0
     for slot_i in range(num_slots):
         size = base + (1 if slot_i < remainder else 0)
-        slots.append(ordered[idx:idx + size])
+        slots[slot_i].extend(without_coords[idx:idx + size])
         idx += size
     return slots
 

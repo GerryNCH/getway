@@ -1454,74 +1454,89 @@
     const input = document.getElementById('home-tiktok-url');
     if (input) setTimeout(() => input.focus(), 450);
   }
-  // ── Vibe Quiz: 6 vibe questions + 1 region question, matched against a
-  // curated list of real-world destinations (VIBE_DESTINATIONS below) ──
-  // Each of the first 6 questions casts one vote for a tag from the exact
-  // same universe already used everywhere else on the site
-  // (ROUTE_TAG_CONFIG / filterByCategory): most_popular, budget_friendly,
-  // luxury, exotic, mountain, city, beach. The 7th question narrows the
-  // result to a region. pickVibeDestination() then picks the single
-  // best-matching real destination — always a real, editorially-curated
-  // place, whether or not GetWay happens to have a route there yet. When
-  // it doesn't, renderVibeQuizResults() nudges the user to TikTok/
-  // Instagram instead of forcing an unrelated GetWay route as "the match".
+  // ── Vibe Quiz: 7 questions built around what actually predicts a good
+  // destination match, not a flat list of surface categories — modeled on
+  // how a real travel advisor interviews someone who says "I don't know
+  // where to go": who's traveling (a hard filter — a family and a bachelor
+  // party can't get the same answer), terrain, WHY they're really going
+  // (the one answer that predicts most of the rest — "escape and
+  // recharge" and "feel alive" want completely different places even if
+  // both say "beach"), budget, nightlife scene, the one concrete thing
+  // they want more of (photos/food/culture/hidden gems — previously
+  // impossible to signal at all), and region/distance last, since it's a
+  // practical constraint more than a vibe preference. Sent as full
+  // question+answer text to POST /vibe-quiz/match (ai_analyzer.
+  // generate_vibe_match), which reasons over all 7 together — NOT a tag
+  // tally. `tag`/`region` are only kept on the options where they map
+  // cleanly onto the old universe (most_popular, budget_friendly, luxury,
+  // exotic, mountain, city, beach — see ROUTE_TAG_CONFIG/filterByCategory)
+  // so pickVibeDestinationFromTally() still has partial signal to work
+  // with if the AI call ever fails; questions with no natural mapping
+  // (who's traveling, motivation, nightlife, priority) simply don't
+  // contribute to that fallback tally, which only matters during an
+  // outage. pickVibeDestination() (the fallback) always returns a real,
+  // editorially-curated place, whether or not GetWay has a route there
+  // yet — when it doesn't, renderVibeQuizResults() nudges the user to
+  // TikTok/Instagram instead of forcing an unrelated GetWay route as "the
+  // match".
   const VIBE_QUIZ_QUESTIONS = [
+    {
+      q: "Who's this trip for?",
+      options: [
+        { label: "Just me", icon: "👤" },
+        { label: "My partner", icon: "💑" },
+        { label: "Friends", icon: "👯" },
+        { label: "Family", icon: "👨‍👩‍👧" },
+      ],
+    },
     {
       q: "What's calling you?",
       options: [
         { label: "Beach", icon: "🏖️", tag: "beach" },
         { label: "Mountains", icon: "⛰️", tag: "mountain" },
         { label: "City", icon: "🏙️", tag: "city" },
-        { label: "Somewhere wild", icon: "🌴", tag: "exotic" },
+        { label: "A mix", icon: "🌍" },
       ],
     },
     {
-      q: "Pick your pace",
+      q: "Why are you really going?",
       options: [
-        { label: "Wander", icon: "🚶", tag: "city" },
-        { label: "Adventure", icon: "🥾", tag: "mountain" },
-        { label: "Chill", icon: "🛌", tag: "beach" },
-        { label: "Icons first", icon: "🗺️", tag: "most_popular" },
+        { label: "Recharge", icon: "🧘" },
+        { label: "Adventure", icon: "🎢" },
+        { label: "Discover", icon: "📚" },
+        { label: "Connect", icon: "🎉" },
       ],
     },
     {
       q: "Your budget?",
       options: [
-        { label: "Shoestring", icon: "💸", tag: "budget_friendly" },
+        { label: "Budget", icon: "💸", tag: "budget_friendly" },
         { label: "Luxury", icon: "💎", tag: "luxury" },
         { label: "Balanced", icon: "💳", tag: "most_popular" },
       ],
     },
     {
-      q: "What's on your plate?",
+      q: "What's the scene after dark?",
       options: [
-        { label: "Street food", icon: "🍜", tag: "budget_friendly" },
-        { label: "Fine dining", icon: "🥂", tag: "luxury" },
-        { label: "Surprise me", icon: "🍽️", tag: "city" },
+        { label: "Nightlife", icon: "🎉" },
+        { label: "Quiet", icon: "🌌" },
+        { label: "Live music", icon: "🎶" },
+        { label: "A mix", icon: "🌗" },
       ],
     },
     {
-      q: "Dream photo?",
+      q: "What do you want more of?",
       options: [
-        { label: "Landmark", icon: "🏛️", tag: "most_popular" },
-        { label: "Hidden gem", icon: "🐒", tag: "exotic" },
-        { label: "Epic view", icon: "🌄", tag: "mountain" },
-        { label: "Turquoise water", icon: "🌊", tag: "beach" },
+        { label: "Great photos", icon: "📸" },
+        { label: "Great food", icon: "🍜" },
+        { label: "Culture", icon: "🏛️" },
+        { label: "Hidden gems", icon: "🗺️" },
       ],
     },
     {
-      q: "How far will you go?",
-      options: [
-        { label: "Short hop", icon: "✈️", tag: "city" },
-        { label: "Anywhere", icon: "🌍", tag: "exotic" },
-        { label: "The mountains", icon: "🏔️", tag: "mountain" },
-        { label: "The bluest beach", icon: "🏝️", tag: "beach" },
-      ],
-    },
-    {
-      // The extra, more specific question — narrows the tag-based vibe down
-      // to an actual region, so the final match (see VIBE_DESTINATIONS
-      // below) can be a real, specific place rather than just a category.
+      // The extra, more specific question — narrows things down to an
+      // actual region, so the final match (see VIBE_DESTINATIONS below)
+      // can be a real, specific place rather than just a category.
       q: "Which region pulls you?",
       options: [
         { label: "Europe", icon: "🇪🇺", region: "europe" },

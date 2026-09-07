@@ -2965,13 +2965,11 @@
     if (!window._aiRouteLeafletMap) {
       mapEl.innerHTML = '';
       window._aiRouteLeafletMap = L.map(mapEl, { scrollWheelZoom: false });
-      // CartoDB Voyager: clean modern basemap with just enough color
-      // (soft greens for parks, blue water, warm road tints) to feel
-      // alive rather than flat — Positron (plain grayscale) read as dead
-      // and lifeless against the rest of GetWay's warm, colorful design.
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
-        subdomains: 'abcd',
+      // CARTO's free rastertiles CDN now requires a paid API key and serves
+      // tiles stamped "API KEY REQUIRED" without one, so we use Wikimedia's
+      // OSM-styled tile server instead — free, no key, no usage cap.
+      L.tileLayer('https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
         maxZoom: 19
       }).addTo(window._aiRouteLeafletMap);
     }

@@ -666,8 +666,9 @@
   </div>
   <!-- Simplified loading state: one steady "Video is generating..." label
        + a rotating "did you know" fact about a different country every
-       ~3s (see COUNTRY_FACTS + startMagicBox() below). No progress-stage
-       copy, no time estimate — kept deliberately quiet/minimal. -->
+       ~8s, in a freshly shuffled order each time (see COUNTRY_FACTS +
+       startMagicBoxFactRotation() below). No progress-stage copy, no time
+       estimate — kept deliberately quiet/minimal. -->
   <div id="magicbox-loading" class="hidden mx-5 md:mx-0 px-6 md:px-10 py-16 md:py-20 text-center glass-card rounded-[28px]">
     <div class="w-16 h-16 bg-[#F1EEFF] rounded-full flex items-center justify-center mx-auto mb-6">
       <span id="magicbox-loading-globe" class="text-2xl">🌍</span>
@@ -3575,23 +3576,57 @@
     "Did you know? Venice is built on more than 100 small islands connected by canals and bridges.",
     "Did you know? Thailand was never colonized by a European power — the only Southeast Asian country that can say that.",
     "Did you know? Denmark's flag, the Dannebrog, is the oldest continuously used national flag in the world.",
+    "Did you know? Russia spans 11 time zones — more than any other country in the world.",
+    "Did you know? Vatican City is the smallest country in the world, at just 0.44 square kilometers.",
+    "Did you know? Canada has more lakes than the rest of the world combined.",
+    "Did you know? Australia has more than 10,000 beaches — you could visit a new one every day for almost 30 years.",
+    "Did you know? Norway's coastline, fjords included, stretches over 25,000 kilometers.",
+    "Did you know? South Korea has some of the fastest average internet speeds in the world.",
+    "Did you know? Portugal's borders have barely changed since the 13th century, making it one of Europe's oldest.",
+    "Did you know? Singapore is one of only three sovereign city-states in the world, alongside Monaco and Vatican City.",
+    "Did you know? Egypt's Great Pyramid of Giza was the tallest man-made structure on Earth for almost 3,800 years.",
+    "Did you know? Brazil shares a border with every South American country except Chile and Ecuador.",
+    "Did you know? Greece has more than 6,000 islands, but only around 227 are inhabited.",
+    "Did you know? The Netherlands has more bicycles than people.",
+    "Did you know? Mexico City is sinking by up to 50 centimeters a year in some areas — it was built on an old lakebed.",
+    "Did you know? Chile stretches over 4,300 kilometers from north to south, but averages only about 180 kilometers wide.",
+    "Did you know? Morocco was one of the first countries to recognize the United States as an independent nation, in 1777.",
+    "Did you know? Turkey is the only country in the world that spans two continents, Europe and Asia.",
+    "Did you know? South Africa has three capital cities — Pretoria, Cape Town, and Bloemfontein.",
+    "Did you know? The UK, Japan, Australia, and about a third of the world's countries drive on the left-hand side of the road.",
   ];
+  // Fisher-Yates shuffle — used to give each loading session its own fresh
+  // random ORDER through COUNTRY_FACTS (not just a random starting index
+  // into the same fixed sequential order), so repeat visits don't keep
+  // landing on the same few consecutive facts. Real bug this fixes: with
+  // only a randomized start index, two sessions starting a few slots apart
+  // would still show mostly the same run of facts in the same relative
+  // order — feeling repetitive even with a decent-sized pool.
+  function _shuffled(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
   function startMagicBoxFactRotation() {
     const factEl = document.getElementById('loading-fact');
     if (!factEl) return null;
-    let factIndex = Math.floor(Math.random() * COUNTRY_FACTS.length);
+    const pool = _shuffled(COUNTRY_FACTS);
+    let factIndex = 0;
     function showFact(idx) {
       factEl.style.opacity = '0';
       setTimeout(() => {
-        factEl.textContent = COUNTRY_FACTS[idx];
+        factEl.textContent = pool[idx];
         factEl.style.opacity = '1';
       }, 250);
     }
     showFact(factIndex);
     return setInterval(() => {
-      factIndex = (factIndex + 1) % COUNTRY_FACTS.length;
+      factIndex = (factIndex + 1) % pool.length;
       showFact(factIndex);
-    }, 7000);
+    }, 8000);
   }
   // Same rotating "did you know" pattern as startMagicBoxFactRotation
   // above, generalized for Build Your Own Trip's two loading states (the
@@ -3606,7 +3641,7 @@
   function startBuildTripFactRotation(elId, destinationFact) {
     const factEl = document.getElementById(elId);
     if (!factEl) return null;
-    const pool = destinationFact ? [destinationFact, ...COUNTRY_FACTS] : COUNTRY_FACTS.slice();
+    const pool = destinationFact ? [destinationFact, ..._shuffled(COUNTRY_FACTS)] : _shuffled(COUNTRY_FACTS);
     let factIndex = 0;
     function showFact(idx) {
       factEl.style.opacity = '0';
@@ -3619,7 +3654,7 @@
     return setInterval(() => {
       factIndex = (factIndex + 1) % pool.length;
       showFact(factIndex);
-    }, 7000);
+    }, 8000);
   }
   // Small spinning-globe animation shown alongside the rotating facts
   // during any "generating a trip" loading state, so there's something

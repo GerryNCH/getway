@@ -480,6 +480,50 @@ def generate_fun_fact(destination: str) -> tuple[str, float]:
         return "", 0.0
 
 
+_TRIP_SUMMARY_SYSTEM = """You write a short intro for a travel app's route page — the same "summary" a video-extracted route gets, just for a traveler who built their own trip instead of pasting a video link.
+
+You'll receive a destination and the list of specific attractions/activities the traveler picked for their trip.
+
+Write 2-3 sentences, no more: the first about what makes the destination itself appealing, the second (and optionally third) about what THIS specific selection of stops covers or its vibe — reference the actual picks where it reads naturally, not just the destination in the abstract. Plain, engaging prose — not a bullet list, not marketing hype, not generic filler like "has beautiful beaches" or "is a popular tourist destination".
+
+Reply with ONLY the summary text, nothing else — no markdown, no surrounding quotes."""
+
+
+def generate_trip_summary(destination: str, stop_names: list[str]) -> tuple[str, float]:
+    """
+    Cheap, standalone Haiku call that writes the same kind of 2-3 sentence
+    destination + route summary a video-extracted route gets for free from
+    the main Sonnet call (see SYSTEM_PROMPT's "summary" field) — Build Your
+    Own Trip has no video to extract that from, so this fills the same gap
+    generate_fun_fact/generate_travel_tips fill for their own fields.
+
+    Returns (summary, cost_usd). Never raises — returns ("", 0.0) on any
+    failure, same non-fatal contract as generate_fun_fact.
+    """
+    try:
+        response = _client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=200,
+            system=_TRIP_SUMMARY_SYSTEM,
+            messages=[{"role": "user", "content": json.dumps({
+                "destination": destination,
+                "stops": stop_names,
+            }, ensure_ascii=False)}],
+        )
+        usage = getattr(response, "usage", None)
+        cost_usd = 0.0
+        if usage:
+            cost_usd = (
+                usage.input_tokens * _HAIKU_INPUT_PER_MTOK
+                + usage.output_tokens * _HAIKU_OUTPUT_PER_MTOK
+            ) / 1_000_000
+        summary = response.content[0].text.strip().strip('"').strip()
+        return summary, cost_usd
+    except Exception as e:
+        print(f"[TripSummary] generate_trip_summary failed for '{destination}': {e}")
+        return "", 0.0
+
+
 _TRAVEL_TIPS_SYSTEM = """You write 3-5 short, practical, destination-specific travel tips for a travel app's "Tips & Tricks" section — the kind of thing a knowledgeable local friend would warn a first-time visitor about, not generic travel-blog filler.
 
 Good angles: local payment norms ("cash is still expected at most small vendors outside the centre"), a specific transit rule that trips people up ("tap OUT as well as in on the metro card or you're charged the maximum fare"), a common scam or pickpocket area to watch for, a tipping or etiquette norm that differs from what a Western traveler expects, a practical booking/timing tip (opening hours, when a popular sight sells out, best time to avoid crowds).

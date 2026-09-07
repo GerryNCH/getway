@@ -51,7 +51,7 @@ from extractor import (
     download_instagram_video, resolve_canonical_url,
 )
 from troll_filter import check_is_travel
-from ai_analyzer import analyse_frames, generate_fun_fact, generate_vibe_match, generate_travel_tips
+from ai_analyzer import analyse_frames, generate_fun_fact, generate_vibe_match, generate_travel_tips, generate_trip_summary
 from quality_check import ai_quality_check
 from places import (
     enrich_itinerary_with_photos, _unsplash_candidates, _attribution_from_candidate,
@@ -684,10 +684,18 @@ def build_trip(req: TripBuildRequest):
     travel_tips, tips_cost_usd = generate_travel_tips(city)
     print(f"[TripBuilder] Travel tips for {city}: {len(travel_tips)} tip(s) (${tips_cost_usd:.4f})")
 
+    # Same gap as travel_tips/car rental above — Build Your Own Trip has no
+    # video to pull a "summary" intro from, so this fills the same field a
+    # video-extracted route gets for free from ai_analyzer.SYSTEM_PROMPT.
+    stop_names = [a.name for a in req.selected_attractions]
+    summary, summary_cost_usd = generate_trip_summary(city, stop_names)
+    print(f"[TripBuilder] Summary for {city}: {bool(summary)} (${summary_cost_usd:.4f})")
+
     itinerary = Itinerary(
         destination=city,
         duration=f"{req.days} day{'s' if req.days != 1 else ''}",
         days=[DayPlan(**d) for d in days],
+        summary=summary,
         price_category=_BUDGET_PRICE_CATEGORY.get(budget, ""),
         car_rental_recommended=car_recommended,
         car_rental_note=car_note,

@@ -439,7 +439,23 @@ def _get_destination_gallery_unsplash(destination: str, count: int = 5) -> list[
     shows varied shots instead of several near-duplicate frames from the
     same photo session. Falls back to an empty list if no key is
     configured or all requests fail.
+
+    Cached by (destination, count) — see database.get_destination_gallery_cache.
+    Real bug this fixes: called fresh on EVERY /trip/build with no caching
+    at all, burning 2-5+ Unsplash queries each time against a free-tier
+    50-requests/hour cap shared with every other Unsplash call in the app —
+    several Build Your Own Trip previews for popular destinations in the
+    same hour could exhaust it, silently starving whichever photo fetch
+    ran later in that same request (see get_car_rental_photo_unsplash).
+    A destination's gallery doesn't change traveler-to-traveler, so this is
+    safe to share across everyone building a trip to the same place.
     """
+    cached = database.get_destination_gallery_cache(destination, count)
+    if cached is not None:
+        for p in cached:
+            p["attribution"] = UnsplashAttribution(**p["attribution"]) if p.get("attribution") else None
+        return cached
+
     if not UNSPLASH_ACCESS_KEY:
         print("[Unsplash] No API key — skipping destination gallery")
         return []
@@ -530,6 +546,16 @@ def _get_destination_gallery_unsplash(destination: str, count: int = 5) -> list[
                 break
 
     print(f"[Unsplash] Gallery for '{destination}': {len(photos)} photos (sampled {len(queries_to_try)} queries, {len(candidate_pool)} candidates)")
+    serializable = [
+        {"url": p["url"], "likes": p["likes"], "attribution": p["attribution"].model_dump() if p["attribution"] else None}
+        for p in photos
+    ]
+    # Short TTL when nothing came back — same reasoning as
+    # get_car_rental_photo_unsplash's cache: an empty result here could be
+    # a genuine "no good photos" OR a transient rate-limit/network failure,
+    # and a normal 30-day TTL would lock in the latter as if it were the
+    # former.
+    database.save_destination_gallery_cache(destination, count, serializable, ttl_days=30 if photos else 0.25)
     return photos
 
 
@@ -545,7 +571,20 @@ def get_car_rental_photo_unsplash(destination: str) -> tuple[str, UnsplashAttrib
     for every trip, regardless of destination. Returns ("", None) if
     nothing usable is found (no key configured, or all queries came up
     empty) — the frontend's existing icon+gradient fallback still applies.
+
+    Cached by destination — see database.get/save_car_rental_photo_cache.
+    This is the LAST Unsplash fetch in /trip/build's sequence (after the
+    hero/gallery fetch above, which alone can burn 2-5+ queries), so
+    without caching it's also the first one starved whenever a burst of
+    Build Your Own Trip previews pushes the free-tier 50-requests/hour cap
+    — confirmed live: a Norway build got a real hero/gallery photo but an
+    empty car_rental_photo_url.
     """
+    cached = database.get_car_rental_photo_cache(destination)
+    if cached is not None:
+        attribution = UnsplashAttribution(**cached["attribution"]) if cached.get("attribution") else None
+        return cached["url"], attribution
+
     city = re.split(r"\s*(?:,|&|\band\b)\s*", destination, maxsplit=1, flags=re.IGNORECASE)[0].strip()
     queries = [f"{city} scenic road drive", f"{city} road trip", f"{city} countryside road"]
     for query in queries:
@@ -555,8 +594,17 @@ def get_car_rental_photo_unsplash(destination: str) -> tuple[str, UnsplashAttrib
             url = best.get("urls", {}).get("regular", "")
             if url:
                 _trigger_unsplash_download(best)
-                return url, _attribution_from_candidate(best)
+                attribution = _attribution_from_candidate(best)
+                database.save_car_rental_photo_cache(destination, url, attribution.model_dump())
+                return url, attribution
     print(f"[Unsplash] No car rental photo found for '{destination}'")
+    # Short TTL for a "nothing found" result — _unsplash_candidates returns
+    # [] both for a genuine no-match AND for a transient failure (rate
+    # limit, network error, timeout), so a normal 30-day TTL risks locking
+    # in a rate-limit blip as if it were a permanent "no good photo exists"
+    # — the exact bug this caching was added to fix. A few hours is enough
+    # to stop a retry storm without outliving the rate-limit window.
+    database.save_car_rental_photo_cache(destination, "", None, ttl_days=0.25)
     return "", None
 
 

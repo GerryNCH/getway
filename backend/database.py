@@ -111,6 +111,37 @@ def init_db() -> None:
                 expires_at  TEXT NOT NULL
             );
 
+            -- Real bug this fixes: _get_destination_gallery_unsplash and
+            -- get_car_rental_photo_unsplash (places.py) were called fresh
+            -- on EVERY /trip/build (no caching at all), each burning
+            -- several Unsplash queries — Unsplash's free Demo tier is
+            -- capped at 50 requests/hour, so a handful of Build Your Own
+            -- Trip previews for popular destinations in the same hour
+            -- could exhaust it, silently leaving LATER photo fetches in
+            -- that same request (car rental fetches after the gallery)
+            -- with nothing — confirmed live: a Norway build got a real
+            -- hero/gallery photo but an empty car_rental_photo_url.
+            -- Destination-level, not per-request — the same "Norway"
+            -- gallery/car-rental photo is correct for every traveler.
+            CREATE TABLE IF NOT EXISTS destination_gallery_cache (
+                cache_key    TEXT PRIMARY KEY,   -- destination, lowercased/trimmed
+                destination  TEXT NOT NULL,
+                gallery_json TEXT NOT NULL,       -- list[{"url", "attribution"}] as JSON
+                created_at   TEXT NOT NULL,
+                expires_at   TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS car_rental_photo_cache (
+                cache_key           TEXT PRIMARY KEY,   -- destination, lowercased/trimmed
+                destination         TEXT NOT NULL,
+                photo_url           TEXT NOT NULL DEFAULT '',  -- '' if none found (still cached, so a
+                                                                 -- destination with no good match isn't
+                                                                 -- re-queried every single build)
+                attribution_json    TEXT,               -- UnsplashAttribution as JSON, or NULL
+                created_at          TEXT NOT NULL,
+                expires_at          TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS custom_trips (
                 slug                       TEXT PRIMARY KEY,   -- short, random, URL-safe — NOT sequential/guessable
                 destination                TEXT NOT NULL,
@@ -1044,6 +1075,89 @@ def save_trip_hotel_cache(city: str, budget: str, lat: float, lng: float, hotel:
              now.isoformat(), expires_at.isoformat()),
         )
     print(f"[DB] Cached hotel for {city} / {budget} near ({r_lat}, {r_lng}) (expires {expires_at.date()})")
+
+
+def _destination_photo_cache_key(destination: str) -> str:
+    return (destination or "").strip().lower()
+
+
+def get_destination_gallery_cache(destination: str, count: int) -> list[dict] | None:
+    """
+    Returns the cached gallery (list of {"url", "likes", "attribution"}
+    dicts) for (destination, count), or None if there's no cache entry or
+    it has expired. `count` is part of the key — a cached count=1 result
+    can't correctly serve a count=5 request. An empty list IS a valid
+    cached result (a destination Unsplash genuinely had nothing good for)
+    — only None means "go fetch".
+    """
+    key = f"{_destination_photo_cache_key(destination)}|{count}"
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT gallery_json, expires_at FROM destination_gallery_cache WHERE cache_key = ?",
+            (key,),
+        ).fetchone()
+    if not row or row["expires_at"] < datetime.utcnow().isoformat():
+        return None
+    return json.loads(row["gallery_json"])
+
+
+def save_destination_gallery_cache(destination: str, count: int, gallery: list[dict], ttl_days: int = 30) -> None:
+    """Saves/overwrites the photo gallery cached for (destination, count)."""
+    key = f"{_destination_photo_cache_key(destination)}|{count}"
+    now = datetime.utcnow()
+    expires_at = now + timedelta(days=ttl_days)
+    with _conn() as conn:
+        conn.execute(
+            """INSERT INTO destination_gallery_cache
+               (cache_key, destination, gallery_json, created_at, expires_at)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(cache_key) DO UPDATE SET
+                   gallery_json = excluded.gallery_json,
+                   created_at = excluded.created_at,
+                   expires_at = excluded.expires_at""",
+            (key, destination, json.dumps(gallery, ensure_ascii=False), now.isoformat(), expires_at.isoformat()),
+        )
+    print(f"[DB] Cached gallery for '{destination}' (count={count}, {len(gallery)} photos, expires {expires_at.date()})")
+
+
+def get_car_rental_photo_cache(destination: str) -> dict | None:
+    """
+    Returns {"url": ..., "attribution": ... | None} cached for `destination`,
+    or None if there's no cache entry or it has expired. url="" IS a valid
+    cached "nothing found" result — only a None RETURN means "go fetch".
+    """
+    key = _destination_photo_cache_key(destination)
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT photo_url, attribution_json, expires_at FROM car_rental_photo_cache WHERE cache_key = ?",
+            (key,),
+        ).fetchone()
+    if not row or row["expires_at"] < datetime.utcnow().isoformat():
+        return None
+    attribution = json.loads(row["attribution_json"]) if row["attribution_json"] else None
+    return {"url": row["photo_url"] or "", "attribution": attribution}
+
+
+def save_car_rental_photo_cache(destination: str, url: str, attribution: dict | None, ttl_days: int = 30) -> None:
+    """Saves/overwrites the car rental photo cached for `destination`. url="" caches a "nothing found" result."""
+    key = _destination_photo_cache_key(destination)
+    now = datetime.utcnow()
+    expires_at = now + timedelta(days=ttl_days)
+    with _conn() as conn:
+        conn.execute(
+            """INSERT INTO car_rental_photo_cache
+               (cache_key, destination, photo_url, attribution_json, created_at, expires_at)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(cache_key) DO UPDATE SET
+                   photo_url = excluded.photo_url,
+                   attribution_json = excluded.attribution_json,
+                   created_at = excluded.created_at,
+                   expires_at = excluded.expires_at""",
+            (key, destination, url or "",
+             json.dumps(attribution, ensure_ascii=False) if attribution else None,
+             now.isoformat(), expires_at.isoformat()),
+        )
+    print(f"[DB] Cached car rental photo for '{destination}' (expires {expires_at.date()})")
 
 
 # ── Custom-built trips (Build Your Own Trip Phase D: save + share) ─────────

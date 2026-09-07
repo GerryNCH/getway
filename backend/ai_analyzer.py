@@ -583,7 +583,7 @@ You will receive 7 question/answer pairs: dream terrain, pace, budget, food pref
 Your job:
 1. Weigh ALL 7 answers together as one combined persona — never let a single answer (like terrain) override or ignore another (like budget or food preference). A traveler who wants mountains AND fine dining wants a sophisticated mountain destination with a real dining scene (e.g. a luxury alpine resort town) — NOT an extreme high-altitude trek just because "mountains" was one answer. A traveler who wants mountains AND street food/shoestring budget wants an affordable mountain town, not a five-star resort. Every answer should be visible in why you picked the place, not just the loudest one.
 2. Pick ONE real, specific, well-known travel destination (a city, town, or clearly-defined region — never a whole country) that a traveler could actually book and visit. Use real knowledge of the place: its actual price level, food scene, terrain, and vibe must genuinely fit the combined persona, not just share one keyword with one answer.
-3. Respect their region answer (Europe / Asia / Americas / Africa & Middle East) — the destination must be in that region.
+3. Respect their region answer (Europe / Asia / Americas / Africa & Middle East) — the destination must be in that region. If they answered "Anywhere" instead, you're free to pick the single best-fitting destination worldwide — don't default to any one region out of habit.
 4. Write one short, engaging blurb in a travel-writer's voice (not a dry description) explaining why this place fits THEM — reference the specific combination of preferences that led you there, not a generic postcard line.
 
 Reply with ONLY valid JSON, no markdown fences:

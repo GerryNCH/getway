@@ -1528,6 +1528,11 @@
         { label: "Asia", icon: "🌏", region: "asia" },
         { label: "Americas", icon: "🌎", region: "americas" },
         { label: "Africa / ME", icon: "🐫", region: "africa_me" },
+        // No `region` key on purpose — pickVibeDestinationFromTally's
+        // pools already treat a falsy region as "search every region by
+        // tag", and the AI match prompt (ai_analyzer._VIBE_MATCH_SYSTEM)
+        // is told explicitly to go worldwide when the answer is "Anywhere".
+        { label: "Anywhere", icon: "🌍" },
       ],
     },
   ];
@@ -1634,7 +1639,7 @@
       <div class="font-serif-display text-2xl mb-6">${escapeHtml(question.q)}</div>
       <div class="grid grid-cols-2 gap-3 mb-4">
         ${question.options.map((opt, i) => `
-          <button type="button" data-opt-index="${i}" class="vibe-quiz-option btn-interactive bg-[#F8F6FF] hover:bg-[#F1EEFF] rounded-2xl p-4 text-center border border-transparent transition-colors">
+          <button type="button" data-opt-index="${i}" class="vibe-quiz-option btn-interactive bg-[#F8F6FF] hover:bg-[#F1EEFF] rounded-2xl p-4 text-center border border-transparent transition-colors${(question.options.length % 2 === 1 && i === question.options.length - 1) ? ' col-span-2' : ''}">
             <span class="text-2xl block mb-1.5">${opt.icon}</span>
             <span class="text-xs font-medium">${escapeHtml(opt.label)}</span>
           </button>`).join('')}

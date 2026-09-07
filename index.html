@@ -59,6 +59,13 @@
   .btn-outline-interactive { transition: all 0.25s ease; }
   .btn-outline-interactive:hover { color: #6D28D9; background: #F8F6FF; }
   .btn-outline-interactive:active { transform: scale(0.97); }
+  /* Wishlist bookmark toggle — default state is styled per call site
+     (white circle on a photo, plain icon in the intro section, etc.);
+     .is-saved always wins with the same filled-purple treatment so a
+     saved item reads identically everywhere it can be bookmarked from. */
+  .wishlist-btn i { color: #6D28D9; }
+  .wishlist-btn.is-saved { background: #8B5CF6 !important; }
+  .wishlist-btn.is-saved i { color: #fff; fill: #fff; }
   /* The vibe-quiz teaser uses the full bento-card width (2-column layout),
      but the active question/result state is a single narrow centered
      column (max-w-md) — left at the card's full width, that reads as a
@@ -188,6 +195,10 @@
       <button type="button" onclick="scrollToHowItWorks()" class="nav-link nav-hover-outline text-xs font-medium">How it works</button>
     </div>
     <div class="flex items-center gap-2">
+      <button type="button" onclick="openWishlistScreen()" aria-label="My Wishlist" class="nav-browse-btn btn-interactive relative text-white/90 w-10 h-10 rounded-full border border-white/40 flex items-center justify-center transition-colors duration-300">
+        <i data-lucide="bookmark" class="w-[18px] h-[18px]"></i>
+        <span class="wishlist-nav-badge hidden absolute -top-1 -right-1 bg-[#8B5CF6] text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">0</span>
+      </button>
       <button type="button" onclick="toggleMobileMenu()" aria-label="Menu" class="md:hidden nav-browse-btn btn-interactive text-white/90 w-10 h-10 rounded-full border border-white/40 flex items-center justify-center transition-colors duration-300">
         <i data-lucide="menu" class="w-[18px] h-[18px]"></i>
       </button>
@@ -212,6 +223,7 @@
         <button type="button" onclick="mobileMenuGo(startBuildTrip)" class="mobile-menu-link">Build your own trip</button>
         <button type="button" onclick="mobileMenuGo(function(){ showScreen('route'); })" class="mobile-menu-link">Sample trip</button>
         <button type="button" onclick="mobileMenuGo(scrollToHowItWorks)" class="mobile-menu-link">How it works</button>
+        <button type="button" onclick="mobileMenuGo(openWishlistScreen)" class="mobile-menu-link">My Wishlist</button>
         <button type="button" onclick="mobileMenuGo(toggleSupportChat)" class="mobile-menu-link">Support</button>
       </div>
       <button type="button" onclick="mobileMenuGo(scrollToRoutes)" class="btn-interactive mt-auto w-full h-[48px] flex items-center justify-center bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">Browse Routes</button>
@@ -760,9 +772,15 @@
         </button>
         <button onclick="showScreen('home')" class="text-base md:text-2xl font-medium font-serif-display text-white" style="text-shadow: 0 1px 8px rgba(0,0,0,0.4);">GetWay<span class="text-[#C4B5FD]">.</span></button>
       </div>
-      <button onclick="copyAiRouteLink()" class="btn-interactive flex items-center gap-1.5 text-[11px] font-medium text-white/90 border border-white/40 rounded-full px-3.5 py-1.5">
-        <i data-lucide="bookmark" class="w-3 h-3"></i> Save
-      </button>
+      <div class="flex items-center gap-2">
+        <button onclick="openWishlistScreen()" aria-label="My Wishlist" class="btn-interactive relative flex items-center gap-1.5 text-[11px] font-medium text-white/90 border border-white/40 rounded-full px-3.5 py-1.5">
+          <i data-lucide="heart" class="w-3 h-3"></i> Wishlist
+          <span class="wishlist-nav-badge hidden absolute -top-1.5 -right-1.5 bg-[#8B5CF6] text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">0</span>
+        </button>
+        <button onclick="copyAiRouteLink()" class="btn-interactive flex items-center gap-1.5 text-[11px] font-medium text-white/90 border border-white/40 rounded-full px-3.5 py-1.5">
+          <i data-lucide="bookmark" class="w-3 h-3"></i> Save
+        </button>
+      </div>
     </div>
     <div class="absolute left-0 right-0 bottom-0 h-[160px] hero-bottom-overlay">
       <div class="absolute bottom-12 left-6 right-6 md:left-14 md:right-14 flex items-end gap-3 flex-wrap">
@@ -803,7 +821,10 @@
        came up empty). -->
   <div id="ai-route-intro-section" class="hidden px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mt-6 md:mt-8 mb-8 md:mb-10">
     <div class="rounded-[28px] p-5 md:p-9" style="background: linear-gradient(135deg, #FAF8F3 0%, #F1EEFF 100%);">
-      <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-4">Getting to know</div>
+      <div class="flex items-center justify-between mb-4">
+        <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase">Getting to know</div>
+        <div id="ai-route-intro-wishlist-btn"></div>
+      </div>
       <div id="ai-route-intro-gallery" class="flex gap-3 overflow-x-auto pb-1 mb-6 -mx-1 px-1"></div>
       <div id="ai-route-intro-gallery-hint" class="hidden text-[10px] md:text-xs text-gray-400 -mt-4 mb-6">Tap a photo to preview</div>
       <div id="ai-route-intro-facts" class="grid sm:grid-cols-2 gap-3 mb-6"></div>
@@ -1141,6 +1162,21 @@
     </div>
   </div>
 </div>
+</div>
+</div>
+<!-- ── My Wishlist — localStorage only, no accounts (see wishlistButtonHtml/
+     getWishlist/renderWishlistScreen). Reached via the nav "Wishlist"
+     entry point on the homepage and the route-detail header. ──────────── -->
+<div id="screen-wishlist" class="screen">
+<div class="max-w-4xl mx-auto px-6 md:px-0 py-10 md:py-16">
+  <button onclick="showScreen('home')" class="font-serif-display text-base md:text-xl mb-10 inline-block">GetWay<span class="text-[#8B5CF6]">.</span></button>
+  <div class="font-serif-display text-3xl md:text-4xl mb-2">My Wishlist</div>
+  <div class="text-xs md:text-sm text-gray-500 mb-10">Destinations, stops, and ideas you've saved — stored on this device only, no account needed.</div>
+  <div id="wishlist-empty" class="hidden text-center py-16">
+    <div class="text-4xl mb-3">🧳</div>
+    <div class="text-sm text-gray-500">Nothing saved yet — tap the bookmark icon on any destination or stop to add it here.</div>
+  </div>
+  <div id="wishlist-list" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
 </div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js" crossorigin="anonymous"></script>
@@ -2254,6 +2290,114 @@
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '') || 'item';
   }
+  // ── Personal wishlist — localStorage only, no accounts, no server sync.
+  // A per-device/per-browser save list for destinations, individual stops,
+  // and "Best places to visit this month" picks — see the bookmark buttons
+  // wired into renderAiRoute (destination intro + stop cards) and
+  // loadMonthDestinations. Item ids are always built from slugify(), which
+  // strips everything unsafe for an inline onclick/HTML-attribute string,
+  // so ids never need separate JS-string escaping.
+  const WISHLIST_KEY = 'getway_wishlist_v1';
+  function getWishlist() {
+    try { return JSON.parse(localStorage.getItem(WISHLIST_KEY) || '[]'); } catch (e) { return []; }
+  }
+  function saveWishlistList(items) {
+    try { localStorage.setItem(WISHLIST_KEY, JSON.stringify(items)); } catch (e) { /* storage disabled/full — non-fatal, just won't persist */ }
+  }
+  function isWishlisted(id) {
+    return getWishlist().some(i => i.id === id);
+  }
+  // Adds/removes `item` (must have a stable `id` — see the id schemes at
+  // each call site) and returns the new saved state (true = now saved).
+  function toggleWishlistItem(item) {
+    const list = getWishlist();
+    const idx = list.findIndex(i => i.id === item.id);
+    if (idx >= 0) {
+      list.splice(idx, 1);
+      saveWishlistList(list);
+      return false;
+    }
+    list.unshift({ ...item, savedAt: Date.now() });
+    saveWishlistList(list);
+    return true;
+  }
+  function removeWishlistItem(id) {
+    saveWishlistList(getWishlist().filter(i => i.id !== id));
+  }
+  // Small bookmark toggle button, reused on destination intro cards, stop
+  // cards, and month-destination cards. Item data rides on data-* attributes
+  // (never interpolated into the onclick string itself) so names/subtitles
+  // with apostrophes or quotes can't break the handler — same reasoning
+  // renderRoutes() already documents for its own click handlers.
+  function wishlistButtonHtml(item, extraClass) {
+    const saved = isWishlisted(item.id);
+    return `<button type="button" class="wishlist-btn btn-interactive ${extraClass || ''} ${saved ? 'is-saved' : ''}" data-wid="${escapeHtml(item.id)}" data-wtype="${escapeHtml(item.type)}" data-wname="${escapeHtml(item.name)}" data-wsubtitle="${escapeHtml(item.subtitle || '')}" data-wphoto="${escapeHtml(item.photo || '')}" data-wslug="${escapeHtml(item.routeSlug || '')}" onclick="event.stopPropagation(); toggleWishlistBtn(this)" aria-label="${saved ? 'Remove from' : 'Save to'} wishlist">
+      <i data-lucide="bookmark" class="w-4 h-4"></i>
+    </button>`;
+  }
+  function toggleWishlistBtn(btn) {
+    const item = {
+      id: btn.dataset.wid,
+      type: btn.dataset.wtype,
+      name: btn.dataset.wname,
+      subtitle: btn.dataset.wsubtitle,
+      photo: btn.dataset.wphoto,
+      routeSlug: btn.dataset.wslug || null,
+    };
+    const nowSaved = toggleWishlistItem(item);
+    document.querySelectorAll(`.wishlist-btn[data-wid="${CSS.escape(item.id)}"]`).forEach(b => {
+      b.classList.toggle('is-saved', nowSaved);
+      b.setAttribute('aria-label', (nowSaved ? 'Remove from' : 'Save to') + ' wishlist');
+    });
+    updateWishlistNavBadge();
+  }
+  function wishlistTypeLabel(type) {
+    return { destination: 'Destination', stop: 'Stop', 'month-destination': 'Best time to visit' }[type] || 'Saved';
+  }
+  function updateWishlistNavBadge() {
+    const count = getWishlist().length;
+    document.querySelectorAll('.wishlist-nav-badge').forEach(el => {
+      el.textContent = String(count);
+      el.classList.toggle('hidden', count === 0);
+    });
+  }
+  function renderWishlistScreen() {
+    const items = getWishlist();
+    const listEl = document.getElementById('wishlist-list');
+    const emptyEl = document.getElementById('wishlist-empty');
+    if (!listEl || !emptyEl) return;
+    if (!items.length) {
+      listEl.innerHTML = '';
+      emptyEl.classList.remove('hidden');
+      return;
+    }
+    emptyEl.classList.add('hidden');
+    listEl.innerHTML = items.map(item => `
+      <div class="bento-card bg-white rounded-2xl overflow-hidden relative">
+        <button type="button" onclick="removeWishlistItemAndRerender('${item.id}')" class="btn-interactive absolute top-2 right-2 z-10 w-7 h-7 rounded-full bg-white/90 shadow flex items-center justify-center" aria-label="Remove from wishlist">
+          <i data-lucide="x" class="w-3.5 h-3.5 text-gray-500"></i>
+        </button>
+        <div class="h-28 relative overflow-hidden" style="background:${gradientFor(item.id)}">
+          ${item.photo ? `<img src="${item.photo}" alt="" class="absolute inset-0 w-full h-full object-cover" onerror="this.remove()">` : ''}
+        </div>
+        <div class="p-3.5">
+          <div class="text-[9px] font-semibold uppercase tracking-wide text-[#8B5CF6] mb-1">${wishlistTypeLabel(item.type)}</div>
+          <div class="text-sm font-medium truncate">${escapeHtml(item.name)}</div>
+          ${item.subtitle ? `<div class="text-[11px] text-gray-500 truncate mt-0.5">${escapeHtml(item.subtitle)}</div>` : ''}
+          ${item.routeSlug ? `<button type="button" onclick="showScreen('home'); openRouteCard('${item.routeSlug}')" class="mt-2.5 text-[11px] font-medium text-[#6D28D9] hover:underline">View route →</button>` : ''}
+        </div>
+      </div>`).join('');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+  function removeWishlistItemAndRerender(id) {
+    removeWishlistItem(id);
+    renderWishlistScreen();
+    updateWishlistNavBadge();
+  }
+  function openWishlistScreen() {
+    renderWishlistScreen();
+    showScreen('wishlist');
+  }
   // Required by Unsplash's API guidelines whenever a photo they returned
   // is displayed: credit the photographer by name, linked to their
   // profile, plus a link to Unsplash itself.
@@ -2617,9 +2761,17 @@
         return;
       }
       listEl.innerHTML = destinations.map((d, i) => `
-        <div data-aos="fade-up" data-aos-delay="${i * 40}" class="bento-card bg-white rounded-2xl p-4 flex items-start gap-3">
+        <div data-aos="fade-up" data-aos-delay="${i * 40}" class="bento-card bg-white rounded-2xl p-4 flex items-start gap-3 relative">
+          ${wishlistButtonHtml({
+            id: 'month-destination-' + slugify(month) + '-' + slugify(d.name),
+            type: 'month-destination',
+            name: d.name,
+            subtitle: 'Best in ' + month + ' — ' + d.reason,
+            photo: '',
+            routeSlug: null,
+          }, 'absolute top-2.5 right-2.5 w-7 h-7 rounded-full bg-[#FAF8F3] flex items-center justify-center flex-shrink-0')}
           <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-white text-sm font-semibold" style="background:${gradientFor('month-' + d.name)}">${escapeHtml((d.name || '?').charAt(0))}</div>
-          <div class="min-w-0">
+          <div class="min-w-0 pr-7">
             <div class="text-sm font-medium mb-1">${escapeHtml(d.name)}</div>
             <div class="text-xs text-gray-500 leading-relaxed">${escapeHtml(d.reason)}</div>
           </div>
@@ -3064,6 +3216,14 @@
     }
     return `
     <div data-category="${stop.category}" class="ai-stop-card bento-card bg-white rounded-[22px] overflow-hidden relative flex items-center gap-3 p-4 md:flex-col md:items-stretch md:p-0">
+      ${wishlistButtonHtml({
+        id: 'stop-' + slugify(destination || '') + '-' + slugify(stop.name),
+        type: 'stop',
+        name: stop.name,
+        subtitle: cfg.label + (destination ? ' · ' + destination : ''),
+        photo: stop.photo_url || '',
+        routeSlug: videoId || null,
+      }, 'absolute top-3 right-[50px] z-10 w-8 h-8 rounded-full bg-white shadow flex items-center justify-center')}
       <button data-maps-url="${mapsUrl}" onclick="window.open(this.dataset.mapsUrl,'_blank')" class="btn-interactive absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-white shadow flex items-center justify-center">
         <i data-lucide="map-pin" class="w-4 h-4 text-[#6D28D9]"></i>
       </button>
@@ -3461,6 +3621,18 @@
     // routes not yet backfilled, or every photo query came up empty).
     const introSection = document.getElementById('ai-route-intro-section');
     introSection.classList.toggle('hidden', gallery.length <= 1 && !introFacts.length && !introTips.length);
+    const introWishlistWrap = document.getElementById('ai-route-intro-wishlist-btn');
+    if (introWishlistWrap) {
+      const destName = itinerary.destination || 'trip';
+      introWishlistWrap.innerHTML = wishlistButtonHtml({
+        id: 'destination-' + slugify(destName),
+        type: 'destination',
+        name: destName,
+        subtitle: itinerary.duration || '',
+        photo: itinerary.hero_photo_url || gallery[0] || '',
+        routeSlug: videoId || null,
+      }, 'w-8 h-8 rounded-full bg-white flex items-center justify-center');
+    }
     initAiRouteMap(itinerary);
     // The route should always have a hotel box at the START of the trip —
     // either a real one (if the AI found it) or the generic "find hotels"
@@ -4823,6 +4995,7 @@
     safeRun('renderRankings (initial)', function () { renderRankings(); });
     safeRun('loadRankingPhotos', function () { loadRankingPhotos(); });
     safeRun('renderMonthPicker', renderMonthPicker);
+    safeRun('updateWishlistNavBadge', updateWishlistNavBadge);
     safeRun('lucide.createIcons', function () {
       if (typeof lucide !== 'undefined') { lucide.createIcons(); }
     });

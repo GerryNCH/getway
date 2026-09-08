@@ -388,6 +388,27 @@ def init_db() -> None:
             )
             print(f"[DB] One-time migration: cleared {cleared_6} stale month_destinations_cache row(s) (root-token dedup)")
 
+        # Seventh one-time migration: the root-token dedup pass added in
+        # migration 6 had a bug in its own safety net — it topped up a
+        # short month from that month's OWN rejected candidates, which
+        # had already been rejected for conflicting with an earlier
+        # month, silently re-adding the exact repeats it existed to
+        # remove (confirmed live: Maldives came back in 3 months). Fixed
+        # by asking for a wider 12-per-month raw pool and only falling
+        # back to a repeat when a month has fewer than 3 unique
+        # survivors — these rows need clearing again to pick it up.
+        _CACHE_RESET_MIGRATION_7 = "clear_month_destinations_cache_for_dedup_safety_net_fix"
+        already_applied_7 = conn.execute(
+            "SELECT 1 FROM _schema_migrations WHERE name = ?", (_CACHE_RESET_MIGRATION_7,)
+        ).fetchone()
+        if not already_applied_7:
+            cleared_7 = conn.execute("DELETE FROM month_destinations_cache").rowcount
+            conn.execute(
+                "INSERT INTO _schema_migrations (name, applied_at) VALUES (?, ?)",
+                (_CACHE_RESET_MIGRATION_7, datetime.utcnow().isoformat()),
+            )
+            print(f"[DB] One-time migration: cleared {cleared_7} stale month_destinations_cache row(s) (dedup safety-net fix)")
+
         # Seed the singleton site_settings row once, with the hero slides
         # that were previously hardcoded in index.html — so nothing changes
         # visually on the homepage until an admin actually edits them.

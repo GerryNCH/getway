@@ -816,14 +816,26 @@
   <!-- ── Destination intro ("getting to know X") — editorial, not a spec
        sheet: photo carousel (same gallery data that used to power a small
        thumbnail-swap-hero strip here — now the strip itself, bigger and
-       swipeable, see renderAiRoute), 3-4 surprising facts, and a "know
-       before you go" paragraph built from travel_tips. Deliberately
-       different background treatment from the white bento-cards below it
-       so it reads as "the vibe of this place" before "the plan" — see
-       renderAiRoute. Hidden entirely when there's nothing to show (older
-       routes not yet backfilled with fun_facts/travel_tips, and gallery
-       came up empty). -->
-  <div id="ai-route-intro-section" class="hidden px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mt-6 md:mt-8 mb-8 md:mb-10">
+       swipeable, see renderAiRoute) + 3-4 surprising facts. No "know
+       before you go" prose here anymore — that duplicated the Tips &
+       Tricks section below almost word for word, per feedback. Collapsed
+       behind a toggle by default, same reasoning and visual treatment as
+       the Map toggle right below it (see ai-route-map-toggle-wrap) — a
+       gallery + facts section this size was adding real page weight
+       up front for someone who just wants the itinerary. Hidden entirely
+       when there's nothing to show (older routes not yet backfilled with
+       fun_facts, and gallery came up empty) — see renderAiRoute. -->
+  <div id="ai-route-intro-toggle-wrap" class="hidden px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mt-6 md:mt-8 mb-4">
+    <button id="ai-route-intro-toggle-btn" onclick="toggleAiRouteIntro()" class="btn-interactive w-full flex items-center gap-4 rounded-[22px] p-4 md:p-5 shadow-[0_10px_24px_-8px_rgba(124,58,237,0.55)] text-left" style="background: linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%);">
+      <div class="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0 text-2xl">📖</div>
+      <div class="flex-1 min-w-0">
+        <div id="ai-route-intro-toggle-label" class="text-sm md:text-base font-semibold text-white mb-0.5">Getting to know this place</div>
+        <div class="text-xs text-white/75">Photos and surprising facts about the destination</div>
+      </div>
+      <i data-lucide="chevron-down" id="ai-route-intro-toggle-chevron" class="w-5 h-5 text-white flex-shrink-0 transition-transform duration-300"></i>
+    </button>
+  </div>
+  <div id="ai-route-intro-section" class="hidden px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-8 md:mb-10">
     <div class="rounded-[28px] p-5 md:p-9" style="background: linear-gradient(135deg, #FAF8F3 0%, #F1EEFF 100%);">
       <div class="flex items-center justify-between mb-4">
         <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase">Getting to know</div>
@@ -831,13 +843,27 @@
       </div>
       <div id="ai-route-intro-gallery" class="flex gap-3 overflow-x-auto pb-1 mb-6 -mx-1 px-1"></div>
       <div id="ai-route-intro-gallery-hint" class="hidden text-[10px] md:text-xs text-gray-400 -mt-4 mb-6">Tap a photo to preview</div>
-      <div id="ai-route-intro-facts" class="grid sm:grid-cols-2 gap-3 mb-6"></div>
-      <div id="ai-route-intro-tips-wrap" class="hidden">
-        <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Know before you go</div>
-        <p id="ai-route-intro-tips-prose" class="text-sm text-gray-600 leading-relaxed"></p>
-      </div>
+      <div id="ai-route-intro-facts" class="grid sm:grid-cols-2 gap-3"></div>
     </div>
   </div>
+  <!-- ── Tips & Tricks — destination-specific practical advice (payment
+       norms, transit gotchas, common scams, etc.), AI-generated same as
+       fun_fact. Moved up here, right under "Getting to know" (used to sit
+       after the entire day-by-day plan) and made collapsible, same
+       reasoning and treatment as the two toggles around it. Hidden
+       entirely when travel_tips is empty (older routes not yet
+       backfilled — see renderAiRoute). -->
+  <div id="ai-route-tips-toggle-wrap" class="hidden px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-8 md:mb-10">
+    <button id="ai-route-tips-toggle-btn" onclick="toggleAiRouteTips()" class="btn-interactive w-full flex items-center gap-4 rounded-[22px] p-4 md:p-5 shadow-[0_10px_24px_-8px_rgba(124,58,237,0.55)] text-left" style="background: linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%);">
+      <div class="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0 text-2xl">💡</div>
+      <div class="flex-1 min-w-0">
+        <div id="ai-route-tips-toggle-label" class="text-sm md:text-base font-semibold text-white mb-0.5">Tips &amp; Tricks</div>
+        <div class="text-xs text-white/75">Good to know before you go</div>
+      </div>
+      <i data-lucide="chevron-down" id="ai-route-tips-toggle-chevron" class="w-5 h-5 text-white flex-shrink-0 transition-transform duration-300"></i>
+    </button>
+  </div>
+  <div id="ai-route-tips-section" class="hidden px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-8 md:mb-10"></div>
   <!-- In-route filters -->
   <div class="px-5 md:px-14 lg:px-24 py-6 md:py-8">
     <div class="max-w-fit md:mx-auto bg-white/70 backdrop-filter backdrop-blur border border-gray-200/80 rounded-full p-1.5 shadow-sm overflow-x-auto">
@@ -898,11 +924,6 @@
   <!-- Days + stops rendered here (the Day 1 / arrival-day group also gets
        an airport transfer banner injected inline — see renderAiRoute). -->
   <div id="ai-route-days" class="px-5 md:px-14 lg:px-24 pb-16 md:pb-24 max-w-4xl mx-auto"></div>
-  <!-- "Tips & Tricks" — destination-specific practical advice (payment
-       norms, transit gotchas, common scams, etc.), AI-generated same as
-       fun_fact. Hidden entirely when travel_tips is empty (older routes
-       not yet backfilled — see renderAiRoute). -->
-  <div id="ai-route-tips-section" class="hidden px-5 md:px-14 lg:px-24 pb-16 md:pb-24 max-w-4xl mx-auto"></div>
   <!-- "If you liked this, you'll love X" — 2-3 OTHER published routes with
        a similar vibe (shared tags/budget tier), computed client-side
        against the already-loaded ROUTES list — no new backend endpoint.
@@ -3455,6 +3476,28 @@
     }
     section.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
+  // "Getting to know" and Tips & Tricks are both plain content (already
+  // fully rendered into the DOM by renderAiRoute, unlike the Map's Leaflet
+  // instance) — so unlike toggleAiRouteMap, these two just show/hide and
+  // flip their chevron, no build-on-first-open step needed.
+  function toggleAiRouteIntro() {
+    const section = document.getElementById('ai-route-intro-section');
+    const chevron = document.getElementById('ai-route-intro-toggle-chevron');
+    if (!section) return;
+    const opening = section.classList.contains('hidden');
+    section.classList.toggle('hidden', !opening);
+    if (chevron) chevron.classList.toggle('rotate-180', opening);
+    if (opening) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  function toggleAiRouteTips() {
+    const section = document.getElementById('ai-route-tips-section');
+    const chevron = document.getElementById('ai-route-tips-toggle-chevron');
+    if (!section) return;
+    const opening = section.classList.contains('hidden');
+    section.classList.toggle('hidden', !opening);
+    if (chevron) chevron.classList.toggle('rotate-180', opening);
+    if (opening) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
   // Renders the Leaflet map (created once, reused across day switches) for
   // a single day: numbered purple pins in visit order on a clean light
   // basemap, a connecting route line, a tap/click popup with name +
@@ -3708,21 +3751,16 @@
         <span class="text-base flex-shrink-0">✨</span>
         <span class="text-xs md:text-sm text-gray-700 leading-relaxed">${escapeHtml(fact)}</span>
       </div>`).join('');
-    // "Know before you go" — the first few travel_tips read as flowing
-    // prose instead of the bulleted Tips & Tricks cards further down the
-    // page, per the customs/etiquette-first framing this intro wants.
-    const introTipsWrap = document.getElementById('ai-route-intro-tips-wrap');
-    const introTips = (itinerary.travel_tips || []).filter(t => t && t.trim()).slice(0, 3);
-    if (introTips.length) {
-      document.getElementById('ai-route-intro-tips-prose').textContent = introTips.join(' ');
-      introTipsWrap.classList.remove('hidden');
-    } else {
-      introTipsWrap.classList.add('hidden');
-    }
-    // Whole section hidden when there's genuinely nothing to show (older
-    // routes not yet backfilled, or every photo query came up empty).
-    const introSection = document.getElementById('ai-route-intro-section');
-    introSection.classList.toggle('hidden', gallery.length <= 1 && !introFacts.length && !introTips.length);
+    // Collapsed behind a toggle by default on every fresh render, same as
+    // the Map toggle — only the WRAP's visibility depends on whether
+    // there's anything to show; the content section itself always starts
+    // closed, even if a previous route on this same screen had it open.
+    document.getElementById('ai-route-intro-toggle-wrap').classList.toggle('hidden', gallery.length <= 1 && !introFacts.length);
+    document.getElementById('ai-route-intro-section').classList.add('hidden');
+    const introChevron = document.getElementById('ai-route-intro-toggle-chevron');
+    if (introChevron) introChevron.classList.remove('rotate-180');
+    const introLabel = document.getElementById('ai-route-intro-toggle-label');
+    if (introLabel) introLabel.textContent = 'Getting to know this place';
     const introWishlistWrap = document.getElementById('ai-route-intro-wishlist-btn');
     if (introWishlistWrap) {
       const destName = itinerary.destination || 'trip';
@@ -3807,15 +3845,19 @@
         </div>`;
     }).join('');
     // "Tips & Tricks" — destination-specific practical advice (see
-    // models.Itinerary.travel_tips). Hidden entirely for older routes not
-    // yet backfilled, same "just don't render" contract as summaryWrap
-    // above for fun_fact/summary on legacy cached itineraries.
+    // models.Itinerary.travel_tips). Moved up next to "Getting to know"
+    // and made collapsible (see toggleAiRouteTips) — the toggle button
+    // itself already carries the "Tips & Tricks" / "Good to know before
+    // you go" copy, so the content here is just the tip cards. Collapsed
+    // by default on every fresh render, same as the Map and intro
+    // toggles. Hidden entirely for older routes not yet backfilled, same
+    // "just don't render" contract as summaryWrap above for fun_fact/
+    // summary on legacy cached itineraries.
+    const tipsToggleWrap = document.getElementById('ai-route-tips-toggle-wrap');
     const tipsSection = document.getElementById('ai-route-tips-section');
     const tips = (itinerary.travel_tips || []).filter(t => t && t.trim());
     if (tips.length) {
       tipsSection.innerHTML = `
-        <div class="font-serif-display text-[26px] md:text-4xl leading-tight mb-1">Tips &amp; Tricks</div>
-        <div class="text-xs md:text-sm text-gray-500 mb-6 md:mb-8">Good to know before you go</div>
         <div class="flex flex-col gap-3">
           ${tips.map(tip => `
             <div class="bento-card bg-white rounded-2xl p-4 flex items-start gap-3.5 border-l-[3px] border-[#8B5CF6]">
@@ -3823,11 +3865,14 @@
               <div class="text-sm text-gray-700 leading-relaxed pt-1.5">${escapeHtml(tip)}</div>
             </div>`).join('')}
         </div>`;
-      tipsSection.classList.remove('hidden');
+      tipsToggleWrap.classList.remove('hidden');
     } else {
       tipsSection.innerHTML = '';
-      tipsSection.classList.add('hidden');
+      tipsToggleWrap.classList.add('hidden');
     }
+    tipsSection.classList.add('hidden');
+    const tipsChevron = document.getElementById('ai-route-tips-toggle-chevron');
+    if (tipsChevron) tipsChevron.classList.remove('rotate-180');
     renderCrossRecommendations(itinerary, videoId);
     if (typeof lucide !== 'undefined') { lucide.createIcons(); }
     if (typeof AOS !== 'undefined') { AOS.refreshHard(); }

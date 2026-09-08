@@ -2112,54 +2112,64 @@
     // so it needs its own call here too, not just at DOMContentLoaded.
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
-  // ── In-app "Back" history for the ai-route screen ────────────────────
-  // Real bug this fixes: the header's Back button was hardcoded to
-  // showScreen('home') — fine for the FIRST route someone opens, but
-  // navigating from one route to ANOTHER (e.g. clicking a cross-
-  // recommendation card, see renderCrossRecommendations) and then hitting
-  // Back skipped straight past the route you came FROM, straight to the
-  // homepage. Confirmed as real data loss: an unsaved Build Your Own Trip
-  // preview has no slug to reload, so this permanently lost the traveler's
-  // just-built trip the moment they clicked away from it once.
+  // ── Real browser history for the ai-route screen ──────────────────────
+  // Real bug this fixes: an earlier version tracked "back" with a
+  // JS-only in-memory stack and a custom Back button — that only handled
+  // clicks on OUR button. The actual browser/OS back button, trackpad
+  // swipe-back gesture, and Android back key never touched that stack at
+  // all (this SPA never called history.pushState for internal
+  // navigation), so pressing the REAL back button did the browser's
+  // default thing: leave the page entirely, for whatever came before it
+  // in the tab's history — often an external site — permanently losing
+  // an unsaved Build Your Own Trip preview (confirmed live: a just-built
+  // Norway trip, never saved, has no slug to reload from).
   //
-  // window._aiRouteHistory holds full itinerary snapshots (not just slugs)
-  // specifically so an unsaved preview survives being navigated away from
-  // — restoring it is just re-rendering the same object, no re-fetch.
-  window._aiRouteHistory = window._aiRouteHistory || [];
-  function pushAiRouteHistory() {
-    const screen = document.getElementById('screen-ai-route');
-    if (!screen.classList.contains('active') || !window._aiRouteFullItinerary) return;
-    const bar = document.getElementById('build-trip-preview-bar');
-    window._aiRouteHistory.push({
-      itinerary: window._aiRouteFullItinerary,
-      videoId: window._aiRouteVideoId || '',
-      sourceUrl: window._aiRouteSourceUrl || '',
-      isBuildTripPreview: !!(bar && !bar.classList.contains('hidden')),
-    });
+  // Fix: use the browser's actual History API as the single source of
+  // truth. history.state carries the full itinerary object (not just a
+  // slug) specifically so an unsaved preview survives — restoring it is
+  // just re-rendering the same object, no re-fetch, no data loss,
+  // regardless of whether "back" came from our button, the browser's
+  // native button, or a swipe gesture — they all fire the same
+  // 'popstate' event below.
+  function pushRouteHistoryState(itinerary, videoId, sourceUrl, isBuildTripPreview) {
+    history.pushState({
+      screen: 'ai-route',
+      itinerary: itinerary,
+      videoId: videoId || '',
+      sourceUrl: sourceUrl || '',
+      isBuildTripPreview: !!isBuildTripPreview,
+    }, '', location.href);
   }
-  function aiRouteGoBack() {
-    const stack = window._aiRouteHistory;
-    if (stack && stack.length) {
-      const prev = stack.pop();
-      renderAiRoute(prev.itinerary, prev.videoId, prev.sourceUrl, true);
+  window.addEventListener('popstate', function (event) {
+    const state = event.state;
+    if (state && state.screen === 'ai-route' && state.itinerary) {
+      renderAiRoute(state.itinerary, state.videoId, state.sourceUrl, true);
       const bar = document.getElementById('build-trip-preview-bar');
-      if (bar) bar.classList.toggle('hidden', !prev.isBuildTripPreview);
+      if (bar) bar.classList.toggle('hidden', !state.isBuildTripPreview);
       showScreen('ai-route');
-      return;
+    } else if (state && state.screen === 'route') {
+      showScreen('route');
+    } else {
+      showScreen('home');
     }
-    showScreen('home');
+  });
+  function aiRouteGoBack() {
+    // Just replay real browser back navigation — popstate above does the
+    // actual rendering, so this behaves identically to the native back
+    // button/gesture instead of being a second, divergent code path.
+    history.back();
   }
   function openRouteCard(slug) {
     if (STATIC_ROUTE_SLUGS.has(slug)) {
-      pushAiRouteHistory();
+      history.pushState({ screen: 'route' }, '', location.href);
       showScreen('route');
       return;
     }
     fetch(`${BACKEND_URL}/itinerary/${encodeURIComponent(slug)}`)
       .then(res => { if (!res.ok) throw new Error('Route not found: ' + res.status); return res.json(); })
       .then(data => {
-        pushAiRouteHistory();
         renderAiRoute(data.itinerary, data.video_id, '');
+        pushRouteHistoryState(data.itinerary, data.video_id, '', false);
         showScreen('ai-route');
       })
       .catch(err => { console.error('Could not open route "' + slug + '":', err); alert('Sorry, this route could not be loaded.'); });
@@ -3548,11 +3558,22 @@
     if (!window._aiRouteLeafletMap) {
       mapEl.innerHTML = '';
       window._aiRouteLeafletMap = L.map(mapEl, { scrollWheelZoom: false });
-      // CARTO's free rastertiles CDN now requires a paid API key and serves
-      // tiles stamped "API KEY REQUIRED" without one, so we use Wikimedia's
-      // OSM-styled tile server instead — free, no key, no usage cap.
-      L.tileLayer('https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+      // Third tile provider tried here — both previous ones looked fine in
+      // testing but silently failed for real visitors on the live domain:
+      // CARTO's free CDN now requires a paid API key and serves a
+      // watermarked "API KEY REQUIRED" placeholder tile with a normal 200
+      // status (so a test that only checks the HTTP status code, not the
+      // actual image content, passes anyway). Wikimedia's tile server
+      // returns a hard 403 with "Map tiles are restricted to Wikimedia &
+      // affiliated sites only" for any real production Referer — it
+      // happened to return 200 for a localhost Referer during manual
+      // testing, which is exactly why that "fix" looked verified but
+      // never worked for a real visitor. Confirmed live with curl against
+      // both, using the real gogetway.com Referer, before picking this
+      // one: Esri's public ArcGIS Online basemap has no key, no referrer
+      // check, and returns genuine unwatermarked map tiles.
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles &copy; <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a>',
         maxZoom: 19
       }).addTo(window._aiRouteLeafletMap);
     }
@@ -4351,6 +4372,7 @@
       const daysContainerReset = document.getElementById('ai-route-days');
       if (daysContainerReset) daysContainerReset.classList.remove('hidden');
       renderAiRoute(data.itinerary, data.video_id, url);
+      pushRouteHistoryState(data.itinerary, data.video_id, url, false);
       showScreen('ai-route');
     } catch (err) {
       clearInterval(interval);
@@ -4365,11 +4387,16 @@
   //   1. A known static demo route slug (e.g. ?route=mallorca-5-days)
   //   2. An AI-generated route's video_id (e.g. ?route=tt_123456), which
   //      gets re-fetched from the backend cache and rendered.
+  // Pushes (not replaces) a history entry for it, on top of the 'home'
+  // entry initHistoryState() establishes at load — so back navigation
+  // from a deep-linked route lands on the homepage instead of leaving
+  // the site entirely.
   function handleSharedRouteParam() {
     const params = new URLSearchParams(location.search);
     const routeParam = params.get('route');
     if (!routeParam) return;
     if (STATIC_ROUTE_SLUGS.has(routeParam)) {
+      history.pushState({ screen: 'route' }, '', location.href);
       showScreen('route');
       return;
     }
@@ -4380,6 +4407,7 @@
       })
       .then(data => {
         renderAiRoute(data.itinerary, data.video_id, '');
+        pushRouteHistoryState(data.itinerary, data.video_id, '', false);
         showScreen('ai-route');
       })
       .catch(err => {
@@ -4932,6 +4960,7 @@
       renderAiRoute(data.itinerary, '', '');
       const bar = document.getElementById('build-trip-preview-bar');
       if (bar) bar.classList.remove('hidden');
+      pushRouteHistoryState(data.itinerary, '', '', true);
       showScreen('ai-route');
     } catch (err) {
       alert('Something went wrong building your itinerary: ' + err.message);
@@ -4976,7 +5005,17 @@
       // Locked, shareable URL for this saved trip — same GET /trip/{slug}
       // a shared link would open, so reloading this exact URL always shows
       // the real saved snapshot, not just what happens to be in memory.
-      history.pushState({}, '', `${location.pathname}?trip=${encodeURIComponent(data.slug)}`);
+      // Carries the same {screen:'ai-route', itinerary, ...} shape as
+      // pushRouteHistoryState (not an empty {}) so the popstate listener
+      // still knows how to restore this exact view if the visitor
+      // navigates further and later comes back to it.
+      history.pushState({
+        screen: 'ai-route',
+        itinerary: state.previewItinerary,
+        videoId: data.slug,
+        sourceUrl: '',
+        isBuildTripPreview: false,
+      }, '', `${location.pathname}?trip=${encodeURIComponent(data.slug)}`);
       const bar = document.getElementById('build-trip-preview-bar');
       if (bar) bar.classList.add('hidden');
       renderAiRoute(state.previewItinerary, data.slug, '');
@@ -5001,6 +5040,7 @@
       })
       .then(data => {
         renderAiRoute(data.itinerary, data.video_id, '');
+        pushRouteHistoryState(data.itinerary, data.video_id, '', false);
         showScreen('ai-route');
       })
       .catch(err => {
@@ -5226,6 +5266,15 @@
     if (startCooldown !== false) localStorage.setItem(DISMISS_KEY, String(Date.now()));
   }
   document.addEventListener('DOMContentLoaded', function () {
+    // Establishes 'home' as the base history entry BEFORE any deep-link
+    // handler below might pushState an ai-route entry on top of it — so
+    // back navigation from a deep-linked route (or anywhere else) always
+    // has an in-app 'home' entry to land on instead of leaving the site.
+    // See pushRouteHistoryState/popstate listener above for the rest of
+    // this history design.
+    safeRun('initHistoryState', function () {
+      history.replaceState({ screen: 'home' }, '', location.href);
+    });
     if (isIOS()) maybeShowInstallBanner(); // Android waits for beforeinstallprompt instead
     safeRun('renderRoutes', renderRoutes);
     safeRun('renderMallorcaHero', renderMallorcaHero);

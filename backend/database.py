@@ -409,6 +409,30 @@ def init_db() -> None:
             )
             print(f"[DB] One-time migration: cleared {cleared_7} stale month_destinations_cache row(s) (dedup safety-net fix)")
 
+        # Eighth one-time migration: destination_gallery_cache rows saved
+        # as an empty gallery ("[]") before places._get_destination_gallery_unsplash
+        # gained a Google Places fallback are stuck serving that empty
+        # result until their short 0.25-day TTL naturally expires —
+        # confirmed live: a route just built for a destination whose
+        # gallery had failed earlier the same session kept coming back
+        # completely photo-less even after the fallback code was deployed,
+        # because the cache HIT returned before the new fallback logic
+        # ever ran. Clearing only the EMPTY rows (not real cached
+        # galleries) lets every one of them retry immediately.
+        _CACHE_RESET_MIGRATION_8 = "clear_empty_destination_gallery_cache_for_places_fallback"
+        already_applied_8 = conn.execute(
+            "SELECT 1 FROM _schema_migrations WHERE name = ?", (_CACHE_RESET_MIGRATION_8,)
+        ).fetchone()
+        if not already_applied_8:
+            cleared_8 = conn.execute(
+                "DELETE FROM destination_gallery_cache WHERE gallery_json = '[]'"
+            ).rowcount
+            conn.execute(
+                "INSERT INTO _schema_migrations (name, applied_at) VALUES (?, ?)",
+                (_CACHE_RESET_MIGRATION_8, datetime.utcnow().isoformat()),
+            )
+            print(f"[DB] One-time migration: cleared {cleared_8} empty destination_gallery_cache row(s) (Places fallback fix)")
+
         # Seed the singleton site_settings row once, with the hero slides
         # that were previously hardcoded in index.html — so nothing changes
         # visually on the homepage until an admin actually edits them.

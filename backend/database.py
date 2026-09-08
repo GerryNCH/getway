@@ -349,6 +349,25 @@ def init_db() -> None:
             )
             print(f"[DB] One-time migration: cleared {cleared_4} stale month_destinations_cache row(s) (calendar rewrite)")
 
+        # Fifth one-time migration: the first calendar prompt (migration 4,
+        # above) still let the same destination repeat under different
+        # name spellings — confirmed live: "Kenya/Tanzania" or "Kenya"
+        # showed up in 3 of 5 months sampled straight after that rewrite.
+        # The prompt now hard-caps every destination to ONE appearance in
+        # the whole calendar, so these rows need clearing again to pick up
+        # the stricter rule.
+        _CACHE_RESET_MIGRATION_5 = "clear_month_destinations_cache_for_hard_one_appearance_cap"
+        already_applied_5 = conn.execute(
+            "SELECT 1 FROM _schema_migrations WHERE name = ?", (_CACHE_RESET_MIGRATION_5,)
+        ).fetchone()
+        if not already_applied_5:
+            cleared_5 = conn.execute("DELETE FROM month_destinations_cache").rowcount
+            conn.execute(
+                "INSERT INTO _schema_migrations (name, applied_at) VALUES (?, ?)",
+                (_CACHE_RESET_MIGRATION_5, datetime.utcnow().isoformat()),
+            )
+            print(f"[DB] One-time migration: cleared {cleared_5} stale month_destinations_cache row(s) (one-appearance cap)")
+
         # Seed the singleton site_settings row once, with the hero slides
         # that were previously hardcoded in index.html — so nothing changes
         # visually on the homepage until an admin actually edits them.

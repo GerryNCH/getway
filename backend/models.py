@@ -392,6 +392,8 @@ class VibeQuizMatchResponse(BaseModel):
 class MonthDestination(BaseModel):
     name: str
     reason: str
+    photo_url: str = ""  # "" if Unsplash has nothing cached yet — frontend
+                          # falls back to a gradient letter avatar
 
 
 class MonthDestinationsResponse(BaseModel):

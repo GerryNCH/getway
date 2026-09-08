@@ -146,7 +146,8 @@ def init_db() -> None:
             -- possible keys (month names), and the same answer is correct
             -- for every visitor (seasonal patterns don't change year to
             -- year), so this is cached hard and long — see
-            -- ai_analyzer.generate_month_destinations.
+            -- ai_analyzer.generate_month_calendar (generates all 12 months
+            -- at once; every row here gets (re)written together).
             CREATE TABLE IF NOT EXISTS month_destinations_cache (
                 cache_key         TEXT PRIMARY KEY,   -- month name, lowercased/trimmed
                 month             TEXT NOT NULL,
@@ -326,6 +327,27 @@ def init_db() -> None:
                 (_CACHE_RESET_MIGRATION_3, datetime.utcnow().isoformat()),
             )
             print(f"[DB] One-time migration: cleared {cleared_3} stale trip_candidates_cache row(s) (no-location candidate fix)")
+
+        # Fourth one-time migration: month_destinations_cache rows saved by
+        # the old per-month-independent generator are stale in a way a
+        # cache HIT would keep serving forever (its 180-day TTL) — that
+        # generator had no visibility across months, so it kept reaching
+        # for the same "safe" destinations repeatedly (confirmed live:
+        # Kenya/Tanzania in 3 of 5 months checked, Iceland in 3 of 5) and
+        # only produced 5 destinations with no photo_url at all. Clearing
+        # it lets every month regenerate under generate_month_calendar,
+        # which sees all 12 months at once and can actually spread variety.
+        _CACHE_RESET_MIGRATION_4 = "clear_month_destinations_cache_for_calendar_rewrite"
+        already_applied_4 = conn.execute(
+            "SELECT 1 FROM _schema_migrations WHERE name = ?", (_CACHE_RESET_MIGRATION_4,)
+        ).fetchone()
+        if not already_applied_4:
+            cleared_4 = conn.execute("DELETE FROM month_destinations_cache").rowcount
+            conn.execute(
+                "INSERT INTO _schema_migrations (name, applied_at) VALUES (?, ?)",
+                (_CACHE_RESET_MIGRATION_4, datetime.utcnow().isoformat()),
+            )
+            print(f"[DB] One-time migration: cleared {cleared_4} stale month_destinations_cache row(s) (calendar rewrite)")
 
         # Seed the singleton site_settings row once, with the hero slides
         # that were previously hardcoded in index.html — so nothing changes

@@ -641,43 +641,55 @@ def generate_travel_tips(destination: str) -> tuple[list[str], float]:
         return [], 0.0
 
 
-_MONTH_DESTINATIONS_SYSTEM = """You recommend which real-world travel destinations are especially good to visit in a specific month, for GetWay, a travel app's "Best places to visit this month" homepage section.
+_MONTH_CALENDAR_SYSTEM = """You are building a full year's "best places to visit this month" calendar for GetWay, a travel app's homepage section — all 12 months at once, 8 real destinations per month.
 
-You will receive a single month name (e.g. "March").
-
-Your job: pick 5 real, well-known destinations (a country, region, or city) that are GENUINELY at their best in that specific month, for a REAL, well-established seasonal reason — not just "nice weather" generically. Good reasons: a specific, well-known seasonal event or natural phenomenon (cherry blossom season, a famous festival, a wildlife migration, monsoon/dry-season timing, ski season, shoulder-season pricing with still-good weather, whale-watching season). Every reason must be something you're genuinely confident is real and well-established — never invent a festival, date, or phenomenon you're not sure exists. Avoid vague, seasonless filler ("great weather", "beautiful scenery") that could apply to any month.
+For EACH of the 12 months (January through December), pick 8 real, well-known destinations (a country, region, or city) that are GENUINELY at their best in that specific month, for a REAL, well-established seasonal reason — not just "nice weather" generically. Good reasons: a specific, well-known seasonal event or natural phenomenon (cherry blossom season, a famous festival, a wildlife migration, monsoon/dry-season timing, ski season, shoulder-season pricing with still-good weather, whale-watching season). Every reason must be something you're genuinely confident is real and well-established — never invent a festival, date, or phenomenon you're not sure exists. Avoid vague, seasonless filler ("great weather", "beautiful scenery") that could apply to any month.
 
 Rules:
+- Think across the FULL YEAR as you write, the way a knowledgeable travel editor curating 12 genuinely different months would — not a lazy list that keeps reaching for the same handful of globally famous "safe" answers. A destination may appear in at most 2 of the 12 months, and only when there are two genuinely distinct seasonal reasons (e.g. a spring flower season AND an unrelated autumn festival) — never repeat the same destination for the same kind of reason. Do NOT let big generic names (Iceland, New Zealand, Kenya/Tanzania, etc.) crowd out the calendar just because they're easy, defensible picks for many months — spread the picks genuinely wide across the whole year.
+- Make sure famous seasonal classics actually show up somewhere in the calendar where they truly fit — e.g. the Maldives' dry season, Japan's cherry blossoms, Munich's Oktoberfest, the Serengeti migration, Rio's Carnival — don't overlook an obvious, famous fit just to seem original.
 - Describe timing qualitatively ("late March into early April", "the dry season") — never give a precise date or date range that could be wrong in a different year (exact cherry blossom or festival dates shift year to year).
-- Don't repeat the same reason-type for every entry (not 5 cherry-blossom-style entries) — vary the angle across the 5 picks: a festival, a climate/season window, a wildlife event, a shoulder-season value pick, etc.
-- Cover a mix of regions across the 5 picks — don't cluster all 5 in one continent.
-- One short, engaging sentence per destination explaining the specific reason — a travel-writer's voice, not a dry almanac entry.
+- Within each month, don't repeat the same reason-type for every entry (not 8 cherry-blossom-style entries) — vary the angle: a festival, a climate/season window, a wildlife event, a shoulder-season value pick, etc. Also cover a real mix of regions within each month's 8 picks — don't cluster them all in one continent.
+- One short, engaging sentence per destination explaining the specific reason (max ~18 words) — a travel-writer's voice, not a dry almanac entry.
 
-Reply with ONLY valid JSON, no markdown fences:
-{"destinations": [{"name": "Japan", "reason": "Cherry blossoms sweep the country in a short, spectacular window that draws visitors from everywhere."}]}"""
+Reply with ONLY valid JSON, no markdown fences, all 12 month keys present with exactly 8 entries each:
+{"January": [{"name": "Japan", "reason": "..."}, ...8 total...], "February": [...], "March": [...], "April": [...], "May": [...], "June": [...], "July": [...], "August": [...], "September": [...], "October": [...], "November": [...], "December": [...]}"""
+
+_CALENDAR_MONTHS = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+]
 
 
-def generate_month_destinations(month: str) -> tuple[list[dict], float]:
+def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
     """
-    Cheap, standalone Haiku call that returns 5 real destinations genuinely
-    well-suited to `month` (e.g. "March"), each with a real, specific
-    seasonal reason — homepage "Best places to visit this month" section.
-    Only 12 possible inputs (month names), so main.py caches this
-    aggressively (see database.get/save_month_destinations_cache) — the
-    same "Japan in March" answer is correct for every visitor, and
-    seasonal patterns don't change year to year, unlike per-destination
-    content elsewhere in this file.
+    One Haiku call that generates a full year's "best places to visit this
+    month" calendar — all 12 months at once, 8 destinations each —
+    homepage "Best places to visit this month" section.
 
-    Returns (destinations, cost_usd), where each destination is
-    {"name": ..., "reason": ...}. Never raises — returns ([], 0.0) on any
-    failure, same non-fatal contract as generate_fun_fact.
+    Replaces the old approach of 12 independent per-month calls: those had
+    no visibility into each other's picks, so the model kept reaching for
+    the same handful of "safe, famous" answers regardless of which month
+    was asked — confirmed live against production, where Kenya/Tanzania
+    showed up in June, August, AND December, and Iceland in January, June,
+    AND August. A single call that sees the whole year while writing can
+    actually spread variety across months the way a real travel editor
+    would.
+
+    Returns ({month_name: [{"name", "reason"}, ...]}, cost_usd). Never
+    raises — returns ({}, 0.0) on any failure, same non-fatal contract as
+    generate_fun_fact. Photos are fetched separately per-destination at
+    request time (see main.py's use of places._get_destination_gallery_unsplash)
+    rather than baked in here — keeps this ~180-day-cached call's output
+    small, and lets photo availability self-heal over time via that
+    function's own short-TTL-on-miss caching, independent of this text.
     """
     try:
         response = _client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=500,
-            system=_MONTH_DESTINATIONS_SYSTEM,
-            messages=[{"role": "user", "content": f"Month: {month}"}],
+            max_tokens=6000,
+            system=_MONTH_CALENDAR_SYSTEM,
+            messages=[{"role": "user", "content": "Generate the full 12-month calendar."}],
         )
         usage = getattr(response, "usage", None)
         cost_usd = 0.0
@@ -690,15 +702,18 @@ def generate_month_destinations(month: str) -> tuple[list[dict], float]:
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
         result = json.loads(raw)
-        destinations = [
-            {"name": str(d.get("name") or "").strip(), "reason": str(d.get("reason") or "").strip()}
-            for d in (result.get("destinations") or [])
-        ]
-        destinations = [d for d in destinations if d["name"] and d["reason"]]
-        return destinations, cost_usd
+        calendar = {}
+        for month in _CALENDAR_MONTHS:
+            entries = result.get(month) or []
+            destinations = [
+                {"name": str(d.get("name") or "").strip(), "reason": str(d.get("reason") or "").strip()}
+                for d in entries
+            ]
+            calendar[month] = [d for d in destinations if d["name"] and d["reason"]]
+        return calendar, cost_usd
     except Exception as e:
-        print(f"[MonthDestinations] generate_month_destinations failed for '{month}': {e}")
-        return [], 0.0
+        print(f"[MonthCalendar] generate_month_calendar failed: {type(e).__name__}: {e}")
+        return {}, 0.0
 
 
 _VIBE_MATCH_SYSTEM = """You are matching a traveler's "find your travel vibe" quiz answers to the single real-world travel destination that best fits ALL of their answers combined, for GetWay, a travel itinerary app.

@@ -53,7 +53,7 @@ from extractor import (
 from troll_filter import check_is_travel
 from ai_analyzer import (
     analyse_frames, generate_fun_fact, generate_vibe_match, generate_travel_tips,
-    generate_trip_summary, generate_month_destinations, generate_fun_facts,
+    generate_trip_summary, generate_month_calendar, generate_fun_facts,
 )
 from quality_check import ai_quality_check
 from places import (
@@ -552,15 +552,23 @@ _VALID_MONTHS = {
 @app.get("/destinations/by-month", response_model=MonthDestinationsResponse)
 def get_month_destinations(month: str):
     """
-    Homepage "Best places to visit this month" section — 5 real
+    Homepage "Best places to visit this month" section — 8 real
     destinations genuinely well-suited to `month`, each with a real
-    seasonal reason (ai_analyzer.generate_month_destinations). Cached hard
-    (database.get/save_month_destinations_cache): only 12 possible inputs,
-    the same answer is correct for every visitor, and seasonal patterns
-    don't shift year to year — so after the first request for a given
-    month, every later one for that month is free. Never raises, per
-    generate_month_destinations' own non-fatal contract — an empty
-    destinations list tells the frontend to just not render that month.
+    seasonal reason and a real photo. The text (name + reason) comes from
+    ai_analyzer.generate_month_calendar, which generates ALL 12 months in
+    one call so the model can spread variety across the whole year instead
+    of reaching for the same "safe" answers every time (see that
+    function's docstring) — cached hard, long-term
+    (database.get/save_month_destinations_cache): a cache miss for ANY
+    month regenerates and re-caches every month at once, so later requests
+    for other months are free too.
+
+    Photos are fetched separately, per destination, at request time via
+    places._get_destination_gallery_unsplash(count=1) — itself cached, so
+    this is a near-instant hit after the first visitor for any given
+    destination, and self-heals if Unsplash was rate-limited on a prior
+    attempt (that function's own short negative-result TTL), independent
+    of the long-lived text cache above.
     """
     month = month.strip().lower()
     if month not in _VALID_MONTHS:
@@ -568,12 +576,23 @@ def get_month_destinations(month: str):
     month = month.capitalize()
 
     cached = database.get_month_destinations_cache(month)
-    if cached is not None:
-        return MonthDestinationsResponse(month=month, destinations=cached)
+    if cached is None:
+        calendar, _cost = generate_month_calendar()
+        for m, destinations in calendar.items():
+            database.save_month_destinations_cache(m, destinations)
+        cached = calendar.get(month, [])
 
-    destinations, _cost = generate_month_destinations(month)
-    database.save_month_destinations_cache(month, destinations)
-    return MonthDestinationsResponse(month=month, destinations=destinations)
+    enriched = []
+    for d in cached:
+        photo_url = ""
+        try:
+            gallery = _get_destination_gallery_unsplash(d["name"], count=1)
+            photo_url = gallery[0]["url"] if gallery else ""
+        except Exception:
+            pass
+        enriched.append({"name": d["name"], "reason": d["reason"], "photo_url": photo_url})
+
+    return MonthDestinationsResponse(month=month, destinations=enriched)
 
 
 @app.post("/trip/search-place", response_model=TripSearchResponse)

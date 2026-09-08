@@ -58,7 +58,7 @@ import re
 import statistics
 
 import anthropic
-from places import photo_url_from_places_photos
+from places import photo_url_from_places_photos, best_fresh_unsplash_photo
 from ai_analyzer import _booking_affiliate_url, _expedia_affiliate_url
 
 _client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
@@ -526,10 +526,23 @@ def hotel_to_recommendation_dict(hotel: dict, city: str) -> dict:
     name = hotel.get("displayName", {}).get("text", "")
     loc = hotel.get("location") or {}
     query = f"{name} {city}".strip()
+    photo_url = photo_url_from_places_photos(hotel.get("photos", []))
+    if not photo_url:
+        # Real bug this fixes: unlike video-extracted routes' hotel stops
+        # (places.enrich_itinerary_with_photos gives those a 3-layer
+        # fallback — Places, then Unsplash-by-name, then a generic
+        # category photo), a Build Your Own Trip hotel had exactly ONE
+        # attempt: a bare Places photo lookup with nothing to fall back to
+        # if that specific hotel simply has no photos in Places (common
+        # for smaller/newer listings) — confirmed as a real gap, not a
+        # hypothetical. Mirrors that same fallback chain here.
+        photo_url, _ = best_fresh_unsplash_photo(query)
+        if not photo_url:
+            photo_url, _ = best_fresh_unsplash_photo(f"{city} hotel room interior")
     return {
         "name": name,
         "description": "",
-        "photo_url": photo_url_from_places_photos(hotel.get("photos", [])),
+        "photo_url": photo_url,
         "rating": hotel.get("rating", 0) or 0,
         "user_rating_count": hotel.get("userRatingCount", 0) or 0,
         "price_level": hotel.get("priceLevel", "") or "",

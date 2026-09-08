@@ -431,6 +431,26 @@ def _trigger_unsplash_download(c: dict) -> None:
         print(f"[Unsplash] Download-tracking ping failed (non-fatal): {type(e).__name__}: {e}")
 
 
+def best_fresh_unsplash_photo(query: str, used_ids: set | None = None) -> tuple[str, UnsplashAttribution | None]:
+    """
+    Returns (url, attribution) for the best-liked Unsplash result for
+    `query` that isn't already in `used_ids`, or ("", None) if nothing
+    came back. Shared by enrich_itinerary_with_photos (which passes a set
+    it tracks across every stop in one itinerary, so the same photo never
+    shows twice on one route page) and trip_builder.hotel_to_recommendation_dict
+    (a one-off lookup — pass None, a fresh set is used).
+    """
+    if used_ids is None:
+        used_ids = set()
+    for c in sorted(_unsplash_candidates(query, per_page=10), key=lambda r: r.get("likes", 0), reverse=True):
+        cid, url = c.get("id"), c.get("urls", {}).get("regular")
+        if url and cid not in used_ids:
+            used_ids.add(cid)
+            _trigger_unsplash_download(c)
+            return url, _attribution_from_candidate(c)
+    return "", None
+
+
 def _get_destination_gallery_unsplash(destination: str, count: int = 5) -> list[dict]:
     """
     Returns up to `count` curated, high-resolution travel photo entries for
@@ -544,6 +564,30 @@ def _get_destination_gallery_unsplash(destination: str, count: int = 5) -> list[
                 _trigger_unsplash_download(c)
                 photos.append({"url": url, "likes": c.get("likes", 0), "attribution": _attribution_from_candidate(c)})
                 break
+
+    if not photos:
+        # Last resort: Unsplash returned nothing at all — either a
+        # transient rate-limit/network failure, or a genuinely thin
+        # Unsplash library for this destination. Confirmed live: a fresh
+        # New York build came back with a fully empty gallery this way,
+        # leaving the route with no hero photo and the homepage's
+        # "Hotels in X" banner with no photo either (it reuses this same
+        # gallery). A destination should never end up completely
+        # photo-less, so fall back to a Google Places Text Search for the
+        # destination itself — the same photo source already proven
+        # reliable for hotels/stops elsewhere in this file. Tried
+        # Wikipedia's and Wikivoyage's REST summary APIs here first
+        # (free, no key) but both frequently returned a flag, a map, or
+        # an unrelated building instead of a real destination photo for
+        # exactly the big, well-known places most likely to be searched
+        # (confirmed live: "Norway" → the Norwegian flag icon, "New York
+        # City" → a district map graphic) — worse than showing nothing.
+        if PLACES_API_KEY:
+            fallback_candidates = _search_places(destination, max_results=1)
+            fallback_url = photo_url_from_places_photos(fallback_candidates[0].get("photos", [])) if fallback_candidates else ""
+            if fallback_url:
+                photos = [{"url": fallback_url, "likes": 0, "attribution": None}]
+                print(f"[Unsplash] Gallery for '{destination}': 0 Unsplash photos — used a Google Places fallback instead")
 
     print(f"[Unsplash] Gallery for '{destination}': {len(photos)} photos (sampled {len(queries_to_try)} queries, {len(candidate_pool)} candidates)")
     serializable = [
@@ -668,14 +712,7 @@ def enrich_itinerary_with_photos(itinerary) -> None:
     used_ids: set[str] = set()  # avoid repeating a photo across stop cards
 
     def _best_fresh_unsplash(query: str) -> tuple[str, dict | None]:
-        """Returns (url, attribution) — attribution is None if nothing found."""
-        for c in sorted(_unsplash_candidates(query, per_page=10), key=lambda r: r.get("likes", 0), reverse=True):
-            cid, url = c.get("id"), c.get("urls", {}).get("regular")
-            if url and cid not in used_ids:
-                used_ids.add(cid)
-                _trigger_unsplash_download(c)
-                return url, _attribution_from_candidate(c)
-        return "", None
+        return best_fresh_unsplash_photo(query, used_ids)
 
     for day in itinerary.days:
         for stop in day.stops:

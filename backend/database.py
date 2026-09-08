@@ -368,6 +368,26 @@ def init_db() -> None:
             )
             print(f"[DB] One-time migration: cleared {cleared_5} stale month_destinations_cache row(s) (one-appearance cap)")
 
+        # Sixth one-time migration: even after the hard one-appearance-cap
+        # prompt (migration 5), live data still showed disguised repeats —
+        # the same country reused across several months under a different
+        # specific park/city name each time (East-Africa safaris in 4
+        # different months, India in 4 different months). The generator
+        # now catches this deterministically in Python
+        # (ai_analyzer._destination_root_tokens) rather than trusting the
+        # model's self-audit alone, so these rows need clearing again.
+        _CACHE_RESET_MIGRATION_6 = "clear_month_destinations_cache_for_root_token_dedup"
+        already_applied_6 = conn.execute(
+            "SELECT 1 FROM _schema_migrations WHERE name = ?", (_CACHE_RESET_MIGRATION_6,)
+        ).fetchone()
+        if not already_applied_6:
+            cleared_6 = conn.execute("DELETE FROM month_destinations_cache").rowcount
+            conn.execute(
+                "INSERT INTO _schema_migrations (name, applied_at) VALUES (?, ?)",
+                (_CACHE_RESET_MIGRATION_6, datetime.utcnow().isoformat()),
+            )
+            print(f"[DB] One-time migration: cleared {cleared_6} stale month_destinations_cache row(s) (root-token dedup)")
+
         # Seed the singleton site_settings row once, with the hero slides
         # that were previously hardcoded in index.html — so nothing changes
         # visually on the homepage until an admin actually edits them.

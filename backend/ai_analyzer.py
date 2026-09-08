@@ -11,6 +11,7 @@ that handles the "unnamed restaurant" problem:
 
 import base64
 import json
+import re
 import urllib.parse
 
 import anthropic
@@ -646,7 +647,8 @@ _MONTH_CALENDAR_SYSTEM = """You are building a full year's "best places to visit
 For EACH of the 12 months (January through December), pick 8 real, well-known destinations (a country, region, or city) that are GENUINELY at their best in that specific month, for a REAL, well-established seasonal reason — not just "nice weather" generically. Good reasons: a specific, well-known seasonal event or natural phenomenon (cherry blossom season, a famous festival, a wildlife migration, monsoon/dry-season timing, ski season, shoulder-season pricing with still-good weather, whale-watching season). Every reason must be something you're genuinely confident is real and well-established — never invent a festival, date, or phenomenon you're not sure exists. Avoid vague, seasonless filler ("great weather", "beautiful scenery") that could apply to any month.
 
 Rules:
-- Each real-world destination may appear ONLY ONCE across the entire 12-month calendar — no exceptions, even if it has more than one good season. Treat different names/spellings for the same place as identical for this rule (e.g. "Kenya", "Tanzania", "Kenya/Tanzania", "Kenya & Tanzania", "Serengeti", and "Maasai Mara" all count as ONE destination — pick whichever single month is the single best fit and leave it out of every other month entirely). This is a hard constraint you must self-check before answering: scan your own 96 picks and if any real place appears twice, replace the weaker occurrence with a genuinely different destination. Think across the FULL YEAR as you write, the way a knowledgeable travel editor curating 12 genuinely different months would — not a lazy list that keeps reaching for the same handful of globally famous "safe" answers (Iceland, New Zealand, and Kenya/Tanzania are the worst offenders for this — use each of them at most once, and only if truly the best fit for that month). Spread the picks genuinely wide across the whole year and across regions.
+- Each COUNTRY/REGION may appear ONLY ONCE across the entire 12-month calendar — no exceptions, even if it has more than one good season, and even if you name a different specific park/city/sub-region within it each time. This is the rule people break without realizing it: putting Kenya's Samburu reserve in one month, Maasai Mara in another, and Tanzania's Serengeti in a third is STILL the same East-Africa-safari destination repeated three times, just with different location names attached — it does not satisfy this rule, it violates it. Likewise "India (Rajasthan)", "India (Kerala)", and "India (Agra)" all count as India, used three times. Before answering, mentally list the top-level country/region behind each of your 96 picks and confirm every single one is genuinely unique — if two picks share a country/region, delete the weaker one and replace it with a completely different destination. Don't let big, easy, globally-famous answers (Iceland, New Zealand, East Africa safaris, India, Peru) crowd out the calendar just because they're each defensible for several different months — spread the picks genuinely wide across the whole year and across regions.
+- The "name" field must be ONLY a real place name (a country, a named region, or a city) — e.g. "Japan" or "Kyoto, Japan" — NEVER a descriptive phrase like "cherry blossom season throughout Japan". The seasonal description belongs entirely in the "reason" field.
 - Make sure famous seasonal classics actually show up somewhere in the calendar where they truly fit — e.g. the Maldives' dry season, Japan's cherry blossoms, Munich's Oktoberfest, the Serengeti migration, Rio's Carnival — don't overlook an obvious, famous fit just to seem original.
 - Describe timing qualitatively ("late March into early April", "the dry season") — never give a precise date or date range that could be wrong in a different year (exact cherry blossom or festival dates shift year to year).
 - Within each month, don't repeat the same reason-type for every entry (not 8 cherry-blossom-style entries) — vary the angle: a festival, a climate/season window, a wildlife event, a shoulder-season value pick, etc. Also cover a real mix of regions within each month's 8 picks — don't cluster them all in one continent.
@@ -659,6 +661,25 @@ _CALENDAR_MONTHS = [
     "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December",
 ]
+
+
+def _destination_root_tokens(name: str) -> set[str]:
+    """
+    Extracts the top-level country/region name(s) behind a destination
+    string, so "Tanzania (Serengeti)", "Kenya (Samburu)", and "Kenya
+    (Masai Mara)" all reduce to {"tanzania"}/{"kenya"} instead of looking
+    like 3 distinct places. Used to catch disguised repeats the AI missed
+    despite being told not to (see generate_month_calendar's docstring) —
+    confirmed live: even after an explicit "don't reuse the same
+    country under a different park/city name" instruction, one calendar
+    still put East-Africa safaris in 4 different months under 4 different
+    specific reserve names, and India in 4 different months under 4
+    different region names. A parenthetical qualifier or slash/&/"and"
+    separated list is stripped down to its root name(s) for comparison.
+    """
+    base = re.sub(r"\([^)]*\)", "", name)
+    parts = re.split(r"\s*(?:/|,|&|\band\b)\s*", base, flags=re.IGNORECASE)
+    return {p.strip().lower() for p in parts if p.strip()}
 
 
 def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
@@ -709,7 +730,48 @@ def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
                 {"name": str(d.get("name") or "").strip(), "reason": str(d.get("reason") or "").strip()}
                 for d in entries
             ]
-            calendar[month] = [d for d in destinations if d["name"] and d["reason"]]
+            # A place name is always short — a country, named region, or
+            # city. Confirmed live: the model occasionally put a whole
+            # descriptive phrase in "name" instead ("cherry blossom season
+            # throughout Japan") despite being told not to; a length cap
+            # is a cheap, reliable way to drop those malformed entries
+            # rather than showing broken-looking cards on the homepage.
+            calendar[month] = [d for d in destinations if d["name"] and d["reason"] and len(d["name"]) <= 40]
+
+        # Deterministic cross-month dedup by root country/region — see
+        # _destination_root_tokens' docstring for why this can't be left
+        # to the prompt alone: the model kept disguising the same
+        # country/region as a "new" pick by naming a different specific
+        # park/city within it each month. Iterating in calendar order so
+        # a country's FIRST (best-fit) month wins and later repeats of it
+        # are dropped, rather than picking arbitrarily.
+        MIN_PER_MONTH = 5
+        used_tokens: set[str] = set()
+        for month in _CALENDAR_MONTHS:
+            original = calendar.get(month, [])
+            kept = []
+            for d in original:
+                tokens = _destination_root_tokens(d["name"])
+                if tokens & used_tokens:
+                    continue
+                used_tokens |= tokens
+                kept.append(d)
+            # Safety net: if the model reused enough countries earlier in
+            # the year, strict dedup alone can leave a month almost or
+            # entirely empty (confirmed against a real captured run — one
+            # month dropped to 0 destinations this way). A few repeats
+            # across the year beats an empty homepage section, so top back
+            # up from this month's own original picks before giving up.
+            if len(kept) < MIN_PER_MONTH:
+                kept_names = {d["name"] for d in kept}
+                for d in original:
+                    if len(kept) >= MIN_PER_MONTH:
+                        break
+                    if d["name"] not in kept_names:
+                        kept.append(d)
+                        kept_names.add(d["name"])
+            calendar[month] = kept
+
         return calendar, cost_usd
     except Exception as e:
         print(f"[MonthCalendar] generate_month_calendar failed: {type(e).__name__}: {e}")

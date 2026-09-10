@@ -17,6 +17,7 @@ Run locally:
 """
 
 import json
+import re
 import tempfile
 import threading
 from datetime import datetime, timezone
@@ -1205,6 +1206,72 @@ def admin_backfill_travel_tips(secret: str, force: bool = False):
             database.set_travel_tips(row["video_id"], tips)
             filled += 1
     return {"status": "ok", "checked": len(targets), "filled": filled, "cost_usd": round(total_cost, 6)}
+
+
+@app.post("/admin/backfill-coordinates")
+def admin_backfill_coordinates(secret: str, force: bool = False):
+    """
+    Fills in stop.lat/stop.lng for approved routes generated before
+    Stop.lat/lng existed (or where Places didn't recognize a stop at the
+    time) — this is what makes index.html's "View route on map" button
+    appear (it's hidden whenever every stop in a route lacks coordinates,
+    since a map with no pins would just look broken).
+
+    For each targeted route, only stops missing lat/lng are looked up
+    (force=true re-checks every stop instead, even ones that already have
+    coordinates). Deliberately leaves stop.photo_url alone even when a
+    photo lookup happens to return one — the goal here is coordinates only,
+    not spending extra Places/Unsplash quota re-fetching photos that
+    already work.
+
+    Costs roughly $0.032 x number of stops checked (Google Places Text
+    Search Pro SKU pricing). Returns how many routes were checked/updated,
+    how many stops got coordinates, and the names of stops Places still
+    couldn't match (worth a manual look).
+    """
+    _check_admin_secret(secret)
+    targets = database.list_approved_missing_coordinates(force=force)
+    routes_updated = 0
+    stops_filled = 0
+    unmatched: list[str] = []
+
+    for row in targets:
+        video_id = row["video_id"]
+        itinerary = database.get_itinerary(video_id)
+        if not itinerary:
+            continue
+        city = re.split(r"\s*(?:,|&|\band\b)\s*", itinerary.destination, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+        route_changed = False
+
+        for day in itinerary.days:
+            for stop in day.stops:
+                if not force and stop.lat is not None and stop.lng is not None:
+                    continue
+                name_query = stop.name if city.lower() in stop.name.lower() else f"{stop.name}, {city}"
+                _, location = _get_place_photo_and_location(name_query)
+                if location:
+                    stop.lat, stop.lng = location
+                    stops_filled += 1
+                    route_changed = True
+                else:
+                    unmatched.append(f"{stop.name} ({itinerary.destination})")
+
+        if route_changed:
+            database.save_days(video_id, itinerary.days)
+            routes_updated += 1
+
+    for name in unmatched:
+        print(f"[Coordinates backfill] No Places match for stop: {name}")
+
+    return {
+        "status": "ok",
+        "routes_checked": len(targets),
+        "routes_updated": routes_updated,
+        "stops_filled": stops_filled,
+        "stops_unmatched": len(unmatched),
+        "unmatched_stop_names": unmatched,
+        "approx_cost_usd": round(0.032 * (stops_filled + len(unmatched)), 4),
+    }
 
 
 @app.get("/admin/pending")

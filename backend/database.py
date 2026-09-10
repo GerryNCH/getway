@@ -639,6 +639,39 @@ def save_days(video_id: str, days: list) -> bool:
     return cur.rowcount > 0
 
 
+def list_approved_missing_coordinates(force: bool = False) -> list[dict]:
+    """
+    Returns [{"video_id": ..., "destination": ...}, ...] for every approved
+    route where at least one stop is missing lat/lng — the set POST
+    /admin/backfill-coordinates needs to fix. Mirrors
+    list_approved_for_fun_fact_refresh, except the "missing" check can't be
+    done in SQL (coordinates live inside days_json, one field per stop), so
+    this loads each approved route's days and checks in Python instead.
+
+    force=True returns every approved route regardless of whether it
+    already has full coordinates — used to re-check routes after a Places
+    query-building change, not just fill in blanks.
+    """
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT video_id, destination, days_json FROM itineraries WHERE status = 'approved'"
+        ).fetchall()
+    result = []
+    for r in rows:
+        if force:
+            result.append({"video_id": r["video_id"], "destination": r["destination"]})
+            continue
+        days = json.loads(r["days_json"])
+        missing = any(
+            stop.get("lat") is None or stop.get("lng") is None
+            for day in days
+            for stop in day.get("stops", [])
+        )
+        if missing:
+            result.append({"video_id": r["video_id"], "destination": r["destination"]})
+    return result
+
+
 def set_fun_fact(video_id: str, fun_fact: str) -> bool:
     """
     Updates ONLY the fun_fact column for an existing route — used by the

@@ -672,6 +672,40 @@ def list_approved_missing_coordinates(force: bool = False) -> list[dict]:
     return result
 
 
+def list_approved_with_google_photo_urls(force: bool = False) -> list[dict]:
+    """
+    Returns [{"video_id": ..., "destination": ...}, ...] for every approved
+    route with at least one stop whose photo_url still points straight at
+    places.googleapis.com — the set POST /admin/backfill-stop-photos needs
+    to fix. Those URLs predate places.py's _build_photo_url caching the
+    photo onto our own Volume (see that function for why: Google's photo
+    `name` tokens expire), so every one of them is either already dead or
+    one expiry away from it. Once backfilled, a stop's photo_url becomes
+    our own /uploads/... URL and stops matching here — safe to re-run.
+
+    force=True returns every approved route regardless, same convention as
+    list_approved_missing_coordinates.
+    """
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT video_id, destination, days_json FROM itineraries WHERE status = 'approved'"
+        ).fetchall()
+    result = []
+    for r in rows:
+        if force:
+            result.append({"video_id": r["video_id"], "destination": r["destination"]})
+            continue
+        days = json.loads(r["days_json"])
+        has_google_url = any(
+            "places.googleapis.com" in (stop.get("photo_url") or "")
+            for day in days
+            for stop in day.get("stops", [])
+        )
+        if has_google_url:
+            result.append({"video_id": r["video_id"], "destination": r["destination"]})
+    return result
+
+
 def set_fun_fact(video_id: str, fun_fact: str) -> bool:
     """
     Updates ONLY the fun_fact column for an existing route — used by the

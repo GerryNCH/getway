@@ -66,6 +66,12 @@
   .wishlist-btn i { color: #6D28D9; }
   .wishlist-btn.is-saved { background: #8B5CF6 !important; }
   .wishlist-btn.is-saved i { color: #fff; fill: #fff; }
+  /* The route header's own Save button sits on a dark photo hero, not a
+     white circle like every other wishlist-btn call site — keep its
+     unsaved icon white (inherited from the pill's own text color)
+     instead of the shared purple default; .is-saved above still wins
+     once saved (solid purple pill, white icon), same as everywhere else. */
+  #ai-route-header-save-btn i { color: inherit; }
   /* Build Your Own Trip step3b's "would you rather" picks — a dedicated
      class (not dynamic Tailwind utility toggling, which the Play CDN
      script doesn't reliably re-scan for classes added purely via
@@ -103,7 +109,7 @@
      order wins, so the element stays visible on desktop only. `!important`
      here sidesteps that entirely regardless of what other display utility
      is on the element. */
-  .filter-hidden { display: none !important; }
+  .filter-hidden, .page-hidden { display: none !important; }
   /* ── Sticky top nav (homepage) ───────────────────────────────────── */
   /* Nav starts transparent over the dark hero; once the page scrolls past
      it, .nav-scrolled swaps it to a light glass bar with dark text so it
@@ -452,6 +458,7 @@
     </div>
     <div id="route-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-10 pb-16"></div>
     <div id="route-search-empty" class="hidden text-center text-sm text-gray-400 py-10">No destinations match your search.</div>
+    <div id="route-pagination" class="hidden items-center justify-center gap-1.5 pb-16"></div>
   </div>
   <!-- ── Final CTA ─────────────────────────────────────────────────── -->
   <div class="max-w-6xl mx-auto px-6 md:px-14 pb-14 md:pb-20">
@@ -480,8 +487,8 @@
       <div>
         <div class="text-xs font-semibold uppercase tracking-wide text-white/50 mb-4">Follow</div>
         <div class="flex gap-3">
-          <a href="#" class="btn-interactive w-9 h-9 rounded-full bg-white/10 flex items-center justify-center"><i data-lucide="music-2" class="w-4 h-4 text-white"></i></a>
-          <a href="#" class="btn-interactive w-9 h-9 rounded-full bg-white/10 flex items-center justify-center"><svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="white" stroke-width="1.8"><rect x="2.5" y="2.5" width="19" height="19" rx="5"/><circle cx="12" cy="12" r="4.3"/><circle cx="17.2" cy="6.8" r="1.1" fill="white" stroke="none"/></svg></a>
+          <a href="https://www.tiktok.com/@gogetway" target="_blank" rel="noopener" aria-label="GetWay on TikTok" class="btn-interactive w-9 h-9 rounded-full bg-white/10 flex items-center justify-center"><i data-lucide="music-2" class="w-4 h-4 text-white"></i></a>
+          <a href="https://www.instagram.com/go.getway" target="_blank" rel="noopener" aria-label="GetWay on Instagram" class="btn-interactive w-9 h-9 rounded-full bg-white/10 flex items-center justify-center"><svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="white" stroke-width="1.8"><rect x="2.5" y="2.5" width="19" height="19" rx="5"/><circle cx="12" cy="12" r="4.3"/><circle cx="17.2" cy="6.8" r="1.1" fill="white" stroke="none"/></svg></a>
         </div>
       </div>
     </div>
@@ -648,8 +655,8 @@
       <div>
         <div class="text-xs font-semibold uppercase tracking-wide text-white/50 mb-4">Follow</div>
         <div class="flex gap-3">
-          <a href="#" class="btn-interactive w-9 h-9 rounded-full bg-white/10 flex items-center justify-center"><i data-lucide="music-2" class="w-4 h-4 text-white"></i></a>
-          <a href="#" class="btn-interactive w-9 h-9 rounded-full bg-white/10 flex items-center justify-center"><svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="white" stroke-width="1.8"><rect x="2.5" y="2.5" width="19" height="19" rx="5"/><circle cx="12" cy="12" r="4.3"/><circle cx="17.2" cy="6.8" r="1.1" fill="white" stroke="none"/></svg></a>
+          <a href="https://www.tiktok.com/@gogetway" target="_blank" rel="noopener" aria-label="GetWay on TikTok" class="btn-interactive w-9 h-9 rounded-full bg-white/10 flex items-center justify-center"><i data-lucide="music-2" class="w-4 h-4 text-white"></i></a>
+          <a href="https://www.instagram.com/go.getway" target="_blank" rel="noopener" aria-label="GetWay on Instagram" class="btn-interactive w-9 h-9 rounded-full bg-white/10 flex items-center justify-center"><svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="white" stroke-width="1.8"><rect x="2.5" y="2.5" width="19" height="19" rx="5"/><circle cx="12" cy="12" r="4.3"/><circle cx="17.2" cy="6.8" r="1.1" fill="white" stroke="none"/></svg></a>
         </div>
       </div>
     </div>
@@ -784,7 +791,7 @@
           <i data-lucide="heart" class="w-3 h-3"></i> Wishlist
           <span class="wishlist-nav-badge hidden absolute -top-1.5 -right-1.5 bg-[#8B5CF6] text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">0</span>
         </button>
-        <button onclick="copyAiRouteLink()" class="btn-interactive flex items-center gap-1.5 text-[11px] font-medium text-white/90 border border-white/40 rounded-full px-3.5 py-1.5">
+        <button id="ai-route-header-save-btn" type="button" class="wishlist-btn btn-interactive flex items-center gap-1.5 text-[11px] font-medium text-white/90 border border-white/40 rounded-full px-3.5 py-1.5" onclick="toggleWishlistBtn(this)" aria-label="Save to wishlist">
           <i data-lucide="bookmark" class="w-3 h-3"></i> Save
         </button>
       </div>
@@ -829,13 +836,13 @@
        when there's nothing to show (older routes not yet backfilled with
        fun_facts, and gallery came up empty) — see renderAiRoute. -->
   <div id="ai-route-intro-toggle-wrap" class="hidden px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mt-6 md:mt-8 mb-4">
-    <button id="ai-route-intro-toggle-btn" onclick="toggleAiRouteIntro()" class="btn-interactive w-full flex items-center gap-4 rounded-[22px] p-4 md:p-5 shadow-[0_10px_24px_-8px_rgba(124,58,237,0.55)] text-left" style="background: linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%);">
-      <div class="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0 text-2xl">📖</div>
+    <button id="ai-route-intro-toggle-btn" onclick="toggleAiRouteIntro()" class="btn-interactive bento-card bg-white w-full flex items-center gap-4 rounded-[22px] p-4 md:p-5 text-left">
+      <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#8B5CF6] to-[#6D28D9] shadow-[0_4px_10px_-4px_rgba(124,58,237,0.5)] flex items-center justify-center flex-shrink-0 text-2xl">📖</div>
       <div class="flex-1 min-w-0">
-        <div id="ai-route-intro-toggle-label" class="text-sm md:text-base font-semibold text-white mb-0.5">Getting to know this place</div>
-        <div class="text-xs text-white/75">Photos and surprising facts about the destination</div>
+        <div id="ai-route-intro-toggle-label" class="text-sm md:text-base font-semibold text-gray-900 mb-0.5">Getting to know this place</div>
+        <div class="text-xs text-gray-500">Photos and surprising facts about the destination</div>
       </div>
-      <i data-lucide="chevron-down" id="ai-route-intro-toggle-chevron" class="w-5 h-5 text-white flex-shrink-0 transition-transform duration-300"></i>
+      <i data-lucide="chevron-down" id="ai-route-intro-toggle-chevron" class="w-5 h-5 text-gray-400 flex-shrink-0 transition-transform duration-300"></i>
     </button>
   </div>
   <div id="ai-route-intro-section" class="hidden px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-8 md:mb-10">
@@ -857,13 +864,13 @@
        entirely when travel_tips is empty (older routes not yet
        backfilled — see renderAiRoute). -->
   <div id="ai-route-tips-toggle-wrap" class="hidden px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-8 md:mb-10">
-    <button id="ai-route-tips-toggle-btn" onclick="toggleAiRouteTips()" class="btn-interactive w-full flex items-center gap-4 rounded-[22px] p-4 md:p-5 shadow-[0_10px_24px_-8px_rgba(124,58,237,0.55)] text-left" style="background: linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%);">
-      <div class="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0 text-2xl">💡</div>
+    <button id="ai-route-tips-toggle-btn" onclick="toggleAiRouteTips()" class="btn-interactive bento-card bg-white w-full flex items-center gap-4 rounded-[22px] p-4 md:p-5 text-left">
+      <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#8B5CF6] to-[#6D28D9] shadow-[0_4px_10px_-4px_rgba(124,58,237,0.5)] flex items-center justify-center flex-shrink-0 text-2xl">💡</div>
       <div class="flex-1 min-w-0">
-        <div id="ai-route-tips-toggle-label" class="text-sm md:text-base font-semibold text-white mb-0.5">Tips &amp; Tricks</div>
-        <div class="text-xs text-white/75">Good to know before you go</div>
+        <div id="ai-route-tips-toggle-label" class="text-sm md:text-base font-semibold text-gray-900 mb-0.5">Tips &amp; Tricks</div>
+        <div class="text-xs text-gray-500">Good to know before you go</div>
       </div>
-      <i data-lucide="chevron-down" id="ai-route-tips-toggle-chevron" class="w-5 h-5 text-white flex-shrink-0 transition-transform duration-300"></i>
+      <i data-lucide="chevron-down" id="ai-route-tips-toggle-chevron" class="w-5 h-5 text-gray-400 flex-shrink-0 transition-transform duration-300"></i>
     </button>
   </div>
   <div id="ai-route-tips-section" class="hidden px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-8 md:mb-10"></div>
@@ -2010,6 +2017,8 @@
   }
   let currentDurationFilter = 'any';
   let currentCategoryFilter = 'all';
+  let currentRoutePage = 1;
+  const ROUTES_PER_PAGE = 6;
   function filterByDuration(bucket, clickedBtn) {
     try {
       currentDurationFilter = bucket;
@@ -2019,6 +2028,7 @@
       });
       clickedBtn.classList.add('is-active', 'bg-[#8B5CF6]', 'text-white');
       clickedBtn.classList.remove('bg-white', 'border', 'border-gray-200', 'text-gray-600');
+      currentRoutePage = 1;
       applyRouteFilters();
     } catch (err) { console.error('filterByDuration failed:', err); }
   }
@@ -2031,17 +2041,25 @@
       });
       clickedBtn.classList.add('is-active', 'border-[#8B5CF6]', 'bg-[#F1EEFF]', 'text-[#6D28D9]');
       clickedBtn.classList.remove('border-gray-200', 'bg-white/60', 'text-gray-700');
+      currentRoutePage = 1;
       applyRouteFilters();
     } catch (err) { console.error('filterByCategory failed:', err); }
   }
   function filterRoutesBySearch() {
-    try { applyRouteFilters(); } catch (err) { console.error('filterRoutesBySearch failed:', err); }
+    try { currentRoutePage = 1; applyRouteFilters(); } catch (err) { console.error('filterRoutesBySearch failed:', err); }
   }
+  // Which cards MATCH the active search/duration/category filters is kept
+  // separate from which page of those matches is currently on screen — a
+  // card can fail the filter (hidden regardless of page) or pass the
+  // filter but fall outside the current 6-per-page window (hidden only
+  // for pagination). Re-run on every filter change (which resets to page
+  // 1, see the chip handlers above) and on every page click (goToRoutePage
+  // below), so it's always the single source of truth for what's visible.
   function applyRouteFilters() {
     const searchEl = document.getElementById('route-search');
     const query = searchEl ? searchEl.value.trim().toLowerCase() : '';
     const cards = document.querySelectorAll('#route-grid [data-search]');
-    let visibleCount = 0;
+    const matchingCards = [];
     cards.forEach(card => {
       const matchesSearch = query === '' || card.dataset.search.includes(query);
       const days = parseInt(card.dataset.days, 10);
@@ -2052,16 +2070,49 @@
       const cardTags = (card.dataset.tags || '').split(',');
       const matchesCategory = currentCategoryFilter === 'all' || cardTags.includes(currentCategoryFilter);
       const matches = matchesSearch && matchesDuration && matchesCategory;
-      const wasHidden = card.classList.contains('filter-hidden');
       card.classList.toggle('filter-hidden', !matches);
-      if (matches && wasHidden) {
-        card.classList.remove('aos-animate');
-      }
-      if (matches) visibleCount++;
+      if (matches) matchingCards.push(card);
+    });
+    const totalPages = Math.max(1, Math.ceil(matchingCards.length / ROUTES_PER_PAGE));
+    if (currentRoutePage > totalPages) currentRoutePage = totalPages;
+    if (currentRoutePage < 1) currentRoutePage = 1;
+    const pageStart = (currentRoutePage - 1) * ROUTES_PER_PAGE;
+    const pageEnd = pageStart + ROUTES_PER_PAGE;
+    matchingCards.forEach((card, i) => {
+      const onThisPage = i >= pageStart && i < pageEnd;
+      const wasHidden = card.classList.contains('page-hidden');
+      card.classList.toggle('page-hidden', !onThisPage);
+      if (onThisPage && wasHidden) card.classList.remove('aos-animate');
     });
     const emptyEl = document.getElementById('route-search-empty');
-    if (emptyEl) emptyEl.classList.toggle('hidden', visibleCount > 0);
+    if (emptyEl) emptyEl.classList.toggle('hidden', matchingCards.length > 0);
+    renderRoutePagination(totalPages);
     if (typeof AOS !== 'undefined') { AOS.refreshHard(); }
+  }
+  function goToRoutePage(page) {
+    currentRoutePage = page;
+    applyRouteFilters();
+    document.getElementById('routes-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  function renderRoutePagination(totalPages) {
+    const el = document.getElementById('route-pagination');
+    if (!el) return;
+    if (totalPages <= 1) {
+      el.classList.add('hidden');
+      el.classList.remove('flex');
+      el.innerHTML = '';
+      return;
+    }
+    el.classList.remove('hidden');
+    el.classList.add('flex');
+    const pageBtn = (label, page, active, disabled) => `
+      <button type="button" ${disabled ? 'disabled' : `onclick="goToRoutePage(${page})"`} class="btn-interactive h-9 min-w-9 px-3 flex items-center justify-center text-xs font-medium rounded-full ${active ? 'bg-[#8B5CF6] text-white' : disabled ? 'text-gray-300' : 'bg-white border border-gray-200 text-gray-600'}">${label}</button>`;
+    let html = pageBtn('Prev', currentRoutePage - 1, false, currentRoutePage <= 1);
+    for (let p = 1; p <= totalPages; p++) {
+      html += pageBtn(String(p), p, p === currentRoutePage, false);
+    }
+    html += pageBtn('Next', currentRoutePage + 1, false, currentRoutePage >= totalPages);
+    el.innerHTML = html;
   }
   const STATIC_ROUTE_SLUGS = new Set([]);
   function renderRoutes() {
@@ -2149,6 +2200,9 @@
       showScreen('ai-route');
     } else if (state && state.screen === 'route') {
       showScreen('route');
+    } else if (state && state.screen === 'wishlist') {
+      renderWishlistScreen();
+      showScreen('wishlist');
     } else {
       showScreen('home');
     }
@@ -2204,6 +2258,7 @@
         MEDIA.routes[r.video_id] = { cardPhoto: r.hero_photo_url || "" };
       });
       renderRoutes();
+      applyRouteFilters(); // re-paginate now that backend routes were merged in
       if (typeof renderRankings === 'function') renderRankings(); // refresh "Has a route" badges now that real routes are in
       // Cross-recommendations may have rendered (or hidden itself) before
       // this fetch resolved, using an empty/partial ROUTES list — refresh
@@ -2517,7 +2572,17 @@
     updateWishlistNavBadge();
   }
   function openWishlistScreen() {
+    // Real bug this fixes: this used to just swap screens with no history
+    // entry, so the browser's current history entry stayed whatever was
+    // there before (e.g. an ai-route page) while the wishlist screen was
+    // on top of it visually — pressing the real back button then popped
+    // straight past both to whatever came before that route, silently
+    // losing it (see the ai-route popstate handler above for the same
+    // fix applied there first). Pushing a real entry here means back
+    // correctly returns to — and re-renders — the exact route the person
+    // was just looking at.
     renderWishlistScreen();
+    history.pushState({ screen: 'wishlist' }, '', location.href);
     showScreen('wishlist');
   }
   // Required by Unsplash's API guidelines whenever a photo they returned
@@ -3547,6 +3612,19 @@
       btn.classList.toggle('text-gray-600', !active);
     });
     const stopsWithCoords = day.stops.filter(s => typeof s.lat === 'number' && typeof s.lng === 'number');
+    // A day's map should orient from the hotel the traveler actually
+    // wakes up at — the real-world reference point for a human, not
+    // just a link between sights. Only the check-in day (and any day the
+    // hotel changes) naturally has a "hotel" stop in day.stops; every
+    // other day carries forward the most recent earlier hotel as a
+    // virtual origin stop for the map only (day.stops itself, and the
+    // day-by-day itinerary cards elsewhere on the page, are untouched).
+    if (!stopsWithCoords.some(s => s.category === 'hotel')) {
+      for (let i = dayIndex - 1; i >= 0; i--) {
+        const priorHotel = (itinerary.days[i].stops || []).find(s => s.category === 'hotel' && typeof s.lat === 'number' && typeof s.lng === 'number');
+        if (priorHotel) { stopsWithCoords.unshift(priorHotel); break; }
+      }
+    }
     const mapEl = document.getElementById('ai-route-map');
     const listEl = document.getElementById('ai-map-stop-list');
     if (stopsWithCoords.length === 0) {
@@ -3558,22 +3636,28 @@
     if (!window._aiRouteLeafletMap) {
       mapEl.innerHTML = '';
       window._aiRouteLeafletMap = L.map(mapEl, { scrollWheelZoom: false });
-      // Third tile provider tried here — both previous ones looked fine in
-      // testing but silently failed for real visitors on the live domain:
-      // CARTO's free CDN now requires a paid API key and serves a
-      // watermarked "API KEY REQUIRED" placeholder tile with a normal 200
-      // status (so a test that only checks the HTTP status code, not the
-      // actual image content, passes anyway). Wikimedia's tile server
-      // returns a hard 403 with "Map tiles are restricted to Wikimedia &
-      // affiliated sites only" for any real production Referer — it
-      // happened to return 200 for a localhost Referer during manual
-      // testing, which is exactly why that "fix" looked verified but
-      // never worked for a real visitor. Confirmed live with curl against
-      // both, using the real gogetway.com Referer, before picking this
-      // one: Esri's public ArcGIS Online basemap has no key, no referrer
-      // check, and returns genuine unwatermarked map tiles.
-      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
-        attribution: 'Tiles &copy; <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a>',
+      // Fourth tile provider tried here. Esri's World_Street_Map (previous
+      // provider) is still up and unwatermarked, but visually busy/dated —
+      // switched to standard OpenStreetMap "Mapnik" tiles for a cleaner,
+      // Google-Maps-like look. Re-verified the CARTO/Wikimedia failure
+      // modes noted in prior history are still broken (CARTO's free CDN
+      // still serves a watermarked "API KEY REQUIRED" tile with a normal
+      // 200 status; Stadia Maps now hard-401s without a registered key) —
+      // confirmed live with curl using the real gogetway.com Referer AND
+      // by opening the actual PNG bytes, not just checking the HTTP status,
+      // since that's exactly what made the CARTO/Wikimedia "fixes" look
+      // verified before while being broken for real visitors. Standard OSM
+      // tiles (tile.openstreetmap.org) need no key and returned genuine
+      // tiles for a real-browser User-Agent + Referer. Caveat for future
+      // reference: this is OSMF's own volunteer-run server, whose usage
+      // policy (osm.wiki/Tile_usage_policy) discourages heavy production
+      // traffic without prior permission — fine at GetWay's current
+      // traffic, but if that changes and tiles start failing again, the
+      // fix is a paid key (MapTiler/Stadia/Thunderforest), not another
+      // free-tier hunt.
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+        subdomains: 'abc',
         maxZoom: 19
       }).addTo(window._aiRouteLeafletMap);
     }
@@ -3811,6 +3895,26 @@
         photo: itinerary.hero_photo_url || gallery[0] || '',
         routeSlug: videoId || null,
       }, 'w-8 h-8 rounded-full bg-white flex items-center justify-center');
+      // The prominent header "Save" button (top of every route, next to
+      // Wishlist) used to just copy the route's URL to the clipboard —
+      // it looked like a wishlist save (bookmark icon, the word "Save")
+      // but never touched the actual wishlist, so it read as broken to
+      // anyone expecting a real save. It's the same "destination" item
+      // as the button above (same id), just surfaced somewhere you don't
+      // have to open an accordion to find — keep both in sync here.
+      const headerSaveBtn = document.getElementById('ai-route-header-save-btn');
+      if (headerSaveBtn) {
+        const destId = 'destination-' + slugify(destName);
+        headerSaveBtn.dataset.wid = destId;
+        headerSaveBtn.dataset.wtype = 'destination';
+        headerSaveBtn.dataset.wname = destName;
+        headerSaveBtn.dataset.wsubtitle = itinerary.duration || '';
+        headerSaveBtn.dataset.wphoto = itinerary.hero_photo_url || gallery[0] || '';
+        headerSaveBtn.dataset.wslug = videoId || '';
+        const saved = isWishlisted(destId);
+        headerSaveBtn.classList.toggle('is-saved', saved);
+        headerSaveBtn.setAttribute('aria-label', (saved ? 'Remove from' : 'Save to') + ' wishlist');
+      }
     }
     initAiRouteMap(itinerary);
     // The route should always have a hotel box at the START of the trip —
@@ -4190,15 +4294,6 @@
     // previously only had the generic no-hotel-found banner, no hotel
     // Stop at all).
     renderAiRoute(itinerary, window._aiRouteVideoId, window._aiRouteSourceUrl, true);
-  }
-  function copyAiRouteLink() {
-    const id = window._aiRouteVideoId;
-    const url = id ? `${location.origin}${location.pathname}?route=${id}` : location.href;
-    navigator.clipboard.writeText(url).then(() => {
-      alert('Link saved! Bookmark it or send it to yourself so you can come back to this route anytime.');
-    }).catch(() => {
-      prompt('Copy this link to save your route:', url);
-    });
   }
   async function pasteFromClipboard(inputId) {
     const input = document.getElementById(inputId);
@@ -5133,6 +5228,7 @@
       if (urlOf('hero') && MEDIA.routes['mallorca-5-days']) {
         MEDIA.routes['mallorca-5-days'].cardPhoto = urlOf('hero');
         renderRoutes();
+        applyRouteFilters(); // renderRoutes() rebuilds the grid from scratch — reapply the current filter/page state
       }
       if (urlOf('palma_cathedral')) DAY1_STOPS[0].photo = urlOf('palma_cathedral');
       if (urlOf('restaurant_illeta')) DAY1_STOPS[1].photo = urlOf('restaurant_illeta');
@@ -5277,6 +5373,7 @@
     });
     if (isIOS()) maybeShowInstallBanner(); // Android waits for beforeinstallprompt instead
     safeRun('renderRoutes', renderRoutes);
+    safeRun('applyRouteFilters', applyRouteFilters);
     safeRun('renderMallorcaHero', renderMallorcaHero);
     safeRun('renderRouteMedia', renderRouteMedia);
     safeRun('renderAllStops', renderAllStops);

@@ -16,6 +16,7 @@ on the free Demo tier — plenty for this use case.
 import os
 import re
 import time
+import uuid
 import requests
 
 import database
@@ -28,12 +29,69 @@ UNSPLASH_ACCESS_KEY = os.getenv("UNSPLASH_ACCESS_KEY", "")
 SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
 UNSPLASH_SEARCH_URL = "https://api.unsplash.com/search/photos"
 
+# Same persistent Volume main.py's /admin/upload-image writes to (see
+# IMAGES_DIR there) — reused here so a Places photo, once downloaded, is
+# served by this backend forever instead of re-hitting Google. Computed
+# from database.DATA_DIR rather than imported from main.py to avoid a
+# circular import (main.py imports from this module).
+IMAGES_DIR = database.DATA_DIR / "images"
+IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "https://getway-production.up.railway.app").rstrip("/")
+_PLACE_PHOTO_CONTENT_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 
-def _build_photo_url(photo_name: str, max_width: int = 1600) -> str:
+
+def _build_photo_media_url(photo_name: str, max_width: int = 1600) -> str:
     return (
         f"https://places.googleapis.com/v1/{photo_name}/media"
         f"?maxWidthPx={max_width}&key={PLACES_API_KEY}&skipHttpRedirect=false"
     )
+
+
+def _cache_photo_to_volume(media_url: str) -> str:
+    """
+    Downloads a Google Places photo's actual bytes right now and saves them
+    onto our own persistent Volume (see IMAGES_DIR above) — the same one
+    /admin/upload-image already writes to — turning Google's ephemeral,
+    API-key-bearing media URL into a permanent one this backend serves
+    itself.
+
+    Real bug this fixes: _build_photo_url used to hand back that raw
+    Google URL directly, and it got stored as-is in the database. Places
+    photo `name` tokens are NOT permanent — confirmed live with curl that
+    a stop photo fetched months ago now 400s with "The photo resource in
+    the request is invalid. Please retrieve it from Places API
+    endpoints." Every route already has stops whose photos have quietly
+    died this way (frontend's imgFallback correctly swaps in the gradient
+    placeholder, which is why this reads as "missing photo" rather than a
+    hard error — see POST /admin/backfill-stop-photos in main.py for
+    re-fixing those). This stops it from happening to any NEW route.
+
+    Returns "" on any failure (network hiccup, unexpected content-type,
+    disk write error) so the caller can fall back to the raw — still
+    works right now, just not forever — Google URL instead of losing the
+    photo outright.
+    """
+    try:
+        resp = requests.get(media_url, timeout=10)
+        if resp.status_code != 200 or not resp.content:
+            return ""
+        content_type = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+        extension = _PLACE_PHOTO_CONTENT_TYPES.get(content_type)
+        if not extension:
+            return ""
+        filename = f"places_{uuid.uuid4().hex}{extension}"
+        (IMAGES_DIR / filename).write_bytes(resp.content)
+        return f"{BACKEND_BASE_URL}/uploads/{filename}"
+    except (requests.RequestException, OSError) as e:
+        print(f"[Places] Photo cache-to-volume failed (falling back to the raw Google URL): {e}")
+        return ""
+
+
+def _build_photo_url(photo_name: str, max_width: int = 1600) -> str:
+    if not photo_name:
+        return ""
+    media_url = _build_photo_media_url(photo_name, max_width)
+    return _cache_photo_to_volume(media_url) or media_url
 
 
 def photo_url_from_places_photos(photos: list[dict], max_width: int = 800) -> str:

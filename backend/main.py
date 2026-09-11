@@ -1274,6 +1274,71 @@ def admin_backfill_coordinates(secret: str, force: bool = False):
     }
 
 
+@app.post("/admin/backfill-stop-photos")
+def admin_backfill_stop_photos(secret: str, force: bool = False):
+    """
+    Re-resolves every stop photo that's still a raw places.googleapis.com
+    URL and permanently caches it onto our own Volume (see
+    _build_photo_url/_cache_photo_to_volume in places.py). Those URLs were
+    stored directly in the database before that fix shipped, and Google's
+    photo `name` tokens expire — confirmed live that a months-old one now
+    400s with "The photo resource in the request is invalid" — so every
+    route generated before this fix is one expiry away from silently
+    losing photos it used to have (frontend's imgFallback swaps in the
+    gradient placeholder rather than a broken-image icon, which is why
+    this reads as "missing" rather than erroring loudly).
+
+    Same shape/cost model as /admin/backfill-coordinates: one Places call
+    per stop actually re-resolved. force=True also re-checks routes whose
+    photos are already on our own /uploads/ (e.g. after a quality change);
+    default only touches the ones still pointing straight at Google.
+    """
+    _check_admin_secret(secret)
+    targets = database.list_approved_with_google_photo_urls(force=force)
+    routes_updated = 0
+    stops_fixed = 0
+    unmatched: list[str] = []
+
+    for row in targets:
+        video_id = row["video_id"]
+        itinerary = database.get_itinerary(video_id)
+        if not itinerary:
+            continue
+        city = re.split(r"\s*(?:,|&|\band\b)\s*", itinerary.destination, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+        route_changed = False
+
+        for day in itinerary.days:
+            for stop in day.stops:
+                is_google_url = "places.googleapis.com" in (stop.photo_url or "")
+                if not force and not is_google_url:
+                    continue
+                name_query = stop.name if city.lower() in stop.name.lower() else f"{stop.name}, {city}"
+                photo_url, _location = _get_place_photo_and_location(name_query)
+                if photo_url:
+                    stop.photo_url = photo_url
+                    stops_fixed += 1
+                    route_changed = True
+                elif is_google_url:
+                    unmatched.append(f"{stop.name} ({itinerary.destination})")
+
+        if route_changed:
+            database.save_days(video_id, itinerary.days)
+            routes_updated += 1
+
+    for name in unmatched:
+        print(f"[Stop photos backfill] No Places match for stop: {name}")
+
+    return {
+        "status": "ok",
+        "routes_checked": len(targets),
+        "routes_updated": routes_updated,
+        "stops_fixed": stops_fixed,
+        "stops_unmatched": len(unmatched),
+        "unmatched_stop_names": unmatched,
+        "approx_cost_usd": round(0.032 * (stops_fixed + len(unmatched)), 4),
+    }
+
+
 @app.get("/admin/pending")
 def admin_list_pending(secret: str):
     """Full content of every route awaiting review — for the admin panel's Pending tab."""

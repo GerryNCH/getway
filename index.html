@@ -920,6 +920,9 @@
   <!-- Travel insurance — small banner at the end of the route. Admin-
        toggleable, see isAffiliateSectionEnabled('insurance'). -->
   <div id="ai-route-insurance-banner" class="px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-6 md:mb-8"></div>
+  <!-- City pass (GoCity) — same slot group as insurance, trip-wide.
+       Admin-toggleable, see isAffiliateSectionEnabled('gocity'). -->
+  <div id="ai-route-gocity-banner" class="px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-6 md:mb-8"></div>
   <!-- Affiliate + AI accuracy disclosure — required for FTC/EU transparency,
        kept deliberately understated per product decision: plain small text,
        no colored callout box, placed after all stops rather than above them. -->
@@ -2984,6 +2987,10 @@
   function worldNomadsUrl() {
     return withAffiliateMarker('https://www.worldnomads.com/travel-insurance', 'worldnomads');
   }
+  function goCityUrl(destination) {
+    const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim() || destination || '';
+    return 'https://tp.media/r?campaign_id=62&marker=772114&p=1942&trs=568652&u=' + encodeURIComponent('https://gocity.com/' + encodeURIComponent(city));
+  }
   // Airport transfers — both are real, working homepages; a true per-city
   // deep link would need a confirmed country/city slug format from each
   // partner's own docs, which isn't available yet.
@@ -3086,6 +3093,29 @@
     const container = document.getElementById('ai-route-insurance-banner');
     if (!container) return;
     container.innerHTML = isAffiliateSectionEnabled('insurance') ? buildInsuranceBannerHtml(destination, videoId) : '';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+  // City pass (GoCity) — small banner at the end of the route, same slot
+  // group as travel insurance. Trip-wide, not day-specific.
+  function buildGoCityBannerHtml(destination, videoId) {
+    const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim() || destination || '';
+    const href = goCityUrl(city);
+    return `
+      <div class="bento-card bg-white rounded-[22px] p-4 md:p-5 flex items-center gap-4">
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#8B5CF6] to-[#6D28D9] shadow-[0_4px_10px_-4px_rgba(124,58,237,0.5)] flex items-center justify-center flex-shrink-0">
+          <i data-lucide="ticket" class="w-5 h-5 text-white"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-medium mb-0.5">Save on attractions in ${escapeHtml(city)}</div>
+          <div class="text-xs text-gray-500">A city pass covers top sights and skips the line</div>
+        </div>
+        <a href="${href}" onclick="trackAffiliateClick('${videoId}')" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex-shrink-0 h-[38px] px-4 flex items-center justify-center gap-1.5 bg-gray-50 text-gray-700 text-xs font-medium rounded-xl whitespace-nowrap"><span>View pass</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
+      </div>`;
+  }
+  function renderGoCityBanner(destination, videoId) {
+    const container = document.getElementById('ai-route-gocity-banner');
+    if (!container) return;
+    container.innerHTML = isAffiliateSectionEnabled('gocity') ? buildGoCityBannerHtml(destination, videoId) : '';
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
   // Airport transfer — shown only on Day 1 (arrival day) of the route.
@@ -3802,6 +3832,7 @@
     renderVisaBanner(itinerary.destination, videoId);
     renderFlightsBanner(itinerary.destination, videoId);
     renderInsuranceBanner(itinerary.destination, videoId);
+    renderGoCityBanner(itinerary.destination, videoId);
     renderAiRouteComments(itinerary.comments);
     // Community Reviews only makes sense for a route someone else actually
     // booked through GetWay from a real video — a custom_builder trip is a
@@ -4044,6 +4075,9 @@
     }
     if (isAffiliateSectionEnabled('insurance')) {
       rows.push({ icon: 'shield-check', title: 'Travel insurance', sub: 'Cover this trip in case plans change', cta: 'Cover', href: safetyWingUrl() });
+    }
+    if (isAffiliateSectionEnabled('gocity')) {
+      rows.push({ icon: 'ticket', title: `Save on attractions in ${escapeHtml(city)}`, sub: 'City pass covers top sights, skip the line', cta: 'View', href: goCityUrl(city) });
     }
     if (!rows.length) return '';
     return `

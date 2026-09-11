@@ -298,18 +298,16 @@ def search_hotels_near(lat: float, lng: float, city: str, radius_meters: int = 4
     trip_builder.pick_hotel() filters/ranks these results, but it can only
     pick from what's actually near the traveler's chosen stops.
 
-    Real bug this fixes: the query used to be f"hotels in {city}" — fine
-    for a specific city, but `city` can be a whole region (e.g. "Tuscany,
-    Italy" for a multi-town trip), and Google's text relevance for that
-    broad name competes with locationBias rather than reinforcing it.
-    Confirmed live: anchored purely on the Tower of Pisa, "hotels in
-    Tuscany, Italy" returned a hotel 24.8km away — comfortably inside the
-    25km hard cutoff trip_builder.pick_hotel() applies, so it wasn't even
-    caught by that safety net, just a genuinely bad "close to what you'll
-    visit" match. Dropping the destination name from the query text and
-    relying on locationBias alone fixes this for regional destinations
-    without changing behavior for city-level ones (there the anchor is
-    already unambiguously inside that city, so the name added nothing).
+    The query used to be f"hotels in {city}" — dropped the destination
+    name in favor of a bare "hotels" so a REGIONAL destination (e.g.
+    "Tuscany, Italy" for a multi-town trip) can't have its broad-region
+    text relevance compete with locationBias instead of reinforcing it.
+    Turned out NOT to be the actual fix for the far-hotel bug this was
+    investigating (see trip_builder.pick_hotel's _HOTEL_PREFERRED_
+    DISTANCE_KM comment for the real root cause and fix) — the raw
+    results already included closer options, pick_hotel's ranking just
+    wasn't weighing distance. Kept anyway since it's a real, low-risk
+    improvement on its own reasoning, just not sufficient by itself.
 
     locationBias is a soft preference, not a hard filter — Google can still
     return something outside `radius_meters` if nothing better exists.

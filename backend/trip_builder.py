@@ -439,6 +439,20 @@ _HOTEL_TARGET_RANK = {"cheap": 1, "mid": 2, "luxury": 3.5}
 # whatever radius was used to bias the search itself.
 _HOTEL_MAX_DISTANCE_FROM_ANCHOR_KM = 25.0
 
+# Second real bug this fixes (Phase G verification pass): the 25km cutoff
+# above is a binary include/exclude filter, but the ranking below it never
+# considered distance at all — a highly-rated hotel at 24km and one at
+# 2km were equally eligible, so a slightly-better-rated far one could (and
+# did) beat a closer one on the price/rating tiebreak alone. Confirmed
+# live: a Tuscany, Italy trip anchored on the Tower of Pisa alone picked a
+# 4.4-star countryside hotel 24.8km away over anything actually near Pisa.
+# This tighter band is checked FIRST, before price/rating — a hotel within
+# it always beats one outside it, regardless of rating; the wide 25km
+# cutoff above only kicks in as a fallback when nothing qualifies within
+# this tighter one, so a real destination with genuinely sparse close-by
+# options still gets *a* hotel instead of none.
+_HOTEL_PREFERRED_DISTANCE_KM = 6.0
+
 
 def _hotel_distance_from_anchor_km(hotel: dict, anchor: tuple[float, float]) -> float | None:
     """Returns the hotel's distance from `anchor` in km, or None if it has no usable coordinates."""
@@ -488,6 +502,10 @@ def pick_hotel(hotels: list[dict], budget: str, anchor: tuple[float, float] | No
         h for h in hotels
         if is_open(h) and (h.get("rating", 0) or 0) >= _HOTEL_MIN_RATING
     ]
+    # Distance from each hotel to the anchor, computed once here and reused
+    # both for the hard 25km cutoff below and for sort_key's distance
+    # bucket — avoids recomputing it per sort comparison.
+    distances: dict[int, float] = {}
     if anchor is not None:
         still_eligible = []
         for h in eligible:
@@ -497,6 +515,7 @@ def pick_hotel(hotels: list[dict], budget: str, anchor: tuple[float, float] | No
                 print(f"[TripBuilder] Excluding hotel '{name}' — "
                       f"{'no coordinates' if dist is None else f'{dist:.0f}km from anchor (max {_HOTEL_MAX_DISTANCE_FROM_ANCHOR_KM:.0f}km)'}")
                 continue
+            distances[id(h)] = dist
             still_eligible.append(h)
         eligible = still_eligible
     if not eligible:
@@ -505,10 +524,12 @@ def pick_hotel(hotels: list[dict], budget: str, anchor: tuple[float, float] | No
     target_rank = _HOTEL_TARGET_RANK[budget]
 
     def sort_key(h):
+        dist = distances.get(id(h))
+        far = dist is not None and dist > _HOTEL_PREFERRED_DISTANCE_KM
         price_level = h.get("priceLevel", "")
         rank = _HOTEL_PRICE_RANK.get(price_level, target_rank)  # unknown price → neutral fit
         rating = h.get("rating", 0) or 0
-        return (abs(rank - target_rank), -rating)
+        return (far, abs(rank - target_rank), -rating)
 
     eligible.sort(key=sort_key)
     return eligible[0]

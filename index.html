@@ -186,24 +186,28 @@
 <div id="screen-home" class="screen active">
   <div id="site-nav" class="fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-6 md:px-14 py-6">
     <span class="nav-logo font-serif-display text-xl md:text-2xl text-white transition-colors duration-300" style="text-shadow: 0 1px 8px rgba(0,0,0,0.35);">GetWay<span class="text-[#C4B5FD]">.</span></span>
-    <div class="hidden md:flex items-center gap-6">
-      <button type="button" onclick="scrollToPopular()" class="nav-link nav-hover-outline text-xs font-medium">Popular</button>
-      <button type="button" onclick="startVibeQuiz()" class="nav-link nav-hover-outline text-xs font-medium">Find your vibe</button>
-      <button type="button" onclick="startBuildTrip()" class="nav-link nav-hover-outline text-xs font-medium">Build your own trip</button>
-      <button type="button" onclick="scrollToHowItWorks()" class="nav-link nav-hover-outline text-xs font-medium">How it works</button>
+    <div class="hidden lg:flex items-center gap-5">
+      <button type="button" onclick="scrollToRoutes()" class="nav-link nav-hover-outline text-xs font-medium whitespace-nowrap">Routes</button>
+      <button type="button" onclick="startVibeQuiz()" class="nav-link nav-hover-outline text-xs font-medium whitespace-nowrap">Find your vibe</button>
+      <button type="button" onclick="startBuildTrip()" class="nav-link nav-hover-outline text-xs font-medium whitespace-nowrap">Build your trip</button>
+      <button type="button" onclick="scrollToHowItWorks()" class="nav-link nav-hover-outline text-xs font-medium whitespace-nowrap">How it works</button>
+      <button type="button" onclick="toggleSupportChat()" class="nav-link nav-hover-outline text-xs font-medium whitespace-nowrap">Support</button>
+      <button type="button" onclick="scrollToBestMonth()" class="nav-link nav-hover-outline text-xs font-medium whitespace-nowrap">Best this month</button>
+      <button type="button" onclick="scrollToRankings()" class="nav-link nav-hover-outline text-xs font-medium whitespace-nowrap">Most visited</button>
     </div>
     <div class="flex items-center gap-2">
-      <button type="button" onclick="toggleMobileMenu()" aria-label="Menu" class="md:hidden nav-browse-btn btn-interactive text-white/90 w-10 h-10 rounded-full border border-white/40 flex items-center justify-center transition-colors duration-300">
+      <button type="button" onclick="toggleMobileMenu()" aria-label="Menu" class="lg:hidden nav-browse-btn btn-interactive text-white/90 w-10 h-10 rounded-full border border-white/40 flex items-center justify-center transition-colors duration-300">
         <i data-lucide="menu" class="w-[18px] h-[18px]"></i>
       </button>
       <button onclick="scrollToRoutes()" class="nav-browse-btn btn-interactive text-[11px] md:text-xs font-medium text-white/90 rounded-full px-3.5 py-1.5 md:px-5 md:py-2.5 transition-colors duration-300">Browse Routes</button>
     </div>
   </div>
-  <!-- ── Mobile hamburger menu — slide-in panel, md:hidden. Lists every
+  <!-- ── Mobile hamburger menu — slide-in panel, lg:hidden. Lists every
        top-level destination on the site (routes, how it works, the vibe
-       quiz, support) since the horizontal nav-link row is hidden below the
-       md breakpoint. ─────────────────────────────────────────────────── -->
-  <div id="mobile-menu-overlay" class="hidden md:hidden fixed inset-0 z-[65]">
+       quiz, support) since the horizontal nav-link row (7 items, needs
+       real room) only shows at lg: and up — below that, this hamburger is
+       the only way to reach them. ────────────────────────────────────── -->
+  <div id="mobile-menu-overlay" class="hidden lg:hidden fixed inset-0 z-[65]">
     <div class="absolute inset-0 bg-black/50" onclick="toggleMobileMenu()"></div>
     <div class="absolute top-0 right-0 h-full w-[80%] max-w-[320px] bg-white shadow-2xl flex flex-col p-6 overflow-y-auto">
       <div class="flex items-center justify-between mb-8">
@@ -212,11 +216,12 @@
       </div>
       <div class="flex flex-col gap-0.5">
         <button type="button" onclick="mobileMenuGo(scrollToRoutes)" class="mobile-menu-link">Routes</button>
-        <button type="button" onclick="mobileMenuGo(scrollToPopular)" class="mobile-menu-link">Popular</button>
-        <button type="button" onclick="mobileMenuGo(startVibeQuiz)" class="mobile-menu-link">Find your vibe (game)</button>
-        <button type="button" onclick="mobileMenuGo(startBuildTrip)" class="mobile-menu-link">Build your own trip</button>
+        <button type="button" onclick="mobileMenuGo(startVibeQuiz)" class="mobile-menu-link">Find your vibe</button>
+        <button type="button" onclick="mobileMenuGo(startBuildTrip)" class="mobile-menu-link">Build your trip</button>
         <button type="button" onclick="mobileMenuGo(scrollToHowItWorks)" class="mobile-menu-link">How it works</button>
         <button type="button" onclick="mobileMenuGo(toggleSupportChat)" class="mobile-menu-link">Support</button>
+        <button type="button" onclick="mobileMenuGo(scrollToBestMonth)" class="mobile-menu-link">Best this month</button>
+        <button type="button" onclick="mobileMenuGo(scrollToRankings)" class="mobile-menu-link">Most visited</button>
       </div>
       <button type="button" onclick="mobileMenuGo(scrollToRoutes)" class="btn-interactive mt-auto w-full h-[48px] flex items-center justify-center bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">Browse Routes</button>
     </div>
@@ -1935,6 +1940,14 @@
   }
   function scrollToHowItWorks() {
     const el = document.getElementById('how-it-works-section');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  function scrollToBestMonth() {
+    const el = document.getElementById('month-destinations-section');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  function scrollToRankings() {
+    const el = document.getElementById('rankings-section');
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
   function renderHeroMedia(slidesOverride) {

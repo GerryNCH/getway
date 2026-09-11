@@ -20,6 +20,7 @@ import json
 import re
 import tempfile
 import threading
+import time
 from datetime import datetime, timezone
 
 import requests
@@ -32,7 +33,7 @@ import os
 
 import uuid
 
-from fastapi import FastAPI, HTTPException, File, UploadFile, Response
+from fastapi import FastAPI, HTTPException, File, UploadFile, Response, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -105,6 +106,67 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
+
+# ── Basic rate limiting for Build Your Own Trip's paid endpoints ───────────
+# Phase G item: these endpoints are public, no login — anyone can otherwise
+# trigger unlimited real Google Places / Anthropic spend against arbitrary
+# destinations. In-memory sliding window, not a library or Redis — this is
+# a single Railway instance with no horizontal scaling, so a plain dict
+# guarded by a lock is enough; if that ever changes, this needs to move to
+# something shared (Redis/DB-backed) instead of per-instance memory.
+#
+# Keyed by client IP from X-Forwarded-For, NOT request.client.host — Railway
+# sits behind its own edge proxy, so request.client.host would be the
+# proxy's address for every request, making IP-based limiting either a
+# no-op (never matches) or a denial-of-service against every visitor at
+# once (matches everyone). X-Forwarded-For's first entry is the original
+# client per standard proxy convention.
+_rate_limit_lock = threading.Lock()
+_rate_limit_hits: dict[tuple[str, str], list[float]] = {}
+
+
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _rate_limit(bucket: str, max_requests: int, window_seconds: int):
+    """
+    Returns a FastAPI dependency enforcing `max_requests` per client IP per
+    `window_seconds`, scoped to `bucket` (so /trip/build and /trip/hotel
+    have independent limits, not a shared pool). Raises 429 over the limit.
+    """
+    def dependency(request: Request) -> None:
+        ip = _client_ip(request)
+        key = (bucket, ip)
+        now = time.time()
+        with _rate_limit_lock:
+            hits = [t for t in _rate_limit_hits.get(key, []) if now - t < window_seconds]
+            if len(hits) >= max_requests:
+                raise HTTPException(
+                    429,
+                    f"Too many requests — please wait a bit before trying again "
+                    f"(limit: {max_requests} per {window_seconds // 60} minutes).",
+                )
+            hits.append(now)
+            _rate_limit_hits[key] = hits
+    return dependency
+
+
+# Every call here spends real Google Places (and often Anthropic) quota —
+# limits sized around genuine single-session usage (a traveler trying a
+# couple of budgets/activity combinations, building 1-2 previews) while
+# blocking a script hammering arbitrary destinations. /trip/candidates and
+# /trip/build are the expensive ones (multiple Places calls + an AI
+# curation/summary pass each); /trip/hotel and /trip/fun-fact are cheaper
+# but still real spend, so still limited, just more generously.
+_trip_candidates_rate_limit = _rate_limit("trip_candidates", max_requests=20, window_seconds=600)
+_trip_build_rate_limit = _rate_limit("trip_build", max_requests=15, window_seconds=600)
+_trip_hotel_rate_limit = _rate_limit("trip_hotel", max_requests=30, window_seconds=600)
+_trip_fun_fact_rate_limit = _rate_limit("trip_fun_fact", max_requests=30, window_seconds=600)
+_trip_search_place_rate_limit = _rate_limit("trip_search_place", max_requests=30, window_seconds=600)
 
 
 def _backfill_fun_facts_background():
@@ -447,7 +509,7 @@ def _normalize_activity_types(raw: list[str]) -> list[str]:
     return normalized
 
 
-@app.post("/trip/candidates", response_model=TripCandidatesResponse)
+@app.post("/trip/candidates", response_model=TripCandidatesResponse, dependencies=[Depends(_trip_candidates_rate_limit)])
 def get_trip_candidates(req: TripCandidatesRequest):
     """
     "Build Your Own Trip" secondary feature — Phase A (backend only, no
@@ -510,7 +572,7 @@ def get_trip_candidates(req: TripCandidatesRequest):
     )
 
 
-@app.post("/trip/fun-fact", response_model=TripFunFactResponse)
+@app.post("/trip/fun-fact", response_model=TripFunFactResponse, dependencies=[Depends(_trip_fun_fact_rate_limit)])
 def get_trip_fun_fact(req: TripFunFactRequest):
     """
     Thin wrapper around ai_analyzer.generate_fun_fact — its own endpoint,
@@ -596,7 +658,7 @@ def get_month_destinations(month: str):
     return MonthDestinationsResponse(month=month, destinations=enriched)
 
 
-@app.post("/trip/search-place", response_model=TripSearchResponse)
+@app.post("/trip/search-place", response_model=TripSearchResponse, dependencies=[Depends(_trip_search_place_rate_limit)])
 def search_trip_place(req: TripSearchRequest):
     """
     Manual search-and-add: a free-text Places search for something the
@@ -627,7 +689,7 @@ def search_trip_place(req: TripSearchRequest):
     )
 
 
-@app.post("/trip/hotel", response_model=TripHotelResponse)
+@app.post("/trip/hotel", response_model=TripHotelResponse, dependencies=[Depends(_trip_hotel_rate_limit)])
 def get_trip_hotel(req: TripHotelRequest):
     """
     "Build Your Own Trip" Phase B — recommends a single hotel matching the
@@ -679,7 +741,7 @@ def get_trip_hotel(req: TripHotelRequest):
 _BUDGET_PRICE_CATEGORY = {"cheap": "€", "mid": "€€", "luxury": "€€€"}
 
 
-@app.post("/trip/build", response_model=ExtractResponse)
+@app.post("/trip/build", response_model=ExtractResponse, dependencies=[Depends(_trip_build_rate_limit)])
 def build_trip(req: TripBuildRequest):
     """
     "Build Your Own Trip" Phase C — assembles a full Itinerary from the

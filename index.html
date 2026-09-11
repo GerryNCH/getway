@@ -908,6 +908,10 @@
   <!-- "Find flights" banner — right under the hotel banner, on every
        route. Admin-toggleable, see isAffiliateSectionEnabled('flights'). -->
   <div id="ai-route-flights-banner" class="px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-8 md:mb-10"></div>
+  <!-- City pass (GoCity) — grouped with the hotel/flights banners as a
+       "sort this out before you go" trip-prep item; trip-wide, not
+       day-specific. Admin-toggleable, see isAffiliateSectionEnabled('gocity'). -->
+  <div id="ai-route-gocity-banner" class="px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-8 md:mb-10"></div>
   <!-- Days + stops rendered here (the Day 1 / arrival-day group also gets
        an airport transfer banner injected inline — see renderAiRoute). -->
   <div id="ai-route-days" class="px-5 md:px-14 lg:px-24 pb-16 md:pb-24 max-w-4xl mx-auto"></div>
@@ -920,9 +924,6 @@
   <!-- Travel insurance — small banner at the end of the route. Admin-
        toggleable, see isAffiliateSectionEnabled('insurance'). -->
   <div id="ai-route-insurance-banner" class="px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-6 md:mb-8"></div>
-  <!-- City pass (GoCity) — same slot group as insurance, trip-wide.
-       Admin-toggleable, see isAffiliateSectionEnabled('gocity'). -->
-  <div id="ai-route-gocity-banner" class="px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mb-6 md:mb-8"></div>
   <!-- Affiliate + AI accuracy disclosure — required for FTC/EU transparency,
        kept deliberately understated per product decision: plain small text,
        no colored callout box, placed after all stops rather than above them. -->
@@ -3095,16 +3096,14 @@
     container.innerHTML = isAffiliateSectionEnabled('insurance') ? buildInsuranceBannerHtml(destination, videoId) : '';
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
-  // City pass (GoCity) — small banner at the end of the route, same slot
-  // group as travel insurance. Trip-wide, not day-specific.
+  // City pass (GoCity) — grouped with hotel/flights as a "before you go"
+  // trip-prep banner. Trip-wide, not day-specific.
   function buildGoCityBannerHtml(destination, videoId) {
     const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim() || destination || '';
     const href = goCityUrl(city);
     return `
       <div class="bento-card bg-white rounded-[22px] p-4 md:p-5 flex items-center gap-4">
-        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#8B5CF6] to-[#6D28D9] shadow-[0_4px_10px_-4px_rgba(124,58,237,0.5)] flex items-center justify-center flex-shrink-0">
-          <i data-lucide="ticket" class="w-5 h-5 text-white"></i>
-        </div>
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#8B5CF6] to-[#6D28D9] shadow-[0_4px_10px_-4px_rgba(124,58,237,0.5)] flex items-center justify-center flex-shrink-0 text-xl">🎫</div>
         <div class="flex-1 min-w-0">
           <div class="text-sm font-medium mb-0.5">Save on attractions in ${escapeHtml(city)}</div>
           <div class="text-xs text-gray-500">A city pass covers top sights and skips the line</div>

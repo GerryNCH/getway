@@ -474,7 +474,7 @@
       <div>
         <div class="text-xs font-semibold uppercase tracking-wide text-white/50 mb-4">Follow</div>
         <div class="flex gap-3">
-          <a href="https://www.tiktok.com/@gogetway" target="_blank" rel="noopener" aria-label="GetWay on TikTok" class="btn-interactive w-9 h-9 rounded-full bg-white/10 flex items-center justify-center"><i data-lucide="music-2" class="w-4 h-4 text-white"></i></a>
+          <a href="https://www.tiktok.com/@googetway" target="_blank" rel="noopener" aria-label="GetWay on TikTok" class="btn-interactive w-9 h-9 rounded-full bg-white/10 flex items-center justify-center"><i data-lucide="music-2" class="w-4 h-4 text-white"></i></a>
           <a href="https://www.instagram.com/go.getway" target="_blank" rel="noopener" aria-label="GetWay on Instagram" class="btn-interactive w-9 h-9 rounded-full bg-white/10 flex items-center justify-center"><svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="white" stroke-width="1.8"><rect x="2.5" y="2.5" width="19" height="19" rx="5"/><circle cx="12" cy="12" r="4.3"/><circle cx="17.2" cy="6.8" r="1.1" fill="white" stroke="none"/></svg></a>
         </div>
       </div>
@@ -642,7 +642,7 @@
       <div>
         <div class="text-xs font-semibold uppercase tracking-wide text-white/50 mb-4">Follow</div>
         <div class="flex gap-3">
-          <a href="https://www.tiktok.com/@gogetway" target="_blank" rel="noopener" aria-label="GetWay on TikTok" class="btn-interactive w-9 h-9 rounded-full bg-white/10 flex items-center justify-center"><i data-lucide="music-2" class="w-4 h-4 text-white"></i></a>
+          <a href="https://www.tiktok.com/@googetway" target="_blank" rel="noopener" aria-label="GetWay on TikTok" class="btn-interactive w-9 h-9 rounded-full bg-white/10 flex items-center justify-center"><i data-lucide="music-2" class="w-4 h-4 text-white"></i></a>
           <a href="https://www.instagram.com/go.getway" target="_blank" rel="noopener" aria-label="GetWay on Instagram" class="btn-interactive w-9 h-9 rounded-full bg-white/10 flex items-center justify-center"><svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="white" stroke-width="1.8"><rect x="2.5" y="2.5" width="19" height="19" rx="5"/><circle cx="12" cy="12" r="4.3"/><circle cx="17.2" cy="6.8" r="1.1" fill="white" stroke="none"/></svg></a>
         </div>
       </div>
@@ -2926,8 +2926,11 @@
   // needs airport codes, which a free-text destination string can't
   // reliably provide — linking there with a mismatched/empty code would be
   // worse than just sending people to Kiwi's own search homepage.
+  // Real tracking link (2026-09-11) — Kiwi.com has no "show full link"
+  // option, only this ready-made pre-tracked short link, so it's used
+  // directly rather than wrapped with withAffiliateMarker like the others.
   function kiwiFlightsUrl(destination) {
-    return withAffiliateMarker('https://www.kiwi.com/en/', 'kiwi');
+    return 'https://kiwi.tpx.lu/QP43qonE';
   }
   // Travel insurance — neither needs a destination in the URL itself.
   function safetyWingUrl() {
@@ -2939,11 +2942,17 @@
   // Airport transfers — both are real, working homepages; a true per-city
   // deep link would need a confirmed country/city slug format from each
   // partner's own docs, which isn't available yet.
+  // Real Travelpayouts tracking links (2026-09-11) — the previous plain
+  // homepage URLs carried no tracking marker at all. A full admin-
+  // configurable affiliate-marker system (SITE_SETTINGS + admin.html tab)
+  // is a separate, larger task Gerry chose to batch later with the rest
+  // of the Travelpayouts partners — these 3 confirmed links are
+  // hardcoded directly for now.
   function getTransferUrl(destination) {
-    return withAffiliateMarker('https://gettransfer.com/en', 'gettransfer');
+    return 'https://tp.media/r?campaign_id=147&marker=772114&p=4439&trs=568652&u=' + encodeURIComponent('https://gettransfer.com/en');
   }
   function kiwitaxiUrl(destination) {
-    return withAffiliateMarker('https://kiwitaxi.com/en', 'kiwitaxi');
+    return 'https://tp.media/r?campaign_id=1&marker=772114&p=647&trs=568652&u=' + encodeURIComponent('https://kiwitaxi.com/en');
   }
   // Visas — iVisa's real site does have per-country landing pages
   // (ivisa.com/{country}-visa), but GetWay's `destination` is often a city

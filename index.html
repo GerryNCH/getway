@@ -3736,7 +3736,19 @@
     renderFlightsBanner(itinerary.destination, videoId);
     renderInsuranceBanner(itinerary.destination, videoId);
     renderAiRouteComments(itinerary.comments);
-    initReviewsSection('ai-route', videoId);
+    // Community Reviews only makes sense for a route someone else actually
+    // booked through GetWay from a real video — a custom_builder trip is a
+    // one-off the traveler assembled themselves, with no "other travelers"
+    // to have reviewed it, so showing an empty review form/list there reads
+    // as broken rather than just quiet. screen-ai-route is reused across
+    // both kinds in the same session, so this has to actively hide/clear
+    // the section for a custom trip, not just skip populating it once.
+    const reviewsSection = document.getElementById('ai-route-reviews-section');
+    if (itinerary.source === 'custom_builder') {
+      if (reviewsSection) reviewsSection.innerHTML = '';
+    } else {
+      initReviewsSection('ai-route', videoId);
+    }
     // Days
     const container = document.getElementById('ai-route-days');
     container.innerHTML = itinerary.days.map((day, dayIndex) => {
@@ -4842,6 +4854,12 @@
         throw new Error(err.detail || 'Server error');
       }
       const data = await res.json();
+      // Carried on the itinerary object itself (not passed as a separate
+      // renderAiRoute argument) so it survives everywhere that object
+      // already flows unchanged — history.pushState/popstate restore,
+      // saveBuiltTrip()'s re-render after saving, etc. — see renderAiRoute's
+      // Community Reviews check.
+      data.itinerary.source = data.source;
       _buildTripState.previewItinerary = data.itinerary;
       renderAiRoute(data.itinerary, '', '');
       const bar = document.getElementById('build-trip-preview-bar');
@@ -4925,6 +4943,7 @@
         return res.json();
       })
       .then(data => {
+        data.itinerary.source = data.source; // see buildAndPreviewTrip's comment
         renderAiRoute(data.itinerary, data.video_id, '');
         pushRouteHistoryState(data.itinerary, data.video_id, '', false);
         showScreen('ai-route');

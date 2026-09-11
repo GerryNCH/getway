@@ -510,7 +510,7 @@ def _normalize_activity_types(raw: list[str]) -> list[str]:
 
 
 @app.post("/trip/candidates", response_model=TripCandidatesResponse, dependencies=[Depends(_trip_candidates_rate_limit)])
-def get_trip_candidates(req: TripCandidatesRequest, response: Response):
+def get_trip_candidates(req: TripCandidatesRequest):
     """
     "Build Your Own Trip" secondary feature — Phase A (backend only, no
     frontend yet). Returns a curated, budget-appropriate list of candidate
@@ -546,11 +546,18 @@ def get_trip_candidates(req: TripCandidatesRequest, response: Response):
         )
 
     print(f"[TripBuilder] Cache MISS for {city} / {budget} / activity_types={activity_types or 'none'} — searching Places")
-    # TEMPORARY timing breakdown (Phase G latency investigation — no
-    # Railway log access to check print() timestamps directly, so this
-    # puts the numbers in response headers instead, readable via a plain
-    # curl -i). Remove once the 20-30s /trip/candidates latency is
-    # diagnosed and either fixed or accepted.
+    # Timing breakdown confirmed live (Phase G latency investigation):
+    # Places search is fast (~0.6-1s consistently across several tested
+    # destinations) — the AI curation call below is the real cost, 15-24s
+    # for a typical 20-27 candidate list. That's inherent Haiku generation
+    # time for a full-batch JSON rewrite (one description + category +
+    # is_free + estimated_price + is_full_day per candidate), not a
+    # server/worker config issue — no Gunicorn/Uvicorn timeout involved,
+    # plain single-worker uvicorn with no request timeout configured
+    # anywhere in this stack. curate_candidates' description length was
+    # tightened (max ~15 words, was unconstrained) as a real but modest
+    # latency win — a bigger reduction would need either fewer output
+    # fields per candidate or a streaming/progressive-display rework.
     _t_places_start = time.time()
     raw_places = search_attractions_broad(city)
     for p in raw_places:
@@ -568,10 +575,6 @@ def get_trip_candidates(req: TripCandidatesRequest, response: Response):
     fitted = [p for p in raw_places if trip_place_is_open(p) and fits_budget(p, budget)]
     curated, cost_usd = curate_candidates(city, fitted)
     _t_curation_done = time.time()
-    response.headers["X-Debug-Places-Ms"] = str(round((_t_places_done - _t_places_start) * 1000))
-    response.headers["X-Debug-Curation-Ms"] = str(round((_t_curation_done - _t_places_done) * 1000))
-    response.headers["X-Debug-Raw-Count"] = str(len(raw_places))
-    response.headers["X-Debug-Fitted-Count"] = str(len(fitted))
     print(f"[TripBuilder] {city}/{budget}: {len(raw_places)} raw (deduped across "
           f"{1 + len(activity_types)} search(es)) -> {len(fitted)} fit budget -> "
           f"{len(curated)} after AI curation (${cost_usd:.4f}) — "

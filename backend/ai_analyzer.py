@@ -160,7 +160,7 @@ Schema:
 {
   "destination": "City, Country",
   "duration": "X days",
-  "summary": "2-3 sentence intro: what makes this destination special, and what this specific route covers (e.g. its vibe, standout stops, or theme)",
+  "summary": "2-3 sentence personal intro in a specific tone — see the 'summary' rule below, don't improvise the structure",
   "fun_fact": "One genuinely true fact about the destination itself that's surprising, quirky, or slightly odd — the kind that makes someone think 'huh, no way' or 'okay, now I want to go there.' NOT about any specific stop in this route, and NOT a flat postcard statement. One sentence, max ~20 words.",
   "fun_facts": ["3-4 DIFFERENT genuinely true facts about the destination, same bar as fun_fact above (surprising/quirky, never generic) — for the route page's 'getting to know [destination]' intro section. fun_fact above can be (and usually is) one of these four; don't strain to make all four distinct topics if the destination doesn't support it, but never repeat the exact same fact twice."],
   "travel_tips": ["3-5 short, practical, destination-specific tips a first-time visitor genuinely needs — see guidance below"],
@@ -302,10 +302,31 @@ Only fall back to a generic description ("is_specific_name": false) after
 genuinely checking for these — don't default to giving up early.
 
 Rules:
-- Always write "summary": 2-3 sentences, no more — first sentence about
-  what makes the destination itself appealing, second (and optionally
-  third) about what this specific route covers or its vibe. Plain,
-  engaging prose — not a bullet list, not marketing hype.
+- Always write "summary": 2-3 sentences, no more, in this specific
+  personal tone (confirmed style, don't improvise a different structure):
+    1. Open with a short, genuine compliment on the destination choice
+       itself — "Nice instinct choosing X" / "Great pick" / "Smart call"
+       style. Vary the exact phrasing between routes; don't reuse the same
+       opener every time.
+    2. A sentence built on real contrast or dynamic FROM THIS ROUTE'S
+       ACTUAL STOPS, not a generic destination description — something
+       like "X by day, Y by the end of the trip", grounded in what this
+       specific itinerary actually contains (e.g. city sightseeing early
+       on, something wilder or different later), never invented.
+    3. Close with one sentence characterizing what KIND of traveler this
+       specific route suits — "built for someone who wants…" — not a
+       recap of what's included.
+  Address the traveler indirectly, not literal "you" throughout (the
+  opening compliment already implies it — see the example). Never use
+  travel-brochure clichés ("has beautiful beaches", "rich culture",
+  "vibrant city"). Example, for an Edinburgh route whose stops are Old
+  Town sights early on and Arthur's Seat + a Highlands day trip later:
+    "Nice instinct choosing Edinburgh — medieval streets by day, volcanic
+    hills and Highlands by the end of the trip. This itinerary is built
+    for someone who wants a city that still feels a little wild."
+  This REPLACES the old "what makes the destination special, then what
+  the route covers" structure — don't blend the two. Plain, engaging
+  prose either way — not a bullet list, not marketing hype.
 - Extract EVERY named location — do not summarise or skip stops
 - If a place has no visible name after checking the clues above, describe it
   precisely and set "is_specific_name": false — e.g. "Cliffside restaurant
@@ -546,11 +567,16 @@ def generate_fun_facts(destination: str) -> tuple[list[str], float]:
         return [], 0.0
 
 
-_TRIP_SUMMARY_SYSTEM = """You write a short intro for a travel app's route page — the same "summary" a video-extracted route gets, just for a traveler who built their own trip instead of pasting a video link.
+_TRIP_SUMMARY_SYSTEM = """You write a short intro for a travel app's route page — the same "summary" a video-extracted route gets (see SYSTEM_PROMPT's "summary" rule in ai_analyzer.py — keep this in sync with that one), just for a traveler who built their own trip instead of pasting a video link.
 
 You'll receive a destination and the list of specific attractions/activities the traveler picked for their trip.
 
-Write 2-3 sentences, no more: the first about what makes the destination itself appealing, the second (and optionally third) about what THIS specific selection of stops covers or its vibe — reference the actual picks where it reads naturally, not just the destination in the abstract. Plain, engaging prose — not a bullet list, not marketing hype, not generic filler like "has beautiful beaches" or "is a popular tourist destination".
+Write 2-3 sentences, no more, in this specific personal tone (confirmed style, don't improvise a different structure):
+  1. Open with a short, genuine compliment on the destination choice itself — "Nice instinct choosing X" / "Great pick" / "Smart call" style. Vary the exact phrasing between routes; don't reuse the same opener every time.
+  2. A sentence built on real contrast or dynamic FROM THE TRAVELER'S ACTUAL PICKS, not a generic destination description — something like "X by day, Y by the end of the trip", grounded in what they actually selected, never invented.
+  3. Close with one sentence characterizing what KIND of traveler this specific selection suits — "built for someone who wants…" — not a recap of what's included.
+Address the traveler indirectly, not literal "you" throughout (the opening compliment already implies it — see the example). Never use travel-brochure clichés ("has beautiful beaches", "rich culture", "vibrant city"). Example, for an Edinburgh trip whose picks are Old Town sights plus Arthur's Seat and a Highlands day trip:
+  "Nice instinct choosing Edinburgh — medieval streets by day, volcanic hills and Highlands by the end of the trip. This itinerary is built for someone who wants a city that still feels a little wild."
 
 Reply with ONLY the summary text, nothing else — no markdown, no surrounding quotes."""
 

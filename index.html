@@ -3757,12 +3757,15 @@
       // it, per feedback that it read as disconnected from the hotel
       // section. Falls back to this standalone block only when there's no
       // hotel card at all to embed it in (no hotel confirmed from the
-      // video/build).
+      // video/build) — copy says "Add your hotel" here rather than the
+      // embedded version's "Booked a different hotel?", since there's no
+      // suggested hotel on screen to imply a replacement for (confirmed
+      // with Gerry).
       const hasDay1Hotel = dayIndex === 0 && hotels.length > 0;
       const hotelReplaceBlock = (dayIndex === 0 && !hasDay1Hotel) ? `
         <div class="mb-4 bento-card bg-white rounded-2xl p-4">
           <button type="button" onclick="openHotelReplaceSearch()" class="btn-outline-interactive w-full h-[40px] flex items-center justify-center gap-1.5 border border-dashed border-gray-300 text-xs font-medium text-[#6D28D9] rounded-xl">
-            <i data-lucide="search" class="w-3.5 h-3.5"></i>Booked a hotel already? Add it to the map
+            <i data-lucide="search" class="w-3.5 h-3.5"></i>Add your hotel to the map
           </button>
           <div id="ai-route-hotel-search-panel" class="hidden mt-3 bg-white rounded-2xl">
             <div class="flex gap-2 mb-2">

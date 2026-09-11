@@ -289,7 +289,7 @@ _HOTEL_SEARCH_FIELD_MASK = (
 def search_hotels_near(lat: float, lng: float, city: str, radius_meters: int = 4000,
                         max_results: int = 20, _retries: int = 2) -> list[dict]:
     """
-    Geographically-anchored hotel search: a "hotels in {city}" Text Search
+    Geographically-anchored hotel search: a bare "hotels" Text Search
     biased toward (lat, lng) via Places API (New)'s locationBias, so
     results cluster around wherever the traveler's selected attractions
     actually are — not wherever Google's own city-center bias happens to
@@ -298,6 +298,19 @@ def search_hotels_near(lat: float, lng: float, city: str, radius_meters: int = 4
     trip_builder.pick_hotel() filters/ranks these results, but it can only
     pick from what's actually near the traveler's chosen stops.
 
+    Real bug this fixes: the query used to be f"hotels in {city}" — fine
+    for a specific city, but `city` can be a whole region (e.g. "Tuscany,
+    Italy" for a multi-town trip), and Google's text relevance for that
+    broad name competes with locationBias rather than reinforcing it.
+    Confirmed live: anchored purely on the Tower of Pisa, "hotels in
+    Tuscany, Italy" returned a hotel 24.8km away — comfortably inside the
+    25km hard cutoff trip_builder.pick_hotel() applies, so it wasn't even
+    caught by that safety net, just a genuinely bad "close to what you'll
+    visit" match. Dropping the destination name from the query text and
+    relying on locationBias alone fixes this for regional destinations
+    without changing behavior for city-level ones (there the anchor is
+    already unambiguously inside that city, so the name added nothing).
+
     locationBias is a soft preference, not a hard filter — Google can still
     return something outside `radius_meters` if nothing better exists.
     Returns the raw places list with the field mask above; unclassified —
@@ -305,7 +318,7 @@ def search_hotels_near(lat: float, lng: float, city: str, radius_meters: int = 4
     """
     if not PLACES_API_KEY:
         return []
-    query = f"hotels in {city}"
+    query = "hotels"
     body = {
         "textQuery": query,
         "maxResultCount": max_results,

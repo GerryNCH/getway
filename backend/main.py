@@ -510,7 +510,7 @@ def _normalize_activity_types(raw: list[str]) -> list[str]:
 
 
 @app.post("/trip/candidates", response_model=TripCandidatesResponse, dependencies=[Depends(_trip_candidates_rate_limit)])
-def get_trip_candidates(req: TripCandidatesRequest):
+def get_trip_candidates(req: TripCandidatesRequest, response: Response):
     """
     "Build Your Own Trip" secondary feature — Phase A (backend only, no
     frontend yet). Returns a curated, budget-appropriate list of candidate
@@ -546,6 +546,12 @@ def get_trip_candidates(req: TripCandidatesRequest):
         )
 
     print(f"[TripBuilder] Cache MISS for {city} / {budget} / activity_types={activity_types or 'none'} — searching Places")
+    # TEMPORARY timing breakdown (Phase G latency investigation — no
+    # Railway log access to check print() timestamps directly, so this
+    # puts the numbers in response headers instead, readable via a plain
+    # curl -i). Remove once the 20-30s /trip/candidates latency is
+    # diagnosed and either fixed or accepted.
+    _t_places_start = time.time()
     raw_places = search_attractions_broad(city)
     for p in raw_places:
         p["_section"] = "attraction"
@@ -554,15 +560,22 @@ def get_trip_candidates(req: TripCandidatesRequest):
         for p in activity_places:
             p["_section"] = "activity"
         raw_places += activity_places
+    _t_places_done = time.time()
     # Order-preserving/first-occurrence-wins — a place found by both the
     # attraction search (appended first) and an activity search correctly
     # keeps its "attraction" tag.
     raw_places = dedupe_places(raw_places)
     fitted = [p for p in raw_places if trip_place_is_open(p) and fits_budget(p, budget)]
     curated, cost_usd = curate_candidates(city, fitted)
+    _t_curation_done = time.time()
+    response.headers["X-Debug-Places-Ms"] = str(round((_t_places_done - _t_places_start) * 1000))
+    response.headers["X-Debug-Curation-Ms"] = str(round((_t_curation_done - _t_places_done) * 1000))
+    response.headers["X-Debug-Raw-Count"] = str(len(raw_places))
+    response.headers["X-Debug-Fitted-Count"] = str(len(fitted))
     print(f"[TripBuilder] {city}/{budget}: {len(raw_places)} raw (deduped across "
           f"{1 + len(activity_types)} search(es)) -> {len(fitted)} fit budget -> "
-          f"{len(curated)} after AI curation (${cost_usd:.4f})")
+          f"{len(curated)} after AI curation (${cost_usd:.4f}) — "
+          f"places={round((_t_places_done - _t_places_start) * 1000)}ms curation={round((_t_curation_done - _t_places_done) * 1000)}ms")
 
     database.save_trip_candidates_cache(city, budget, curated, activity_types=activity_types, ttl_days=_TRIP_CACHE_TTL_DAYS)
     return TripCandidatesResponse(

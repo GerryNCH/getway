@@ -1456,8 +1456,18 @@ def get_month_destinations_cache(month: str) -> list[dict] | None:
       design's global uniqueness rule was starving later months (Jan-May
       hit the 10/month target every time, Oct/Nov/Dec fell to the
       emergency floor of 3) — see generate_month_calendar's docstring.
+      "v4:" (2026-09-12, same day) — the "v3" rollout's own first
+      regeneration got hit by several concurrent cold-cache requests
+      (manual verification checks, back to back) each racing their own
+      full 6-region regeneration; whichever finished last won the save,
+      and it was missing entire regions (a November with no Europe pick
+      at all, despite the prompt's own Christmas-markets example) because
+      some of ITS OWN 6 region calls failed under the added concurrent
+      Anthropic load. main.py's get_month_destinations now serializes
+      regeneration with a lock so this can't recur — this version bump
+      just clears the one bad save from before that lock existed.
     """
-    key = "v3:" + month.strip().lower()
+    key = "v4:" + month.strip().lower()
     with _conn() as conn:
         row = conn.execute(
             "SELECT destinations_json, expires_at FROM month_destinations_cache WHERE cache_key = ?",
@@ -1478,7 +1488,7 @@ def save_month_destinations_cache(month: str, destinations: list[dict], ttl_days
     See get_month_destinations_cache's docstring for why the cache key
     (not the stored `month` value) carries a version prefix.
     """
-    key = "v3:" + month.strip().lower()
+    key = "v4:" + month.strip().lower()
     now = datetime.utcnow()
     expires_at = now + timedelta(days=ttl_days)
     with _conn() as conn:

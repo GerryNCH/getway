@@ -627,6 +627,13 @@ _VALID_MONTHS = {
     "july", "august", "september", "october", "november", "december",
 }
 
+# Serializes generate_month_calendar() regeneration across concurrent
+# requests — see get_month_destinations' comment for the real bug this
+# fixes (concurrent cold-cache requests each racing their own full
+# 6-region regeneration, contending for Anthropic capacity and letting
+# a partial result silently overwrite a complete one).
+_month_calendar_regen_lock = threading.Lock()
+
 
 @app.get("/destinations/by-month", response_model=MonthDestinationsResponse)
 def get_month_destinations(month: str):
@@ -661,10 +668,30 @@ def get_month_destinations(month: str):
 
     cached = database.get_month_destinations_cache(month)
     if cached is None:
-        calendar, _cost = generate_month_calendar()
-        for m, destinations in calendar.items():
-            database.save_month_destinations_cache(m, destinations)
-        cached = calendar.get(month, [])
+        # Real bug this fixes, confirmed live right after the v3 cache-key
+        # bump: several requests hit a cold cache at once (this endpoint's
+        # own regeneration is what invalidated it for every month, so the
+        # very next few requests — including this session's own back-to-
+        # back manual checks — all raced in simultaneously), each
+        # independently kicking off its own full 6-region regeneration.
+        # Firing 6x that many concurrent Anthropic calls at once made some
+        # of THOSE individual region calls fail/timeout, and whichever
+        # regeneration finished last silently overwrote an earlier, more
+        # complete save with its own partial one — a live month ended up
+        # missing entire regions (Europe/Asia/Africa) that should
+        # obviously have real picks (November has Christmas markets!).
+        # This lock serializes regeneration: only the first request in a
+        # cold-cache window actually calls the (slow, 6-call) generator;
+        # everyone else waits, then re-reads the now-populated cache
+        # instead of piling on their own redundant, contention-prone
+        # regeneration.
+        with _month_calendar_regen_lock:
+            cached = database.get_month_destinations_cache(month)  # re-check: another request may have just finished while we waited for the lock
+            if cached is None:
+                calendar, _cost = generate_month_calendar()
+                for m, destinations in calendar.items():
+                    database.save_month_destinations_cache(m, destinations)
+                cached = calendar.get(month, [])
 
     enriched = []
     for d in cached:

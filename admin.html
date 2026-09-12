@@ -587,7 +587,10 @@ function buildCard(item, listType) {
         &nbsp;·&nbsp; ${item.view_count || 0} views
       </div>
     </div>
-    <div class="flex gap-2 action-buttons flex-wrap flex-shrink-0"></div>
+    <div class="flex-shrink-0 w-full md:w-auto">
+      <div class="flex gap-2 action-buttons-primary flex-wrap"></div>
+      <div class="flex gap-2 action-buttons-secondary flex-wrap mt-2"></div>
+    </div>
   `;
   card.appendChild(header);
 
@@ -595,21 +598,36 @@ function buildCard(item, listType) {
     if (e.target.checked) SELECTED.add(item.video_id); else SELECTED.delete(item.video_id);
   });
 
-  const actions = header.querySelector(".action-buttons");
-  actions.appendChild(makePillBtn("Preview", "pill-gray", () => window.open(`${SITE_URL}/?route=${encodeURIComponent(item.video_id)}`, "_blank"), previewIconSvg()));
-  if (item.url) {
-    actions.appendChild(makePillBtn("View clip", "pill-gray", () => window.open(item.url, "_blank"), playIconSvg()));
-  }
-  actions.appendChild(makePillBtn("Edit", "pill-gray", () => toggleEditor(card), editIconSvg()));
+  // Split into two rows on a "pending" card — 7 buttons wrapping in one
+  // flex-wrap row read as clutter on mobile, and buried Approve/Reject
+  // (the only two actions this whole tab exists for) among 5 secondary
+  // ones. Primary row's buttons are flex-1 so they split the full card
+  // width 50/50 on mobile (the wrapper above is w-full there); on
+  // desktop the wrapper reverts to w-auto so they size to content like
+  // before. "approved" cards only ever had 2 buttons total (Hide/Clear
+  // cache) — never the clutter problem — so those still go in one row.
+  const primary = header.querySelector(".action-buttons-primary");
+  const secondary = header.querySelector(".action-buttons-secondary");
 
   if (listType === "pending") {
-    actions.appendChild(makePillBtn("🤖 AI Check", "pill-gray ai-check-btn", () => doAIQualityCheck(item.video_id, card)));
-    actions.appendChild(makePillBtn("Approve", "pill-green", () => doApprove(item.video_id), checkIconSvg()));
-    actions.appendChild(makePillBtn("Reject", "pill-red", () => doReject(item.video_id), xIconSvg()));
-    actions.appendChild(makePillBtn("Clear cache", "pill-gray", () => doClearCache(item.video_id), refreshIconSvg()));
+    primary.appendChild(makePillBtn("Approve", "pill-green flex-1 justify-center", () => doApprove(item.video_id), checkIconSvg()));
+    primary.appendChild(makePillBtn("Reject", "pill-red flex-1 justify-center", () => doReject(item.video_id), xIconSvg()));
+
+    secondary.appendChild(makePillBtn("Preview", "pill-gray", () => window.open(`${SITE_URL}/?route=${encodeURIComponent(item.video_id)}`, "_blank"), previewIconSvg()));
+    if (item.url) {
+      secondary.appendChild(makePillBtn("View clip", "pill-gray", () => window.open(item.url, "_blank"), playIconSvg()));
+    }
+    secondary.appendChild(makePillBtn("Edit", "pill-gray", () => toggleEditor(card), editIconSvg()));
+    secondary.appendChild(makePillBtn("🤖 AI Check", "pill-gray ai-check-btn", () => doAIQualityCheck(item.video_id, card)));
+    secondary.appendChild(makePillBtn("Clear cache", "pill-gray", () => doClearCache(item.video_id), refreshIconSvg()));
   } else {
-    actions.appendChild(makePillBtn("Hide", "pill-gray", () => doHide(item.video_id), eyeOffIconSvg()));
-    actions.appendChild(makePillBtn("Clear cache", "pill-red solid", () => doClearCache(item.video_id), refreshIconSvg()));
+    secondary.appendChild(makePillBtn("Preview", "pill-gray", () => window.open(`${SITE_URL}/?route=${encodeURIComponent(item.video_id)}`, "_blank"), previewIconSvg()));
+    if (item.url) {
+      secondary.appendChild(makePillBtn("View clip", "pill-gray", () => window.open(item.url, "_blank"), playIconSvg()));
+    }
+    secondary.appendChild(makePillBtn("Edit", "pill-gray", () => toggleEditor(card), editIconSvg()));
+    secondary.appendChild(makePillBtn("Hide", "pill-gray", () => doHide(item.video_id), eyeOffIconSvg()));
+    secondary.appendChild(makePillBtn("Clear cache", "pill-red solid", () => doClearCache(item.video_id), refreshIconSvg()));
   }
 
   // AI Quality Check result panel — populated automatically below if a

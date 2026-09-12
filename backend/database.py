@@ -1442,15 +1442,22 @@ def get_month_destinations_cache(month: str) -> list[dict] | None:
     result (the AI call failed and returned nothing) — only None means
     "go generate".
 
-    "v2:" cache-key prefix (2026-09-12): entries cached before the
-    per-destination "region" field existed have none, and the 180-day TTL
-    means they'd otherwise keep serving region-less destinations for
-    months — prefixing the key makes every pre-existing row an automatic
-    cache miss right after deploy, without a manual prod DB wipe. The
-    `month` column itself is untouched (still the plain month name), only
-    cache_key carries the version tag.
+    Versioned cache-key prefix, bumped each time generate_month_calendar's
+    output shape/logic changes enough that old cached rows would be wrong
+    to keep serving for their remaining ~6-month TTL — a manual prod DB
+    wipe would otherwise be needed instead. The `month` column itself is
+    untouched (still the plain month name), only cache_key carries the
+    version tag.
+      "v2:" (2026-09-12) — added the per-destination "region" field.
+      "v3:" (2026-09-12, same day) — replaced the single whole-year call
+      + strict "every destination unique all year" rule with one call
+      PER REGION and a per-(month,region) cap that allows a destination
+      to legitimately repeat across months. Confirmed live the "v2"
+      design's global uniqueness rule was starving later months (Jan-May
+      hit the 10/month target every time, Oct/Nov/Dec fell to the
+      emergency floor of 3) — see generate_month_calendar's docstring.
     """
-    key = "v2:" + month.strip().lower()
+    key = "v3:" + month.strip().lower()
     with _conn() as conn:
         row = conn.execute(
             "SELECT destinations_json, expires_at FROM month_destinations_cache WHERE cache_key = ?",
@@ -1469,9 +1476,9 @@ def save_month_destinations_cache(month: str, destinations: list[dict], ttl_days
     year to year, unlike per-destination content elsewhere in this file.
 
     See get_month_destinations_cache's docstring for why the cache key
-    (not the stored `month` value) carries a "v2:" prefix.
+    (not the stored `month` value) carries a version prefix.
     """
-    key = "v2:" + month.strip().lower()
+    key = "v3:" + month.strip().lower()
     now = datetime.utcnow()
     expires_at = now + timedelta(days=ttl_days)
     with _conn() as conn:

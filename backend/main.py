@@ -631,17 +631,21 @@ _VALID_MONTHS = {
 @app.get("/destinations/by-month", response_model=MonthDestinationsResponse)
 def get_month_destinations(month: str):
     """
-    Homepage "Best places to visit this month" section — 10 real
-    destinations genuinely well-suited to `month`, each with a real
-    seasonal reason, a region (for the homepage's own continent filter),
-    and a real photo. The text (name + reason + region) comes from
-    ai_analyzer.generate_month_calendar, which generates ALL 12 months in
-    one call so the model can spread variety across the whole year instead
-    of reaching for the same "safe" answers every time (see that
-    function's docstring) — cached hard, long-term
-    (database.get/save_month_destinations_cache): a cache miss for ANY
-    month regenerates and re-caches every month at once, so later requests
-    for other months are free too.
+    Homepage "Best places to visit this month" section — every real
+    destination genuinely well-suited to `month`, up to ~10 PER continent
+    (not ~10 total — see ai_analyzer.TARGET_PER_REGION_MONTH), each with a
+    real seasonal reason, a region (for the homepage's own continent
+    filter — narrows this potentially-60-ish-item list back down to a
+    manageable one), and a real photo. The text (name + reason + region)
+    comes from ai_analyzer.generate_month_calendar, one call per
+    continent so a destination's picks only ever compete against others
+    in the SAME region for that region's own per-month cap, and a
+    destination may legitimately appear in more than one month (see that
+    function's docstring for why the previous single-call, whole-year-
+    unique design didn't hold up under a raised target) — cached hard,
+    long-term (database.get/save_month_destinations_cache): a cache miss
+    for ANY month regenerates and re-caches every month (across all 6
+    regions) at once, so later requests for other months are free too.
 
     Photos are fetched separately, per destination, at request time via
     places._get_destination_gallery_unsplash(count=1) — itself cached, so

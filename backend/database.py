@@ -1475,8 +1475,16 @@ def get_month_destinations_cache(month: str) -> list[dict] | None:
       generate_month_calendar() now spaces calls out and retries a
       failed one once before giving up — this bump clears the
       incomplete "v4" save from before that existed.
+      "v6:" (2026-09-12, same day, TEMPORARY) — Asia/Africa specifically
+      (not a rotating random pair) still came back empty even with the
+      v5 retry+spacing fix, across multiple runs — pointing at something
+      more deterministic than pure rate-limiting. Forces one more clean
+      regeneration so main.py's temporary X-Debug-Region-Errors response
+      header (see ai_analyzer._last_generation_errors) can capture the
+      real exception instead of guessing further. Remove this bump's
+      history note once the actual cause is found and fixed for real.
     """
-    key = "v5:" + month.strip().lower()
+    key = "v6:" + month.strip().lower()
     with _conn() as conn:
         row = conn.execute(
             "SELECT destinations_json, expires_at FROM month_destinations_cache WHERE cache_key = ?",
@@ -1497,7 +1505,7 @@ def save_month_destinations_cache(month: str, destinations: list[dict], ttl_days
     See get_month_destinations_cache's docstring for why the cache key
     (not the stored `month` value) carries a version prefix.
     """
-    key = "v5:" + month.strip().lower()
+    key = "v6:" + month.strip().lower()
     now = datetime.utcnow()
     expires_at = now + timedelta(days=ttl_days)
     with _conn() as conn:

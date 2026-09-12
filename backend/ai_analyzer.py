@@ -725,6 +725,13 @@ Reply with ONLY valid JSON, no markdown fences, all 12 month keys present:
 # appearance cap and specific-reason rule are designed to prevent.
 TARGET_PER_REGION_MONTH = 10
 
+# TEMPORARY diagnostic (2026-09-12) — see generate_month_calendar's inline
+# comment. Populated with "{region}: {error}" strings for any region that
+# exhausted its retries; main.py reads this right after calling the
+# function to surface it in a response header. Remove alongside that
+# comment once the real failure cause is found and fixed.
+_last_generation_errors: list[str] = []
+
 
 def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
     """
@@ -757,6 +764,16 @@ def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
     calendar: dict[str, list[dict]] = {month: [] for month in _CALENDAR_MONTHS}
     total_cost_usd = 0.0
     any_succeeded = False
+    # TEMPORARY diagnostic (2026-09-12): Asia/Africa specifically — not a
+    # rotating random pair — came back empty across multiple live runs
+    # even with the retry+spacing fix, which points at something more
+    # deterministic than pure rate-limiting (a parsing failure specific
+    # to those two prompts' actual responses, say) rather than transient
+    # load. No Railway log access from here, so main.py surfaces this
+    # list via a response header instead, same technique used earlier to
+    # debug /trip/candidates' latency. Remove once the real per-region
+    # failure reason is confirmed and fixed.
+    _last_generation_errors.clear()
 
     for region_idx, region in enumerate(_REGION_ORDER):
         # Real bug this retry loop + inter-call delay fix, confirmed live
@@ -800,6 +817,8 @@ def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
             except Exception as e:
                 is_last_attempt = attempt == 1
                 print(f"[MonthCalendar] {region} call failed (attempt {attempt + 1}/2): {type(e).__name__}: {e}")
+                if is_last_attempt:
+                    _last_generation_errors.append(f"{region}: {type(e).__name__}: {e}")
                 if not is_last_attempt:
                     time.sleep(1.5)
 

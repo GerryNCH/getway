@@ -298,6 +298,20 @@ function renderStats(stats) {
   const mostClicked = stats.most_clicked
     ? `${escapeHtml(stats.most_clicked.destination)} <span class="text-gray-400 text-sm font-sans">(${stats.most_clicked.clicks} clicks)</span>`
     : '<span class="text-gray-400 text-sm font-sans">No clicks yet</span>';
+  const PARTNER_DISPLAY_NAMES = {
+    booking: "Booking.com", expedia: "Expedia", getyourguide: "GetYourGuide",
+    kiwitaxi: "Kiwitaxi", gettransfer: "GetTransfer", kiwi: "Kiwi.com",
+    gocity: "GoCity", ivisa: "iVisa", safetywing: "SafetyWing",
+    worldnomads: "World Nomads", airbnb: "Airbnb", skyscanner: "Skyscanner",
+    reserve_table: "Reserve a table", unknown: "Unknown",
+  };
+  const partnerRows = (stats.partner_clicks || [])
+    .map((p) => {
+      const name = PARTNER_DISPLAY_NAMES[p.partner] || escapeHtml(p.partner);
+      const note = p.partner === "airbnb" ? ' <span class="text-gray-400">(no commission — untracked link)</span>' : "";
+      return `<li class="flex justify-between py-2.5 border-b border-gray-100 text-sm"><span>${name}${note}</span><span class="font-semibold">${p.clicks}</span></li>`;
+    })
+    .join("");
   content.innerHTML = `
     <div class="flex items-center justify-end mb-4">
       <button id="export-routes-btn" class="pill-btn pill-gray btn-interactive text-xs">${saveIconSvg()}<span>Export all routes</span></button>
@@ -328,7 +342,11 @@ function renderStats(stats) {
         <div class="font-serif-display text-lg">Affiliate link clicks (all routes)</div>
         <div class="font-serif-display text-2xl">${stats.total_affiliate_clicks || 0}</div>
       </div>
-      <p class="text-xs text-gray-400 leading-relaxed">This counts clicks on Booking.com / Expedia / Airbnb buttons — not confirmed bookings or commission earned. For actual commission revenue, check the <a href="https://members.cj.com" target="_blank" rel="noopener" class="text-[#8B5CF6] underline">CJ Affiliate dashboard</a> directly — that's where the real booking/payout data lives.</p>
+      <p class="text-xs text-gray-400 leading-relaxed">This counts clicks across every affiliate/booking button on the site — not confirmed bookings or commission. See the breakdown by partner below. For actual commission revenue, check each partner's own affiliate dashboard (e.g. <a href="https://members.cj.com" target="_blank" rel="noopener" class="text-[#8B5CF6] underline">CJ Affiliate</a> for Booking.com/Expedia) — that's where the real booking/payout data lives.</p>
+    </div>
+    <div class="bento-card p-6 mb-6">
+      <div class="font-serif-display text-lg mb-3">Affiliate clicks by partner</div>
+      <ul>${partnerRows || '<li class="text-gray-400 text-sm">No data yet</li>'}</ul>
     </div>
     <div class="bento-card p-6">
       <div class="font-serif-display text-lg mb-3">Top destinations</div>

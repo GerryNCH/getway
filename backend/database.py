@@ -168,6 +168,16 @@ def init_db() -> None:
                 updated_at                 TEXT NOT NULL
             );
 
+            -- Per-partner affiliate click counts (Booking, Expedia, Kiwitaxi,
+            -- GoCity, etc.) — itineraries.affiliate_click_count is one total
+            -- across every button on a route, with no way to tell which
+            -- partner actually got clicked. This is the breakdown the admin
+            -- Statistics tab's "Affiliate clicks by partner" card reads from.
+            CREATE TABLE IF NOT EXISTS affiliate_partner_clicks (
+                partner      TEXT PRIMARY KEY,
+                click_count  INTEGER NOT NULL DEFAULT 0
+            );
+
             -- Tracks one-time DATA migrations (e.g. "clear this cache table
             -- once") that need a run-exactly-once guard — schema changes
             -- (new columns) instead use the PRAGMA table_info pattern below,
@@ -973,6 +983,9 @@ def get_stats() -> dict:
             """SELECT video_id, destination, affiliate_click_count FROM itineraries
                WHERE affiliate_click_count > 0 ORDER BY affiliate_click_count DESC LIMIT 1"""
         ).fetchone()
+        partner_click_rows = conn.execute(
+            "SELECT partner, click_count FROM affiliate_partner_clicks ORDER BY click_count DESC"
+        ).fetchall()
     return {
         "total": total,
         "pending": pending,
@@ -990,6 +1003,9 @@ def get_stats() -> dict:
             {"destination": most_clicked_row["destination"], "clicks": most_clicked_row["affiliate_click_count"]}
             if most_clicked_row else None
         ),
+        "partner_clicks": [
+            {"partner": r["partner"], "clicks": r["click_count"]} for r in partner_click_rows
+        ],
     }
 
 
@@ -1010,6 +1026,22 @@ def increment_affiliate_click_count(video_id: str) -> bool:
             (video_id,),
         )
     return cur.rowcount > 0
+
+
+def increment_partner_click_count(partner: str) -> None:
+    """
+    Bumps `partner`'s (e.g. "booking", "kiwitaxi", "gocity") click count by
+    1 — the breakdown itineraries.affiliate_click_count alone can't give,
+    since that's one total across every affiliate button on a route. Upsert:
+    first click for a partner creates its row at 1, every one after that
+    just increments.
+    """
+    with _conn() as conn:
+        conn.execute(
+            """INSERT INTO affiliate_partner_clicks (partner, click_count) VALUES (?, 1)
+               ON CONFLICT(partner) DO UPDATE SET click_count = click_count + 1""",
+            (partner,),
+        )
 
 
 def get_site_settings() -> dict:

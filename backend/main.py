@@ -998,14 +998,20 @@ def track_view(video_id: str):
 
 
 @app.post("/track/affiliate-click/{video_id}")
-def track_affiliate_click(video_id: str):
+def track_affiliate_click(video_id: str, partner: str = "unknown"):
     """
     Public, unauthenticated — bumps a route's affiliate-link-click counter
-    by 1. Called when a visitor clicks a Booking.com/Expedia/Airbnb link.
-    Note: this counts CLICKS, not confirmed bookings/commissions — actual
-    commission revenue lives in the CJ Affiliate dashboard, not here.
+    by 1, AND (given `partner`, e.g. "booking"/"kiwitaxi"/"gocity") that
+    partner's own click count, for the admin Statistics tab's per-partner
+    breakdown — see database.increment_partner_click_count. `partner`
+    defaults to "unknown" only for safety against a stale frontend that
+    hasn't been redeployed with the param yet; every current call site
+    always passes a real slug. Note: this counts CLICKS, not confirmed
+    bookings/commissions — actual commission revenue lives in each
+    partner's own affiliate dashboard, not here.
     """
     database.increment_affiliate_click_count(video_id)
+    database.increment_partner_click_count(partner)
     return {"status": "ok"}
 
 

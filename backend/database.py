@@ -1464,10 +1464,19 @@ def get_month_destinations_cache(month: str) -> list[dict] | None:
       at all, despite the prompt's own Christmas-markets example) because
       some of ITS OWN 6 region calls failed under the added concurrent
       Anthropic load. main.py's get_month_destinations now serializes
-      regeneration with a lock so this can't recur — this version bump
-      just clears the one bad save from before that lock existed.
+      regeneration with a lock so this can't recur.
+      "v5:" (2026-09-12, same day) — even with the lock (one clean,
+      solo regeneration, no concurrency), 2 of the 6 per-region calls
+      still came back empty for every month (confirmed live twice:
+      once losing Europe/Asia/Africa/North America, once losing Asia/
+      Africa specifically) — a burst-rate-limit pattern from firing 6
+      Anthropic calls back to back with no spacing, compounded by the
+      old code giving up on a region permanently after one failure.
+      generate_month_calendar() now spaces calls out and retries a
+      failed one once before giving up — this bump clears the
+      incomplete "v4" save from before that existed.
     """
-    key = "v4:" + month.strip().lower()
+    key = "v5:" + month.strip().lower()
     with _conn() as conn:
         row = conn.execute(
             "SELECT destinations_json, expires_at FROM month_destinations_cache WHERE cache_key = ?",
@@ -1488,7 +1497,7 @@ def save_month_destinations_cache(month: str, destinations: list[dict], ttl_days
     See get_month_destinations_cache's docstring for why the cache key
     (not the stored `month` value) carries a version prefix.
     """
-    key = "v4:" + month.strip().lower()
+    key = "v5:" + month.strip().lower()
     now = datetime.utcnow()
     expires_at = now + timedelta(days=ttl_days)
     with _conn() as conn:

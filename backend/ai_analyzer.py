@@ -11,6 +11,7 @@ that handles the "unnamed restaurant" problem:
 
 import base64
 import json
+import time
 import urllib.parse
 
 import anthropic
@@ -757,26 +758,56 @@ def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
     total_cost_usd = 0.0
     any_succeeded = False
 
-    for region in _REGION_ORDER:
-        try:
-            response = _client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=4000,  # smaller than the old single-call 9000 — this call only ever covers 1 region's worth of output
-                system=_REGION_CALENDAR_SYSTEM_TEMPLATE.format(region=region),
-                messages=[{"role": "user", "content": f"Generate the {region} 12-month calendar."}],
-            )
-            usage = getattr(response, "usage", None)
-            if usage:
-                total_cost_usd += (
-                    usage.input_tokens * _HAIKU_INPUT_PER_MTOK
-                    + usage.output_tokens * _HAIKU_OUTPUT_PER_MTOK
-                ) / 1_000_000
-            raw = response.content[0].text.strip()
-            if raw.startswith("```"):
-                raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-            result = json.loads(raw)
-            any_succeeded = True
+    for region_idx, region in enumerate(_REGION_ORDER):
+        # Real bug this retry loop + inter-call delay fix, confirmed live
+        # across two separate runs: 6 back-to-back Anthropic calls with
+        # zero delay between them consistently left SOME regions with
+        # zero entries for the entire year — one run kept only South
+        # America/Oceania, another kept North America/South America/
+        # Europe/Oceania but lost Asia AND Africa both times — a classic
+        # burst-rate-limit signature (not a per-region content problem;
+        # ai_analyzer.SYSTEM_PROMPT.format(region=...) checked clean for
+        # all 6 regions). The old code also gave up on a region
+        # PERMANENTLY after one failure, dooming it to zero entries for
+        # all 12 months from a single transient error. Small proactive
+        # spacing between calls plus a retry/backoff on failure (same
+        # shape places.py's _text_search already uses) — belt and
+        # suspenders, since the Anthropic SDK's own default retry
+        # behavior alone wasn't enough (seen taking over 2 minutes on one
+        # request, and still losing 2 of 6 regions at the end of it).
+        if region_idx > 0:
+            time.sleep(1.0)
+        result = None
+        for attempt in range(2):
+            try:
+                response = _client.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=4000,  # smaller than the old single-call 9000 — this call only ever covers 1 region's worth of output
+                    system=_REGION_CALENDAR_SYSTEM_TEMPLATE.format(region=region),
+                    messages=[{"role": "user", "content": f"Generate the {region} 12-month calendar."}],
+                )
+                usage = getattr(response, "usage", None)
+                if usage:
+                    total_cost_usd += (
+                        usage.input_tokens * _HAIKU_INPUT_PER_MTOK
+                        + usage.output_tokens * _HAIKU_OUTPUT_PER_MTOK
+                    ) / 1_000_000
+                raw = response.content[0].text.strip()
+                if raw.startswith("```"):
+                    raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+                result = json.loads(raw)
+                break
+            except Exception as e:
+                is_last_attempt = attempt == 1
+                print(f"[MonthCalendar] {region} call failed (attempt {attempt + 1}/2): {type(e).__name__}: {e}")
+                if not is_last_attempt:
+                    time.sleep(1.5)
 
+        if result is None:
+            continue
+        any_succeeded = True
+
+        try:
             for month in _CALENDAR_MONTHS:
                 entries = result.get(month) or []
                 destinations = [

@@ -1441,8 +1441,16 @@ def get_month_destinations_cache(month: str) -> list[dict] | None:
     no cache entry or it has expired. An empty list IS a valid cached
     result (the AI call failed and returned nothing) — only None means
     "go generate".
+
+    "v2:" cache-key prefix (2026-09-12): entries cached before the
+    per-destination "region" field existed have none, and the 180-day TTL
+    means they'd otherwise keep serving region-less destinations for
+    months — prefixing the key makes every pre-existing row an automatic
+    cache miss right after deploy, without a manual prod DB wipe. The
+    `month` column itself is untouched (still the plain month name), only
+    cache_key carries the version tag.
     """
-    key = month.strip().lower()
+    key = "v2:" + month.strip().lower()
     with _conn() as conn:
         row = conn.execute(
             "SELECT destinations_json, expires_at FROM month_destinations_cache WHERE cache_key = ?",
@@ -1459,8 +1467,11 @@ def save_month_destinations_cache(month: str, destinations: list[dict], ttl_days
     default TTL (~6 months) — real, well-established seasonal patterns
     (cherry blossom season, monsoon timing, festival months) don't shift
     year to year, unlike per-destination content elsewhere in this file.
+
+    See get_month_destinations_cache's docstring for why the cache key
+    (not the stored `month` value) carries a "v2:" prefix.
     """
-    key = month.strip().lower()
+    key = "v2:" + month.strip().lower()
     now = datetime.utcnow()
     expires_at = now + timedelta(days=ttl_days)
     with _conn() as conn:

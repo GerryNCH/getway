@@ -668,25 +668,33 @@ def generate_travel_tips(destination: str) -> tuple[list[str], float]:
         return [], 0.0
 
 
-_MONTH_CALENDAR_SYSTEM = """You are building a full year's "best places to visit this month" calendar for GetWay, a travel app's homepage section — all 12 months at once, 12 real destinations per month (more than the ~8 that will actually be shown per month, on purpose — some of your picks will get cut in a de-duplication pass afterward, so give each month a generously wide pool to pick the final survivors from).
+_MONTH_CALENDAR_SYSTEM = """You are building a full year's "best places to visit this month" calendar for GetWay, a travel app's homepage section — all 12 months at once, 15 real destinations per month (more than the ~10 that will actually be shown per month, on purpose — some of your picks will get cut in a de-duplication pass afterward, so give each month a generously wide pool to pick the final survivors from, with enough left in each region after that pass for the site's own continent filter to have real choices).
 
-For EACH of the 12 months (January through December), pick 12 real, well-known destinations (a country, region, or city) that are GENUINELY at their best in that specific month, for a REAL, well-established seasonal reason — not just "nice weather" generically. Good reasons: a specific, well-known seasonal event or natural phenomenon (cherry blossom season, a famous festival, a wildlife migration, monsoon/dry-season timing, ski season, shoulder-season pricing with still-good weather, whale-watching season). Every reason must be something you're genuinely confident is real and well-established — never invent a festival, date, or phenomenon you're not sure exists. Avoid vague, seasonless filler ("great weather", "beautiful scenery") that could apply to any month.
+For EACH of the 12 months (January through December), pick 15 real, well-known destinations (a country, region, or city) that are GENUINELY at their best in that specific month, for a REAL, well-established seasonal reason — not just "nice weather" generically. Good reasons: a specific, well-known seasonal event or natural phenomenon (cherry blossom season, a famous festival, a wildlife migration, monsoon/dry-season timing, ski season, shoulder-season pricing with still-good weather, whale-watching season). Every reason must be something you're genuinely confident is real and well-established — never invent a festival, date, or phenomenon you're not sure exists. Avoid vague, seasonless filler ("great weather", "beautiful scenery") that could apply to any month.
 
 Rules:
-- Each COUNTRY/REGION may appear ONLY ONCE across the entire 12-month calendar — no exceptions, even if it has more than one good season, and even if you name a different specific park/city/sub-region within it each time. This is the rule people break without realizing it: putting Kenya's Samburu reserve in one month, Maasai Mara in another, and Tanzania's Serengeti in a third is STILL the same East-Africa-safari destination repeated three times, just with different location names attached — it does not satisfy this rule, it violates it. Likewise "India (Rajasthan)", "India (Kerala)", and "India (Agra)" all count as India, used three times. Before answering, mentally list the top-level country/region behind ALL 144 picks across the whole calendar and confirm every single one is genuinely unique — if two picks anywhere in the year share a country/region, delete the weaker one and replace it with a completely different destination. Don't let big, easy, globally-famous answers (Iceland, New Zealand, East Africa safaris, India, Peru) crowd out the calendar just because they're each defensible for several different months — spread the picks genuinely wide across the whole year and across regions. With 144 slots to fill and roughly 195 countries in the world, there is no excuse for reusing one — reach for genuinely different, less-obvious-but-still-real countries once the famous ones are used.
+- Each COUNTRY/REGION may appear ONLY ONCE across the entire 12-month calendar — no exceptions, even if it has more than one good season, and even if you name a different specific park/city/sub-region within it each time. This is the rule people break without realizing it: putting Kenya's Samburu reserve in one month, Maasai Mara in another, and Tanzania's Serengeti in a third is STILL the same East-Africa-safari destination repeated three times, just with different location names attached — it does not satisfy this rule, it violates it. Likewise "India (Rajasthan)", "India (Kerala)", and "India (Agra)" all count as India, used three times. Before answering, mentally list the top-level country/region behind ALL 180 picks across the whole calendar and confirm every single one is genuinely unique — if two picks anywhere in the year share a country/region, delete the weaker one and replace it with a completely different destination. Don't let big, easy, globally-famous answers (Iceland, New Zealand, East Africa safaris, India, Peru) crowd out the calendar just because they're each defensible for several different months — spread the picks genuinely wide across the whole year and across regions. With 180 slots to fill and roughly 195 countries in the world, there is no excuse for reusing one — reach for genuinely different, less-obvious-but-still-real countries once the famous ones are used.
 - The "name" field must be ONLY a real place name (a country, a named region, or a city) — e.g. "Japan" or "Kyoto, Japan" — NEVER a descriptive phrase like "cherry blossom season throughout Japan". The seasonal description belongs entirely in the "reason" field.
+- "region" must be EXACTLY one of these six strings — no other values, no variants, no abbreviations, so it matches the site's own continent filter deterministically: "Europe", "Asia", "Africa", "North America", "South America", "Oceania". Pick the continent the destination is actually in (e.g. Morocco → "Africa", Mexico → "North America", Peru → "South America", the Maldives → "Asia", Fiji → "Oceania").
 - Make sure famous seasonal classics actually show up somewhere in the calendar where they truly fit — e.g. the Maldives' dry season, Japan's cherry blossoms, Munich's Oktoberfest, the Serengeti migration, Rio's Carnival — don't overlook an obvious, famous fit just to seem original.
 - Describe timing qualitatively ("late March into early April", "the dry season") — never give a precise date or date range that could be wrong in a different year (exact cherry blossom or festival dates shift year to year).
-- Within each month, don't repeat the same reason-type for every entry (not 12 cherry-blossom-style entries) — vary the angle: a festival, a climate/season window, a wildlife event, a shoulder-season value pick, etc. Also cover a real mix of regions within each month's 12 picks — don't cluster them all in one continent.
+- Within each month, don't repeat the same reason-type for every entry (not 15 cherry-blossom-style entries) — vary the angle: a festival, a climate/season window, a wildlife event, a shoulder-season value pick, etc. Also cover a real mix of regions within each month's 15 picks — don't cluster them all in one continent.
 - One short, engaging sentence per destination explaining the specific reason (max ~18 words) — a travel-writer's voice, not a dry almanac entry.
 
-Reply with ONLY valid JSON, no markdown fences, all 12 month keys present with exactly 12 entries each:
-{"January": [{"name": "Japan", "reason": "..."}, ...12 total...], "February": [...], "March": [...], "April": [...], "May": [...], "June": [...], "July": [...], "August": [...], "September": [...], "October": [...], "November": [...], "December": [...]}"""
+Reply with ONLY valid JSON, no markdown fences, all 12 month keys present with exactly 15 entries each:
+{"January": [{"name": "Japan", "region": "Asia", "reason": "..."}, ...15 total...], "February": [...], "March": [...], "April": [...], "May": [...], "June": [...], "July": [...], "August": [...], "September": [...], "October": [...], "November": [...], "December": [...]}"""
 
 _CALENDAR_MONTHS = [
     "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December",
 ]
+
+# The exact 6 values _MONTH_CALENDAR_SYSTEM's "region" field is instructed
+# to use — kept as a single source of truth here so the frontend's
+# continent filter (index.html) always has a deterministic match; an
+# entry whose region isn't exactly one of these is dropped, same as an
+# oversized "name" below.
+_VALID_REGIONS = {"Europe", "Asia", "Africa", "North America", "South America", "Oceania"}
 
 
 def _destination_root_tokens(name: str) -> set[str]:
@@ -711,8 +719,9 @@ def _destination_root_tokens(name: str) -> set[str]:
 def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
     """
     One Haiku call that generates a full year's "best places to visit this
-    month" calendar — all 12 months at once, 8 destinations each —
-    homepage "Best places to visit this month" section.
+    month" calendar — all 12 months at once, 10 destinations each, each
+    tagged with a region (see _VALID_REGIONS) for the homepage's own
+    continent filter — homepage "Best places to visit this month" section.
 
     Replaces the old approach of 12 independent per-month calls: those had
     no visibility into each other's picks, so the model kept reaching for
@@ -723,7 +732,7 @@ def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
     actually spread variety across months the way a real travel editor
     would.
 
-    Returns ({month_name: [{"name", "reason"}, ...]}, cost_usd). Never
+    Returns ({month_name: [{"name", "reason", "region"}, ...]}, cost_usd). Never
     raises — returns ({}, 0.0) on any failure, same non-fatal contract as
     generate_fun_fact. Photos are fetched separately per-destination at
     request time (see main.py's use of places._get_destination_gallery_unsplash)
@@ -753,7 +762,11 @@ def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
         for month in _CALENDAR_MONTHS:
             entries = result.get(month) or []
             destinations = [
-                {"name": str(d.get("name") or "").strip(), "reason": str(d.get("reason") or "").strip()}
+                {
+                    "name": str(d.get("name") or "").strip(),
+                    "reason": str(d.get("reason") or "").strip(),
+                    "region": str(d.get("region") or "").strip(),
+                }
                 for d in entries
             ]
             # A place name is always short — a country, named region, or
@@ -762,7 +775,14 @@ def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
             # throughout Japan") despite being told not to; a length cap
             # is a cheap, reliable way to drop those malformed entries
             # rather than showing broken-looking cards on the homepage.
-            calendar[month] = [d for d in destinations if d["name"] and d["reason"] and len(d["name"]) <= 40]
+            # Same reasoning for "region": anything other than one of the
+            # 6 exact strings the frontend filter matches against would
+            # either silently never match any filter chip, or (worse)
+            # crash nothing but just look broken — dropped here instead.
+            calendar[month] = [
+                d for d in destinations
+                if d["name"] and d["reason"] and len(d["name"]) <= 40 and d["region"] in _VALID_REGIONS
+            ]
 
         # Deterministic cross-month dedup by root country/region — see
         # _destination_root_tokens' docstring for why this can't be left
@@ -771,7 +791,7 @@ def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
         # park/city within it each month. Iterating in calendar order so
         # a country's FIRST (best-fit) month wins and later repeats of it
         # are dropped, rather than picking arbitrarily. The prompt asks
-        # for 12 raw picks per month specifically so there's real slack
+        # for 15 raw picks per month specifically so there's real slack
         # here — capping the kept list at TARGET_PER_MONTH once enough
         # unique survivors are found, rather than needing every single
         # raw pick to be unique.
@@ -784,10 +804,10 @@ def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
         # silently re-adding the exact repeats the whole pass exists to
         # remove (confirmed live: Maldives came back 3x this way). The
         # ABSOLUTE_FLOOR fallback below only fires when a month has
-        # fewer than 3 survivors — far below what a 12-pick raw pool
+        # fewer than 3 survivors — far below what a 15-pick raw pool
         # should ever produce — and exists purely so a homepage section
         # can't render nearly blank, not as routine behavior.
-        TARGET_PER_MONTH = 8
+        TARGET_PER_MONTH = 10
         ABSOLUTE_FLOOR = 3
         used_tokens: set[str] = set()
         for month in _CALENDAR_MONTHS:

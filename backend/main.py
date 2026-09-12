@@ -631,9 +631,10 @@ _VALID_MONTHS = {
 @app.get("/destinations/by-month", response_model=MonthDestinationsResponse)
 def get_month_destinations(month: str):
     """
-    Homepage "Best places to visit this month" section — 8 real
+    Homepage "Best places to visit this month" section — 10 real
     destinations genuinely well-suited to `month`, each with a real
-    seasonal reason and a real photo. The text (name + reason) comes from
+    seasonal reason, a region (for the homepage's own continent filter),
+    and a real photo. The text (name + reason + region) comes from
     ai_analyzer.generate_month_calendar, which generates ALL 12 months in
     one call so the model can spread variety across the whole year instead
     of reaching for the same "safe" answers every time (see that
@@ -669,7 +670,7 @@ def get_month_destinations(month: str):
             photo_url = gallery[0]["url"] if gallery else ""
         except Exception:
             pass
-        enriched.append({"name": d["name"], "reason": d["reason"], "photo_url": photo_url})
+        enriched.append({"name": d["name"], "reason": d["reason"], "region": d.get("region", ""), "photo_url": photo_url})
 
     return MonthDestinationsResponse(month=month, destinations=enriched)
 

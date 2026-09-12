@@ -392,6 +392,10 @@ class VibeQuizMatchResponse(BaseModel):
 class MonthDestination(BaseModel):
     name: str
     reason: str
+    region: str = ""  # one of ai_analyzer._VALID_REGIONS — "" only for rows
+                       # cached before this field existed (see database.py's
+                       # "v2:" cache-key prefix, which makes those a miss
+                       # anyway) or an unexpected parse edge case
     photo_url: str = ""  # "" if Unsplash has nothing cached yet — frontend
                           # falls back to a gradient letter avatar
 

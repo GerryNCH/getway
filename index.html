@@ -400,12 +400,23 @@
       <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 max-w-xs md:text-right">Real seasonal reasons — festivals, weather windows, wildlife — not just "nice weather" filler.</div>
     </div>
     <div id="month-picker" class="peek-scroll flex gap-2 pb-6 overflow-x-auto pr-0 -mr-6 md:-mr-14"></div>
+    <!-- Continent filter — client-side only, filters whatever month's
+         destinations are already loaded (see applyRegionFilterAndRender in
+         the script below). Rendered once at init (see renderRegionPicker),
+         not rebuilt on every month switch like #month-picker's chips are. -->
+    <div id="region-picker" class="peek-scroll flex gap-2 pb-4 overflow-x-auto pr-0 -mr-6 md:-mr-14"></div>
     <div id="month-destinations-list" class="peek-scroll flex gap-4 overflow-x-auto pb-2 pr-0 -mr-6 md:-mr-14"></div>
     <div id="month-destinations-loading" class="text-center text-sm text-gray-400 py-10">
       <span class="inline-block text-2xl mb-2">🌍</span>
       <div>Finding the best places for this month…</div>
     </div>
     <div id="month-destinations-empty" class="hidden text-center text-sm text-gray-400 py-10">Couldn't find recommendations for this month right now — try again shortly.</div>
+    <!-- Distinct from the empty state above: the fetch itself succeeded,
+         there just aren't any picks for this specific region+month
+         combination (small continents like Oceania genuinely won't have
+         one every month) — a different message so this doesn't read as
+         a network/server error. -->
+    <div id="month-destinations-region-empty" class="hidden text-center text-sm text-gray-400 py-10"></div>
   </div>
   <div id="routes-section" class="max-w-6xl mx-auto px-6 md:px-14 pt-4">
     <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
@@ -2804,6 +2815,14 @@
   // (or that other visitors already triggered) is instant.
   const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   let _monthDestinationsSelectedMonth = null;
+  // Continent filter — client-side only (see applyRegionFilterAndRender):
+  // the month fetch already returns every destination for that month, so
+  // switching continents just re-filters the array already in memory
+  // rather than firing a new request. 'All' must match no real "region"
+  // value the backend ever sends (see ai_analyzer._VALID_REGIONS).
+  const REGIONS = ['All', 'Europe', 'Asia', 'Africa', 'North America', 'South America', 'Oceania'];
+  let _monthDestinationsSelectedRegion = 'All';
+  let _monthDestinationsAll = []; // full fetched list for the current month, unfiltered by region
   function renderMonthPicker() {
     const picker = document.getElementById('month-picker');
     if (!picker) return;
@@ -2813,6 +2832,16 @@
       <button type="button" onclick="selectMonthDestinations('${m}', this)" class="month-chip flex-shrink-0 h-[36px] px-4 text-xs font-medium rounded-full whitespace-nowrap transition-colors ${m === currentMonth ? 'bg-[#8B5CF6] text-white' : 'bg-white border border-gray-200 text-gray-600'}">${m}</button>
     `).join('');
     loadMonthDestinations(currentMonth);
+  }
+  // Rendered once at init (unlike renderMonthPicker, which rebuilds its
+  // chips' active state every month switch) — the region chips' active
+  // state only ever changes from a direct click on one of them.
+  function renderRegionPicker() {
+    const picker = document.getElementById('region-picker');
+    if (!picker) return;
+    picker.innerHTML = REGIONS.map(r => `
+      <button type="button" onclick="selectRegionDestinations('${r}', this)" class="region-chip flex-shrink-0 h-[32px] px-3.5 text-xs font-medium rounded-full whitespace-nowrap transition-colors ${r === _monthDestinationsSelectedRegion ? 'bg-[#8B5CF6] text-white' : 'bg-white border border-gray-200 text-gray-600'}">${r === 'All' ? 'All continents' : r}</button>
+    `).join('');
   }
   function selectMonthDestinations(month, btn) {
     if (month === _monthDestinationsSelectedMonth) return;
@@ -2825,13 +2854,26 @@
     btn.classList.add('bg-[#8B5CF6]', 'text-white');
     loadMonthDestinations(month);
   }
+  function selectRegionDestinations(region, btn) {
+    if (region === _monthDestinationsSelectedRegion) return;
+    _monthDestinationsSelectedRegion = region;
+    document.querySelectorAll('.region-chip').forEach(chip => {
+      chip.classList.remove('bg-[#8B5CF6]', 'text-white');
+      chip.classList.add('bg-white', 'border', 'border-gray-200', 'text-gray-600');
+    });
+    btn.classList.remove('bg-white', 'border', 'border-gray-200', 'text-gray-600');
+    btn.classList.add('bg-[#8B5CF6]', 'text-white');
+    applyRegionFilterAndRender();
+  }
   async function loadMonthDestinations(month) {
     const listEl = document.getElementById('month-destinations-list');
     const loadingEl = document.getElementById('month-destinations-loading');
     const emptyEl = document.getElementById('month-destinations-empty');
+    const regionEmptyEl = document.getElementById('month-destinations-region-empty');
     const myMonth = month;
     listEl.innerHTML = '';
     emptyEl.classList.add('hidden');
+    regionEmptyEl.classList.add('hidden');
     loadingEl.classList.remove('hidden');
     try {
       const res = await fetch(`${BACKEND_URL}/destinations/by-month?month=${encodeURIComponent(month)}`);
@@ -2845,25 +2887,50 @@
         emptyEl.classList.remove('hidden');
         return;
       }
-      listEl.innerHTML = destinations.map((d, i) => `
-        <div data-aos="fade-up" data-aos-delay="${i * 40}" class="bento-card bg-white rounded-2xl overflow-hidden relative flex-shrink-0 w-[220px] md:w-[240px]">
-          <div class="w-full h-[120px] flex-shrink-0 relative">
-            ${d.photo_url
-              ? `<img src="${escapeHtml(d.photo_url)}" alt="${escapeHtml(d.name)}" class="w-full h-full object-cover" loading="lazy">`
-              : `<div class="w-full h-full flex items-center justify-center text-white text-2xl font-semibold" style="background:${gradientFor('month-' + d.name)}">${escapeHtml((d.name || '?').charAt(0))}</div>`}
-          </div>
-          <div class="min-w-0 p-3.5">
-            <div class="text-sm font-medium mb-1">${escapeHtml(d.name)}</div>
-            <div class="text-xs text-gray-500 leading-relaxed">${escapeHtml(d.reason)}</div>
-          </div>
-        </div>`).join('');
-      if (typeof lucide !== 'undefined') lucide.createIcons();
-      if (typeof AOS !== 'undefined') AOS.refreshHard();
+      _monthDestinationsAll = destinations;
+      applyRegionFilterAndRender();
     } catch (e) {
       if (myMonth !== _monthDestinationsSelectedMonth) return;
       loadingEl.classList.add('hidden');
       emptyEl.classList.remove('hidden');
     }
+  }
+  // Shared by loadMonthDestinations (new month fetched) and
+  // selectRegionDestinations (same month, different continent picked) —
+  // the single place that turns _monthDestinationsAll + the current
+  // region filter into what's actually on screen. Deliberately a
+  // DIFFERENT empty state than #month-destinations-empty: that one means
+  // "the fetch itself failed/returned nothing", this means "the fetch
+  // worked fine, this continent just has no picks for this month" — a
+  // real, expected outcome for smaller continents (Oceania, say), not an
+  // error, so it shouldn't read as one.
+  function applyRegionFilterAndRender() {
+    const listEl = document.getElementById('month-destinations-list');
+    const regionEmptyEl = document.getElementById('month-destinations-region-empty');
+    const filtered = _monthDestinationsSelectedRegion === 'All'
+      ? _monthDestinationsAll
+      : _monthDestinationsAll.filter(d => d.region === _monthDestinationsSelectedRegion);
+    if (!filtered.length) {
+      listEl.innerHTML = '';
+      regionEmptyEl.textContent = `No picks for ${_monthDestinationsSelectedRegion} in ${_monthDestinationsSelectedMonth} yet — try another continent or month.`;
+      regionEmptyEl.classList.remove('hidden');
+      return;
+    }
+    regionEmptyEl.classList.add('hidden');
+    listEl.innerHTML = filtered.map((d, i) => `
+      <div data-aos="fade-up" data-aos-delay="${i * 40}" class="bento-card bg-white rounded-2xl overflow-hidden relative flex-shrink-0 w-[220px] md:w-[240px]">
+        <div class="w-full h-[120px] flex-shrink-0 relative">
+          ${d.photo_url
+            ? `<img src="${escapeHtml(d.photo_url)}" alt="${escapeHtml(d.name)}" class="w-full h-full object-cover" loading="lazy">`
+            : `<div class="w-full h-full flex items-center justify-center text-white text-2xl font-semibold" style="background:${gradientFor('month-' + d.name)}">${escapeHtml((d.name || '?').charAt(0))}</div>`}
+        </div>
+        <div class="min-w-0 p-3.5">
+          <div class="text-sm font-medium mb-1">${escapeHtml(d.name)}</div>
+          <div class="text-xs text-gray-500 leading-relaxed">${escapeHtml(d.reason)}</div>
+        </div>
+      </div>`).join('');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    if (typeof AOS !== 'undefined') AOS.refreshHard();
   }
   // ── Affiliate config (Phase 2) ───────────────────────────────────────────
   // CJ Affiliate (Booking.com) — used as a fallback when a stop has no
@@ -5292,6 +5359,7 @@
     safeRun('initNavScroll', initNavScroll);
     safeRun('renderRankings (initial)', function () { renderRankings(); });
     safeRun('loadRankingPhotos', function () { loadRankingPhotos(); });
+    safeRun('renderRegionPicker', renderRegionPicker);
     safeRun('renderMonthPicker', renderMonthPicker);
     safeRun('lucide.createIcons', function () {
       if (typeof lucide !== 'undefined') { lucide.createIcons(); }

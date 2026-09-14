@@ -1475,16 +1475,35 @@ def get_month_destinations_cache(month: str) -> list[dict] | None:
       generate_month_calendar() now spaces calls out and retries a
       failed one once before giving up — this bump clears the
       incomplete "v4" save from before that existed.
-      "v6:" (2026-09-12, same day, TEMPORARY) — Asia/Africa specifically
-      (not a rotating random pair) still came back empty even with the
-      v5 retry+spacing fix, across multiple runs — pointing at something
-      more deterministic than pure rate-limiting. Forces one more clean
-      regeneration so main.py's temporary X-Debug-Region-Errors response
-      header (see ai_analyzer._last_generation_errors) can capture the
-      real exception instead of guessing further. Remove this bump's
-      history note once the actual cause is found and fixed for real.
+      "v6:" (2026-09-12, same day) — temporary diagnostic bump, since
+      superseded by "v7" below; the X-Debug-Region-Errors response header
+      and _last_generation_errors it relied on have been removed now that
+      the real cause is confirmed and fixed.
+      "v7:" (2026-09-13/14) — the real fixes, found via several local
+      runs against the live API:
+      1) every region except Oceania was hitting max_tokens=4000 and
+      getting cut off mid-JSON-string every single time (not
+      rate-limiting — retrying the same over-budget request just fails
+      the same way twice).
+      2) the prompt's own "max 3x/year" repeat rule turned out to not be
+      reliably followed at all (one destination showed up in all 12
+      months in a test run) — now enforced in code at the end of
+      generate_month_calendar() instead of trusted to the prompt alone.
+      3) fixing #2 alone just thinned out later months with no
+      replacement, since each region+month's raw candidate list was
+      already trimmed to TARGET_PER_REGION_MONTH before the cap ran —
+      selection and the cap now happen together so a capped-out pick can
+      be backfilled from further down that same raw list.
+      4) the prompt asks for 15 raw candidates/month now (was "10-12",
+      but the model was defaulting to exactly 10 regardless) so there's
+      real headroom for #3's backfill to draw on; max_tokens raised to
+      16000 to match. Confirmed live 2/6 regions (Asia, Africa) were
+      recycling a tiny ~26-destination shortlist across the whole year
+      instead of genuinely varying by month — added explicit prompt
+      guidance against that, confirmed live it raised Asia's unique
+      destination count from 26 to 120 across the year.
     """
-    key = "v6:" + month.strip().lower()
+    key = "v7:" + month.strip().lower()
     with _conn() as conn:
         row = conn.execute(
             "SELECT destinations_json, expires_at FROM month_destinations_cache WHERE cache_key = ?",
@@ -1505,7 +1524,7 @@ def save_month_destinations_cache(month: str, destinations: list[dict], ttl_days
     See get_month_destinations_cache's docstring for why the cache key
     (not the stored `month` value) carries a version prefix.
     """
-    key = "v6:" + month.strip().lower()
+    key = "v7:" + month.strip().lower()
     now = datetime.utcnow()
     expires_at = now + timedelta(days=ttl_days)
     with _conn() as conn:

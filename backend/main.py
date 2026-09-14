@@ -56,7 +56,6 @@ from troll_filter import check_is_travel
 from ai_analyzer import (
     analyse_frames, generate_fun_fact, generate_vibe_match, generate_travel_tips,
     generate_trip_summary, generate_month_calendar, generate_fun_facts,
-    _last_generation_errors,  # TEMPORARY diagnostic — see that list's own comment in ai_analyzer.py
 )
 from quality_check import ai_quality_check
 from places import (
@@ -637,7 +636,7 @@ _month_calendar_regen_lock = threading.Lock()
 
 
 @app.get("/destinations/by-month", response_model=MonthDestinationsResponse)
-def get_month_destinations(month: str, response: Response):
+def get_month_destinations(month: str):
     """
     Homepage "Best places to visit this month" section — every real
     destination genuinely well-suited to `month`, up to ~10 PER continent
@@ -693,13 +692,6 @@ def get_month_destinations(month: str, response: Response):
                 for m, destinations in calendar.items():
                     database.save_month_destinations_cache(m, destinations)
                 cached = calendar.get(month, [])
-                # TEMPORARY diagnostic (2026-09-12) — see
-                # ai_analyzer._last_generation_errors' comment. No Railway
-                # log access from here, so surfacing which regions failed
-                # (and their real exception) via a response header instead.
-                # Remove alongside that list once the cause is confirmed.
-                if _last_generation_errors:
-                    response.headers["X-Debug-Region-Errors"] = " | ".join(_last_generation_errors)
 
     enriched = []
     for d in cached:

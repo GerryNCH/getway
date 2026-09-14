@@ -704,11 +704,13 @@ _VALID_REGIONS = set(_REGION_ORDER)
 # _VALID_REGIONS at all).
 _REGION_CALENDAR_SYSTEM_TEMPLATE = """You are building a year-long "best places to visit this month" calendar for {region} ONLY, for GetWay, a travel app's homepage section.
 
-For EACH of the 12 months (January through December), pick up to 10-12 real, well-known, genuinely popular tourist destinations (a country, region, or city) IN {region} — places with an actual, established tourism industry and real traveler demand (hotels, organized tours, meaningful visitor numbers), not places nobody actually visits as a tourist — that are genuinely at their best that month, for a real, specific reason.
+For EACH of the 12 months (January through December), pick 15 real, well-known, genuinely popular tourist destinations (a country, region, or city) IN {region} — places with an actual, established tourism industry and real traveler demand (hotels, organized tours, meaningful visitor numbers), not places nobody actually visits as a tourist — that are genuinely at their best that month, for a real, specific reason. Aim for the full 15 even if some are less obvious picks than your first few — a downstream step (not something you need to worry about) trims and cross-checks this list afterward, so holding back to a "safer" shorter list only removes options it could have used; fewer than 15 is fine ONLY if {region} genuinely doesn't have 15 legitimately-at-their-best destinations for that month.
 
 Weather CAN be part of the reason, but never as the sole, generic "nice weather" justification that could apply to that place in half the year or to any place at any time — pair it with something concrete and specific to that exact month (e.g. "shoulder season — still warm, tourist crowds have thinned, prices drop before winter" is fine; "pleasant weather" alone is not). A festival, a natural phenomenon (wildlife migration, cherry blossoms, northern lights), or a genuine seasonal-quality shift (crowds, prices, shoulder season) are all valid reason types — mix them, don't lean on one.
 
 The SAME destination MAY appear in more than one month, but ONLY if each appearance has a genuinely different, specific reason — never repeat the same destination with the same or a near-identical reason (including "nice weather" reused) just to fill a slot. A destination should not appear more than 3 times across the whole year, even with different reasons — pick your 3 strongest, most distinct seasonal angles for it, don't pad. This cap plus the specific-reason rule exist specifically to stop one "safe, pleasant-year-round" country from becoming a generic filler pick that shows up almost every month — every appearance must earn its place with a real, distinct angle.
+
+Treat that 3-appearance cap as a ceiling for your few best, most genuinely seasonal picks — not a target every destination should reach. Across the FULL YEAR (all 12 months combined, not just within one month), {region} has dozens upon dozens of real, well-known, established tourist destinations beyond the same handful of famous names — don't default to a small rotating shortlist reused with reworded reasons (e.g. Asia is far more than Thailand/Japan/Bali repeated; South America is far more than Peru/Brazil/Argentina's capitals; Oceania is far more than Australia/New Zealand/Fiji). Most destinations across the year should appear ONCE, a genuine minority two or three times — if you notice yourself reaching for the same names again and again across different months, that is a sign to look harder for a different real, specific destination instead, not to reuse a favorite.
 
 Within each month, make sure the mix of picks covers genuinely DIFFERENT traveler motivations for that month — don't let every pick skew toward one angle (e.g. don't make every November pick a "still warm, beach escape" destination). Include, where genuinely true, all three of these motivation types across the month's picks: (a) a warm-weather escape from colder regions (e.g. the Canary Islands or Cape Verde still being warm in November); (b) a real season-specific event or atmosphere (e.g. Christmas markets opening across Europe in late November — Budapest, Vienna, Edinburgh, Bucharest); and (c) a genuine shoulder-season pick — no special event, but the peak tourist crowds have thinned, the weather is still pleasant enough to comfortably see the sights, and prices are lower (e.g. a major European capital in a month right after its busy season ends). Type (c) matters as much as the other two — plenty of real travelers deliberately want to see famous sights WITHOUT a crowd or a festival, just decent weather and fewer people. A traveler deciding "where should I go this month" should see real, different kinds of good reasons in the results, not one repeated angle. Also cover a real geographic spread within {region}, not just its most famous 3-4 countries repeated every month.
 
@@ -724,13 +726,6 @@ Reply with ONLY valid JSON, no markdown fences, all 12 month keys present:
 # to hit a number is exactly the filler behavior the new prompt's 3-
 # appearance cap and specific-reason rule are designed to prevent.
 TARGET_PER_REGION_MONTH = 10
-
-# TEMPORARY diagnostic (2026-09-12) — see generate_month_calendar's inline
-# comment. Populated with "{region}: {error}" strings for any region that
-# exhausted its retries; main.py reads this right after calling the
-# function to surface it in a response header. Remove alongside that
-# comment once the real failure cause is found and fixed.
-_last_generation_errors: list[str] = []
 
 
 def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
@@ -764,34 +759,34 @@ def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
     calendar: dict[str, list[dict]] = {month: [] for month in _CALENDAR_MONTHS}
     total_cost_usd = 0.0
     any_succeeded = False
-    # TEMPORARY diagnostic (2026-09-12): Asia/Africa specifically — not a
-    # rotating random pair — came back empty across multiple live runs
-    # even with the retry+spacing fix, which points at something more
-    # deterministic than pure rate-limiting (a parsing failure specific
-    # to those two prompts' actual responses, say) rather than transient
-    # load. No Railway log access from here, so main.py surfaces this
-    # list via a response header instead, same technique used earlier to
-    # debug /trip/candidates' latency. Remove once the real per-region
-    # failure reason is confirmed and fixed.
-    _last_generation_errors.clear()
+    # raw_pools[region][month] = every valid candidate for that region+month,
+    # in the AI's own ranked order, NOT yet cut down to TARGET_PER_REGION_MONTH
+    # or checked against the year-wide repeat cap — both of those happen
+    # together in the final selection pass below, which needs to see past
+    # rank 10 to be able to backfill a dropped slot with the next-ranked
+    # candidate instead of just losing it.
+    raw_pools: dict[str, dict[str, list[dict]]] = {}
 
     for region_idx, region in enumerate(_REGION_ORDER):
-        # Real bug this retry loop + inter-call delay fix, confirmed live
-        # across two separate runs: 6 back-to-back Anthropic calls with
-        # zero delay between them consistently left SOME regions with
-        # zero entries for the entire year — one run kept only South
-        # America/Oceania, another kept North America/South America/
-        # Europe/Oceania but lost Asia AND Africa both times — a classic
-        # burst-rate-limit signature (not a per-region content problem;
-        # ai_analyzer.SYSTEM_PROMPT.format(region=...) checked clean for
-        # all 6 regions). The old code also gave up on a region
-        # PERMANENTLY after one failure, dooming it to zero entries for
-        # all 12 months from a single transient error. Small proactive
-        # spacing between calls plus a retry/backoff on failure (same
-        # shape places.py's _text_search already uses) — belt and
-        # suspenders, since the Anthropic SDK's own default retry
-        # behavior alone wasn't enough (seen taking over 2 minutes on one
-        # request, and still losing 2 of 6 regions at the end of it).
+        # CONFIRMED root cause (2026-09-13), via a local run with real API
+        # access and the temporary _last_generation_errors capture: every
+        # region except Oceania was hitting max_tokens=4000 and getting cut
+        # off mid-string, producing a JSONDecodeError ("Unterminated
+        # string...") every single time, deterministically — not a
+        # rate-limit or transient issue (retrying the identical
+        # over-budget request just fails the same way twice). Oceania
+        # alone happened to have few enough genuine destinations to fit
+        # under 4000 tokens, which is why it looked like a "specific
+        # regions fail" pattern rather than a size problem. Asking for up
+        # to TARGET_PER_REGION_MONTH entries × 12 months in one region
+        # call needs more headroom than the old single call did per
+        # region (that one drew from one shared ~10-15/month pool across
+        # ALL 6 regions combined). Bumped to 8000, then to 16000 once the
+        # prompt started asking for 15/month instead of 10-12 (see below)
+        # — that raised real output size enough (~9200 output tokens seen
+        # live for Asia) that 8000 was cutting it close again. Proactive
+        # inter-call spacing + retry are kept as a (harmless) safety net
+        # for genuine transient errors, not the fix for this.
         if region_idx > 0:
             time.sleep(1.0)
         result = None
@@ -799,10 +794,15 @@ def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
             try:
                 response = _client.messages.create(
                     model="claude-haiku-4-5-20251001",
-                    max_tokens=4000,  # smaller than the old single-call 9000 — this call only ever covers 1 region's worth of output
+                    max_tokens=16000,
                     system=_REGION_CALENDAR_SYSTEM_TEMPLATE.format(region=region),
                     messages=[{"role": "user", "content": f"Generate the {region} 12-month calendar."}],
                 )
+                if response.stop_reason == "max_tokens":
+                    raise ValueError(
+                        f"{region} response was cut off at max_tokens — "
+                        "output too long even at 16000 tokens."
+                    )
                 usage = getattr(response, "usage", None)
                 if usage:
                     total_cost_usd += (
@@ -817,8 +817,6 @@ def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
             except Exception as e:
                 is_last_attempt = attempt == 1
                 print(f"[MonthCalendar] {region} call failed (attempt {attempt + 1}/2): {type(e).__name__}: {e}")
-                if is_last_attempt:
-                    _last_generation_errors.append(f"{region}: {type(e).__name__}: {e}")
                 if not is_last_attempt:
                     time.sleep(1.5)
 
@@ -827,6 +825,7 @@ def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
         any_succeeded = True
 
         try:
+            region_pool: dict[str, list[dict]] = {}
             for month in _CALENDAR_MONTHS:
                 entries = result.get(month) or []
                 destinations = [
@@ -843,11 +842,10 @@ def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
                 # is deliberately narrow — only an exact (name, reason)
                 # repeat WITHIN this region+month's own raw list (a literal
                 # AI slip, e.g. accidentally listing something twice) is
-                # removed. A destination repeating across DIFFERENT months
-                # is allowed by design now (see the prompt) — enforcing
-                # that repeats stay legitimate (different, specific
-                # reasons; capped at 3/year) is the prompt's job, not a
-                # second code-level pass here.
+                # removed. No TARGET_PER_REGION_MONTH cutoff here anymore —
+                # that selection, and the year-wide repeat cap, both happen
+                # together in the final pass below so a dropped pick can be
+                # backfilled from further down this same list.
                 seen: set[tuple[str, str]] = set()
                 kept = []
                 for d in destinations:
@@ -858,15 +856,49 @@ def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
                         continue
                     seen.add(key)
                     kept.append(d)
-                    if len(kept) >= TARGET_PER_REGION_MONTH:
-                        break
-                calendar[month].extend(kept)
+                region_pool[month] = kept
+            raw_pools[region] = region_pool
         except Exception as e:
             print(f"[MonthCalendar] {region} call failed: {type(e).__name__}: {e}")
             continue
 
     if not any_succeeded:
         return {}, 0.0
+
+    # Final selection + global repeat cap, combined (2026-09-13/14):
+    # confirmed via a real live run that the system prompt's own "max
+    # 3x/year" instruction is NOT reliably followed — Atacama Desert
+    # showed up in all 12 months in one test, Galápagos in 10, Cartagena
+    # in 8. A first attempt at fixing this trimmed each region+month to
+    # TARGET_PER_REGION_MONTH *before* applying the cap, so a pick that
+    # got dropped for hitting the cap just lost its slot outright — no
+    # attempt to fill it from that region+month's own remaining
+    # candidates. Confirmed live this visibly thinned out Africa/South
+    # America in H2 months even though their raw pools still had
+    # legitimate untapped candidates ranked just past position 10. Fixed
+    # by walking raw_pools in rank order per (month, region), skipping —
+    # not stopping at — any candidate whose name has already hit
+    # MAX_REPEATS_PER_YEAR, so the next-ranked candidate can fill that
+    # slot instead. Months are processed chronologically so a name's
+    # occurrence count only ever reflects genuinely earlier months. No
+    # floor if a region+month's pool runs out of eligible candidates
+    # before reaching 10 — same "no artificial floor" design as
+    # TARGET_PER_REGION_MONTH always had.
+    MAX_REPEATS_PER_YEAR = 3
+    name_occurrence_count: dict[str, int] = {}
+    for month in _CALENDAR_MONTHS:
+        for region, region_pool in raw_pools.items():
+            selected = []
+            for d in region_pool.get(month, []):
+                key = d["name"].strip().lower()
+                if name_occurrence_count.get(key, 0) >= MAX_REPEATS_PER_YEAR:
+                    continue
+                selected.append(d)
+                name_occurrence_count[key] = name_occurrence_count.get(key, 0) + 1
+                if len(selected) >= TARGET_PER_REGION_MONTH:
+                    break
+            calendar[month].extend(selected)
+
     return calendar, total_cost_usd
 
 

@@ -580,7 +580,21 @@ def get_trip_candidates(req: TripCandidatesRequest):
           f"{len(curated)} after AI curation (${cost_usd:.4f}) — "
           f"places={round((_t_places_done - _t_places_start) * 1000)}ms curation={round((_t_curation_done - _t_places_done) * 1000)}ms")
 
-    database.save_trip_candidates_cache(city, budget, curated, activity_types=activity_types, ttl_days=_TRIP_CACHE_TTL_DAYS)
+    if curated:
+        database.save_trip_candidates_cache(city, budget, curated, activity_types=activity_types, ttl_days=_TRIP_CACHE_TTL_DAYS)
+    else:
+        # Never cache an empty result — an empty `curated` list is far more
+        # likely to be a transient failure upstream (AI curation call
+        # error, Places hiccup) than a genuine "this city has zero
+        # attractions". Caching it would lock every future visitor out of
+        # real results for up to _TRIP_CACHE_TTL_DAYS (30 days) for this
+        # exact (city, budget, activity_types) combination — confirmed live
+        # for Edinburgh (2026-10-08). Simply not caching means a real
+        # empty-destination case just gets re-searched fresh every time,
+        # which is a safe, cheap fallback compared to serving a wrong
+        # cached "nothing" to a popular city for a month.
+        print(f"[TripBuilder] {city}/{budget}: 0 candidates after curation — NOT caching "
+              f"(likely a transient failure, not a genuine empty destination)")
     return TripCandidatesResponse(
         destination=city, budget=budget,
         candidates=[TripCandidate(**c) for c in curated],

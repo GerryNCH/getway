@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <!-- Impact.com site-ownership verification (needed to register gogetway.com
      for the Skyscanner / Omio / Airalo affiliate programs, which all run
      through Impact.com) — proves Gerry controls this domain. -->
@@ -44,6 +44,14 @@
   @media (max-width: 767px) {
     input, select, textarea { font-size: 16px !important; }
   }
+  /* Belt-and-suspenders against any zoom: the viewport meta tag above
+     (maximum-scale=1.0, user-scalable=no) blocks pinch-zoom and the
+     font-size rule above blocks iOS's zoom-on-focus, but a fast double-tap
+     on a button (e.g. tapping the Days/People +/- stepper repeatedly) can
+     still trigger the browser's own double-tap-to-zoom gesture on some
+     devices. touch-action: manipulation tells the browser these elements
+     never need that gesture, so it doesn't wait for/apply it. */
+  html, body { touch-action: manipulation; }
   .screen { display: none; }
   .screen.active { display: block; }
   ::-webkit-scrollbar { width: 0; height: 0; }
@@ -5079,6 +5087,55 @@
     showBuildTripStep(5);
     showScreen('build-trip');
   }
+  // Copies text to the clipboard, falling back to the old execCommand trick
+  // when the modern Clipboard API is unavailable or refuses (e.g. an
+  // insecure context, or a browser that only allows it on a direct,
+  // synchronous user gesture).
+  function copyTextToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).catch(() => fallbackCopyToClipboard(text));
+    }
+    return Promise.resolve(fallbackCopyToClipboard(text));
+  }
+  function fallbackCopyToClipboard(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) { /* best effort */ }
+    document.body.removeChild(ta);
+  }
+  let _tripSavedToastTimer = null;
+  // Small bottom toast confirming a Build Your Own Trip save, with a Copy
+  // link button the visitor can actually tap (see copyTextToClipboard above
+  // for why this has to be its own click rather than automatic).
+  function showSavedTripToast(url) {
+    let el = document.getElementById('trip-saved-toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'trip-saved-toast';
+      el.className = 'fixed left-1/2 -translate-x-1/2 bottom-6 z-[60] flex items-center gap-3 bg-[#1A1A1A] text-white text-sm pl-4 pr-2.5 py-2.5 rounded-full shadow-xl max-w-[92vw]';
+      el.innerHTML = '<span class="flex items-center gap-1.5 whitespace-nowrap"><i data-lucide="check-circle" class="w-4 h-4 text-green-400 flex-shrink-0"></i>Trip saved</span>' +
+        '<button type="button" id="trip-saved-toast-copy" class="btn-interactive flex-shrink-0 bg-white/15 hover:bg-white/25 px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap">Copy link</button>';
+      document.body.appendChild(el);
+      el.addEventListener('click', function (e) {
+        if (e.target && e.target.id === 'trip-saved-toast-copy') {
+          copyTextToClipboard(el.dataset.url || location.href).then(() => {
+            e.target.textContent = 'Copied!';
+            setTimeout(() => { e.target.textContent = 'Copy link'; }, 2000);
+          });
+        }
+      });
+    }
+    el.dataset.url = url;
+    el.classList.remove('hidden');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    clearTimeout(_tripSavedToastTimer);
+    _tripSavedToastTimer = setTimeout(() => el.classList.add('hidden'), 10000);
+  }
   async function saveBuiltTrip() {
     const state = _buildTripState;
     if (!state.previewItinerary) return;
@@ -5121,6 +5178,14 @@
       const bar = document.getElementById('build-trip-preview-bar');
       if (bar) bar.classList.add('hidden');
       renderAiRoute(state.previewItinerary, data.slug, '');
+      // The preview bar above just silently disappears once saved — with
+      // nothing replacing it, there was no way to tell the save actually
+      // worked, and no way to get the shareable link at all (Gerry: trip
+      // seemed to neither save nor copy). Show a confirmation + an explicit
+      // "Copy link" tap target — a fresh click here is required for
+      // clipboard writes to reliably work on iOS Safari, so this can't just
+      // auto-copy right after the awaited fetch above.
+      showSavedTripToast(location.href);
     } catch (err) {
       alert('Could not save your trip: ' + err.message);
     } finally {

@@ -443,6 +443,36 @@ def init_db() -> None:
             )
             print(f"[DB] One-time migration: cleared {cleared_8} empty destination_gallery_cache row(s) (Places fallback fix)")
 
+        # Ninth one-time migration: wipe trip_candidates_cache entirely.
+        # During a Google Places outage (confirmed live 2026-10-08: every
+        # Text Search returned nothing, for every city — Paris and
+        # Edinburgh alike), the then-current code cached whatever came
+        # back, so any (city, budget, activity_types) combination searched
+        # during the window is pinned to an empty candidate list for the
+        # full 30-day TTL. A cache HIT on one of those returns [] before
+        # any Places call happens, so those destinations stay permanently
+        # attraction-less even once Places is healthy again — confirmed
+        # live for Edinburgh/mid/history. get_trip_candidates now refuses
+        # to cache an empty result at all, which stops new rows like this
+        # appearing, but it cannot clean up the ones already written.
+        #
+        # Unscoped rather than `WHERE candidates_json = '[]'` (the narrower
+        # shape migration 8 uses for galleries) by explicit choice: the
+        # outage was global, so there is no reason to believe only the
+        # empty-looking rows are affected, and a dropped good row just
+        # costs one re-search on next request.
+        _CACHE_RESET_MIGRATION_9 = "clear_trip_candidates_cache_for_places_outage_empty_results"
+        already_applied_9 = conn.execute(
+            "SELECT 1 FROM _schema_migrations WHERE name = ?", (_CACHE_RESET_MIGRATION_9,)
+        ).fetchone()
+        if not already_applied_9:
+            cleared_9 = conn.execute("DELETE FROM trip_candidates_cache").rowcount
+            conn.execute(
+                "INSERT INTO _schema_migrations (name, applied_at) VALUES (?, ?)",
+                (_CACHE_RESET_MIGRATION_9, datetime.utcnow().isoformat()),
+            )
+            print(f"[DB] One-time migration: cleared {cleared_9} trip_candidates_cache row(s) (Places outage empty-result fix)")
+
         # Seed the singleton site_settings row once, with the hero slides
         # that were previously hardcoded in index.html — so nothing changes
         # visually on the homepage until an admin actually edits them.

@@ -58,6 +58,10 @@ from ai_analyzer import (
     generate_trip_summary, generate_month_calendar, generate_fun_facts,
 )
 from quality_check import ai_quality_check
+# Module handle alongside the named imports below purely so
+# /admin/places-diagnostic can read PLACES_API_KEY / SEARCH_URL off the
+# live module rather than binding copies at import time.
+import places as places_module
 from places import (
     enrich_itinerary_with_photos, _unsplash_candidates, _attribution_from_candidate,
     _trigger_unsplash_download, _get_place_photo_and_location, search_attractions_broad,
@@ -1029,6 +1033,70 @@ def clear_cache(secret: str):
         raise HTTPException(403, "Invalid admin secret")
     count = database.clear_all_itineraries()
     return {"status": "ok", "cleared": count}
+
+
+@app.get("/admin/places-diagnostic")
+def places_diagnostic(secret: str):
+    """
+    Reports why Google Places Text Search is failing, which every Places
+    code path otherwise hides: each one returns a bare [] both when the
+    key is missing (no HTTP call at all) and when Google rejects the call,
+    so from the outside a key that was never set looks identical to one
+    that is set but disabled, unbilled, or IP/referer-restricted. Those
+    need completely different fixes, and the only place the difference is
+    currently visible is Google's own error body.
+
+    Makes one real minimal Text Search and returns the raw status/body so
+    the cause is unambiguous. Never returns the key itself — only whether
+    one is present and its length, plus a defensive scrub of the response
+    body in case Google ever echoes it back in an error message.
+    """
+    if secret != ADMIN_SECRET:
+        raise HTTPException(403, "Invalid admin secret")
+
+    key = places_module.PLACES_API_KEY
+    result: dict = {
+        "key_present": bool(key),
+        "key_length": len(key),
+        "search_url": places_module.SEARCH_URL,
+    }
+    if not key:
+        result["verdict"] = (
+            "GOOGLE_PLACES_API_KEY is unset or empty in this environment — no HTTP "
+            "request is being made at all. Set it in Railway -> Variables."
+        )
+        return result
+
+    try:
+        resp = requests.post(
+            places_module.SEARCH_URL,
+            json={"textQuery": "top attractions and things to do in Edinburgh", "maxResultCount": 1},
+            headers={
+                "Content-Type": "application/json",
+                "X-Goog-Api-Key": key,
+                "X-Goog-FieldMask": "places.displayName",
+            },
+            timeout=8,
+        )
+        body = resp.text[:600].replace(key, "<redacted>")
+        result["http_status"] = resp.status_code
+        result["response_body"] = body
+        if resp.status_code == 200:
+            result["places_returned"] = len(resp.json().get("places", []))
+            result["verdict"] = (
+                "Places is answering normally — the key works and the failure is elsewhere."
+                if result["places_returned"]
+                else "HTTP 200 but zero places returned — check the field mask / query, not the key."
+            )
+        else:
+            result["verdict"] = (
+                f"Google rejected the call with HTTP {resp.status_code}. The response body above "
+                "names the cause (API not enabled, billing disabled, key invalid, or key "
+                "restricted to referers/IPs that exclude this server)."
+            )
+    except requests.exceptions.RequestException as e:
+        result["verdict"] = f"Could not reach Google at all: {type(e).__name__}: {e}"
+    return result
 
 
 @app.post("/track/view/{video_id}")

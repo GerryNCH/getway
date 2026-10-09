@@ -34,6 +34,16 @@
     background-attachment: fixed;
   }
   .font-serif-display { font-family: 'Playfair Display', serif; }
+  /* iOS Safari auto-zooms the page whenever a focused input/select/textarea
+     has a computed font-size below 16px. Every text field on the site uses
+     Tailwind's text-sm (14px), which is exactly what was triggering the
+     "page zooms in by itself" behavior Gerry reported on phone — it's not
+     really "automatic", it's Safari reacting to focusing a small-text field.
+     Forcing 16px only below the md breakpoint fixes it without touching the
+     desktop look or disabling pinch-zoom (which would hurt accessibility). */
+  @media (max-width: 767px) {
+    input, select, textarea { font-size: 16px !important; }
+  }
   .screen { display: none; }
   .screen.active { display: block; }
   ::-webkit-scrollbar { width: 0; height: 0; }
@@ -1085,16 +1095,20 @@
     <div class="grid grid-cols-2 gap-3 mb-8">
       <div>
         <label class="text-[11px] font-medium text-gray-500 mb-1.5 block">Days</label>
-        <div class="flex items-center gap-2.5 h-[52px] px-3 sm:px-4 bg-white/70 border border-gray-200 rounded-2xl">
-          <i data-lucide="calendar-days" class="w-[18px] h-[18px] text-gray-500 flex-shrink-0"></i>
-          <input id="bt-days" type="number" min="1" max="30" value="3" class="flex-1 min-w-0 bg-transparent text-sm outline-none">
+        <div class="flex items-center justify-between gap-1 h-[52px] px-2 sm:px-2.5 bg-white/70 border border-gray-200 rounded-2xl">
+          <button type="button" onclick="adjustTripCounter('bt-days', -1)" aria-label="Fewer days" class="btn-interactive w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full bg-[#F1EEFF] text-[#6D28D9] text-base font-semibold leading-none">&minus;</button>
+          <span class="flex items-center gap-1.5 min-w-0"><i data-lucide="calendar-days" class="w-[16px] h-[16px] text-gray-500 flex-shrink-0"></i><span id="bt-days-display" class="text-sm font-medium">3</span></span>
+          <button type="button" onclick="adjustTripCounter('bt-days', 1)" aria-label="More days" class="btn-interactive w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full bg-[#F1EEFF] text-[#6D28D9] text-base font-semibold leading-none">&plus;</button>
+          <input type="hidden" id="bt-days" min="1" max="30" value="3">
         </div>
       </div>
       <div>
         <label class="text-[11px] font-medium text-gray-500 mb-1.5 block">People</label>
-        <div class="flex items-center gap-2.5 h-[52px] px-3 sm:px-4 bg-white/70 border border-gray-200 rounded-2xl">
-          <i data-lucide="users" class="w-[18px] h-[18px] text-gray-500 flex-shrink-0"></i>
-          <input id="bt-people" type="number" min="1" max="20" value="2" class="flex-1 min-w-0 bg-transparent text-sm outline-none">
+        <div class="flex items-center justify-between gap-1 h-[52px] px-2 sm:px-2.5 bg-white/70 border border-gray-200 rounded-2xl">
+          <button type="button" onclick="adjustTripCounter('bt-people', -1)" aria-label="Fewer people" class="btn-interactive w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full bg-[#F1EEFF] text-[#6D28D9] text-base font-semibold leading-none">&minus;</button>
+          <span class="flex items-center gap-1.5 min-w-0"><i data-lucide="users" class="w-[16px] h-[16px] text-gray-500 flex-shrink-0"></i><span id="bt-people-display" class="text-sm font-medium">2</span></span>
+          <button type="button" onclick="adjustTripCounter('bt-people', 1)" aria-label="More people" class="btn-interactive w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full bg-[#F1EEFF] text-[#6D28D9] text-base font-semibold leading-none">&plus;</button>
+          <input type="hidden" id="bt-people" min="1" max="20" value="2">
         </div>
       </div>
     </div>
@@ -4538,6 +4552,21 @@
       const el = document.getElementById('build-trip-step' + i);
       if (el) el.classList.toggle('hidden', String(n) !== i);
     });
+  }
+  // Stepper control for the Days/People fields on Build Your Own Trip step 1
+  // (replaces plain <input type="number"> — Gerry asked for tap +/- instead
+  // of typing on the keyboard, which also sidesteps the iOS zoom-on-focus
+  // issue since there's no longer a text field to focus at all).
+  function adjustTripCounter(id, delta) {
+    const input = document.getElementById(id);
+    const display = document.getElementById(id + '-display');
+    if (!input) return;
+    const min = parseInt(input.min, 10) || 1;
+    const max = parseInt(input.max, 10) || 99;
+    const current = parseInt(input.value, 10) || min;
+    const next = Math.min(max, Math.max(min, current + delta));
+    input.value = next;
+    if (display) display.textContent = next;
   }
   function buildTripStep1Continue() {
     const dest = (document.getElementById('bt-destination').value || '').trim();

@@ -33,7 +33,7 @@ import os
 
 import uuid
 
-from fastapi import FastAPI, HTTPException, File, UploadFile, Response, Request, Depends
+from fastapi import FastAPI, HTTPException, File, UploadFile, Response, Request, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -1073,21 +1073,33 @@ def get_trip_edit_state(slug: str):
 ADMIN_SECRET = os.getenv("ADMIN_SECRET", "getway2026")
 
 
-@app.post("/admin/clear-cache")
-def clear_cache(secret: str):
+def verify_admin_secret(x_admin_secret: str = Header(None, alias="X-Admin-Secret")) -> None:
+    """
+    FastAPI dependency used on every /admin/* endpoint via
+    `Depends(verify_admin_secret)`, in place of a `?secret=` query
+    parameter. Query params get written into Railway's request logs (and
+    any proxy/browser history along the way) in plain text — a header
+    doesn't. Same check `_check_admin_secret()` used to do inline, just
+    reading from the header instead. Raises the same 403 either way.
+    """
+    if x_admin_secret != ADMIN_SECRET:
+        raise HTTPException(403, "Invalid admin secret")
+
+
+@app.post("/admin/clear-cache", dependencies=[Depends(verify_admin_secret)])
+def clear_cache():
     """
     Deletes all cached itineraries so old TikTok links regenerate fresh.
-    Protected by ADMIN_SECRET — set this in Railway's environment variables
-    to something private; it falls back to a default if unset.
+    Protected by ADMIN_SECRET (sent as the X-Admin-Secret header) — set
+    this in Railway's environment variables to something private; it falls
+    back to a default if unset.
     """
-    if secret != ADMIN_SECRET:
-        raise HTTPException(403, "Invalid admin secret")
     count = database.clear_all_itineraries()
     return {"status": "ok", "cleared": count}
 
 
-@app.post("/admin/clear-unknown-routes")
-def clear_unknown_routes(secret: str):
+@app.post("/admin/clear-unknown-routes", dependencies=[Depends(verify_admin_secret)])
+def clear_unknown_routes():
     """
     One-time cleanup: deletes only the stale rows saved before main.py
     started rejecting "couldn't identify a destination" results instead of
@@ -1097,14 +1109,12 @@ def clear_unknown_routes(secret: str):
     links like the @majasrecipes pasta video (tt_7496606826109078839)
     without wiping good cached routes.
     """
-    if secret != ADMIN_SECRET:
-        raise HTTPException(403, "Invalid admin secret")
     count = database.delete_unknown_itineraries()
     return {"status": "ok", "deleted": count}
 
 
-@app.get("/admin/places-diagnostic")
-def places_diagnostic(secret: str):
+@app.get("/admin/places-diagnostic", dependencies=[Depends(verify_admin_secret)])
+def places_diagnostic():
     """
     Reports why Google Places Text Search is failing, which every Places
     code path otherwise hides: each one returns a bare [] both when the
@@ -1119,9 +1129,6 @@ def places_diagnostic(secret: str):
     one is present and its length, plus a defensive scrub of the response
     body in case Google ever echoes it back in an error message.
     """
-    if secret != ADMIN_SECRET:
-        raise HTTPException(403, "Invalid admin secret")
-
     key = places_module.PLACES_API_KEY
     result: dict = {
         "key_present": bool(key),
@@ -1225,14 +1232,13 @@ def get_public_site_settings():
     return database.get_site_settings()
 
 
-@app.put("/admin/site-settings")
-def admin_update_site_settings(settings: SiteSettings, secret: str):
+@app.put("/admin/site-settings", dependencies=[Depends(verify_admin_secret)])
+def admin_update_site_settings(settings: SiteSettings):
     """
     Sets the homepage's hero slide images and/or the admin-curated list of
     featured routes. Send an empty featured_route_ids list to go back to
     "show all approved routes automatically".
     """
-    _check_admin_secret(secret)
     database.set_site_settings(settings.hero_slides, settings.featured_route_ids)
     return {"status": "ok"}
 
@@ -1269,11 +1275,6 @@ def list_itineraries():
     return database.list_itineraries()
 
 
-def _check_admin_secret(secret: str) -> None:
-    if secret != ADMIN_SECRET:
-        raise HTTPException(403, "Invalid admin secret")
-
-
 _ALLOWED_IMAGE_TYPES = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
@@ -1283,8 +1284,8 @@ _ALLOWED_IMAGE_TYPES = {
 _MAX_UPLOAD_BYTES = 15 * 1024 * 1024  # 15MB — generous for a phone photo
 
 
-@app.post("/admin/upload-image")
-async def admin_upload_image(secret: str, file: UploadFile = File(...)):
+@app.post("/admin/upload-image", dependencies=[Depends(verify_admin_secret)])
+async def admin_upload_image(file: UploadFile = File(...)):
     """
     Saves an uploaded image file (hero/gallery/stop photo) directly onto
     Railway's persistent Volume and returns a direct URL served by this
@@ -1300,8 +1301,6 @@ async def admin_upload_image(secret: str, file: UploadFile = File(...)):
     gone if this server's Volume is gone, same as the database already
     depends on.
     """
-    _check_admin_secret(secret)
-
     content_type = (file.content_type or "").lower()
     extension = _ALLOWED_IMAGE_TYPES.get(content_type)
     if not extension:
@@ -1334,8 +1333,8 @@ async def admin_upload_image(secret: str, file: UploadFile = File(...)):
     return {"url": f"{BACKEND_BASE_URL}/uploads/{filename}"}
 
 
-@app.post("/admin/quality-check/{video_id}")
-def admin_quality_check(video_id: str, secret: str):
+@app.post("/admin/quality-check/{video_id}", dependencies=[Depends(verify_admin_secret)])
+def admin_quality_check(video_id: str):
     """
     The admin panel's ONLY "🤖 AI Check" button — does everything in one
     click, one cost:
@@ -1368,7 +1367,6 @@ def admin_quality_check(video_id: str, secret: str):
 
     Returns the same shape as ai_quality_check() plus "fixed_count".
     """
-    _check_admin_secret(secret)
     itinerary = database.get_itinerary(video_id)
     if itinerary is None:
         raise HTTPException(404, "Route not found")
@@ -1407,8 +1405,8 @@ def admin_quality_check(video_id: str, secret: str):
     return result
 
 
-@app.post("/admin/backfill-fun-facts")
-def admin_backfill_fun_facts(secret: str, force: bool = False):
+@app.post("/admin/backfill-fun-facts", dependencies=[Depends(verify_admin_secret)])
+def admin_backfill_fun_facts(force: bool = False):
     """
     Manually re-triggers the same fun_fact backfill that already runs
     automatically at every startup (see _backfill_fun_facts_background) —
@@ -1431,7 +1429,6 @@ def admin_backfill_fun_facts(secret: str, force: bool = False):
     Returns how many were checked, how many got filled, and the real
     Anthropic cost of this run.
     """
-    _check_admin_secret(secret)
     targets = database.list_approved_for_fun_fact_refresh(force=force)
     filled = 0
     total_cost = 0.0
@@ -1461,15 +1458,14 @@ def admin_backfill_fun_facts(secret: str, force: bool = False):
     }
 
 
-@app.post("/admin/backfill-travel-tips")
-def admin_backfill_travel_tips(secret: str, force: bool = False):
+@app.post("/admin/backfill-travel-tips", dependencies=[Depends(verify_admin_secret)])
+def admin_backfill_travel_tips(force: bool = False):
     """
     Manually re-triggers the same travel_tips backfill that already runs
     automatically at every startup (see _backfill_travel_tips_background).
     Mirrors POST /admin/backfill-fun-facts exactly — see that endpoint's
     docstring for the force=true semantics.
     """
-    _check_admin_secret(secret)
     targets = database.list_approved_for_travel_tips_refresh(force=force)
     filled = 0
     total_cost = 0.0
@@ -1482,8 +1478,8 @@ def admin_backfill_travel_tips(secret: str, force: bool = False):
     return {"status": "ok", "checked": len(targets), "filled": filled, "cost_usd": round(total_cost, 6)}
 
 
-@app.post("/admin/backfill-coordinates")
-def admin_backfill_coordinates(secret: str, force: bool = False):
+@app.post("/admin/backfill-coordinates", dependencies=[Depends(verify_admin_secret)])
+def admin_backfill_coordinates(force: bool = False):
     """
     Fills in stop.lat/stop.lng for approved routes generated before
     Stop.lat/lng existed (or where Places didn't recognize a stop at the
@@ -1503,7 +1499,6 @@ def admin_backfill_coordinates(secret: str, force: bool = False):
     how many stops got coordinates, and the names of stops Places still
     couldn't match (worth a manual look).
     """
-    _check_admin_secret(secret)
     targets = database.list_approved_missing_coordinates(force=force)
     routes_updated = 0
     stops_filled = 0
@@ -1548,8 +1543,8 @@ def admin_backfill_coordinates(secret: str, force: bool = False):
     }
 
 
-@app.post("/admin/backfill-stop-photos")
-def admin_backfill_stop_photos(secret: str, force: bool = False):
+@app.post("/admin/backfill-stop-photos", dependencies=[Depends(verify_admin_secret)])
+def admin_backfill_stop_photos(force: bool = False):
     """
     Re-resolves every stop photo that's still a raw places.googleapis.com
     URL and permanently caches it onto our own Volume (see
@@ -1567,7 +1562,6 @@ def admin_backfill_stop_photos(secret: str, force: bool = False):
     photos are already on our own /uploads/ (e.g. after a quality change);
     default only touches the ones still pointing straight at Google.
     """
-    _check_admin_secret(secret)
     targets = database.list_approved_with_google_photo_urls(force=force)
     routes_updated = 0
     stops_fixed = 0
@@ -1613,29 +1607,26 @@ def admin_backfill_stop_photos(secret: str, force: bool = False):
     }
 
 
-@app.get("/admin/pending")
-def admin_list_pending(secret: str):
+@app.get("/admin/pending", dependencies=[Depends(verify_admin_secret)])
+def admin_list_pending():
     """Full content of every route awaiting review — for the admin panel's Pending tab."""
-    _check_admin_secret(secret)
     return database.list_by_status("pending")
 
 
-@app.get("/admin/approved")
-def admin_list_approved(secret: str):
+@app.get("/admin/approved", dependencies=[Depends(verify_admin_secret)])
+def admin_list_approved():
     """Full content of every published route — for the admin panel's Published tab."""
-    _check_admin_secret(secret)
     return database.list_by_status("approved")
 
 
-@app.get("/admin/stats")
-def admin_stats(secret: str):
+@app.get("/admin/stats", dependencies=[Depends(verify_admin_secret)])
+def admin_stats():
     """Counts for the admin panel's Statistics tab."""
-    _check_admin_secret(secret)
     return database.get_stats()
 
 
-@app.get("/admin/export")
-def admin_export_routes(secret: str):
+@app.get("/admin/export", dependencies=[Depends(verify_admin_secret)])
+def admin_export_routes():
     """
     Dumps every approved route as a downloadable JSON file.
 
@@ -1644,7 +1635,6 @@ def admin_export_routes(secret: str):
     hits this endpoint and commits the result to backups/ in the repo —
     a second copy of the data independent of the Railway Volume.
     """
-    _check_admin_secret(secret)
     routes = database.list_by_status("approved")
     payload = {
         "exported_at": datetime.now(timezone.utc).isoformat(),
@@ -1660,10 +1650,9 @@ def admin_export_routes(secret: str):
     )
 
 
-@app.post("/admin/approve/{video_id}")
-def admin_approve(video_id: str, secret: str):
+@app.post("/admin/approve/{video_id}", dependencies=[Depends(verify_admin_secret)])
+def admin_approve(video_id: str):
     """Marks a route as approved — makes it eligible for public display."""
-    _check_admin_secret(secret)
     if not database.set_status(video_id, "approved"):
         raise HTTPException(404, "Route not found")
     # Approval is a strong signal the stops' current photos/addresses are
@@ -1675,49 +1664,45 @@ def admin_approve(video_id: str, secret: str):
     return {"status": "ok", "video_id": video_id, "new_status": "approved"}
 
 
-@app.post("/admin/reject/{video_id}")
-def admin_reject(video_id: str, secret: str):
+@app.post("/admin/reject/{video_id}", dependencies=[Depends(verify_admin_secret)])
+def admin_reject(video_id: str):
     """
     Marks a route as rejected (soft delete — kept in the DB so the
     Statistics tab can show a rejected count, and so a reject can be
     undone). Use DELETE /admin/route/{video_id} to permanently remove it.
     """
-    _check_admin_secret(secret)
     if not database.set_status(video_id, "rejected"):
         raise HTTPException(404, "Route not found")
     return {"status": "ok", "video_id": video_id, "new_status": "rejected"}
 
 
-@app.post("/admin/hide/{video_id}")
-def admin_hide(video_id: str, secret: str):
+@app.post("/admin/hide/{video_id}", dependencies=[Depends(verify_admin_secret)])
+def admin_hide(video_id: str):
     """Un-publishes an approved route back to pending (the panel's 'Скрий' button)."""
-    _check_admin_secret(secret)
     if not database.set_status(video_id, "pending"):
         raise HTTPException(404, "Route not found")
     return {"status": "ok", "video_id": video_id, "new_status": "pending"}
 
 
-@app.put("/admin/meta/{video_id}")
-def admin_update_meta(video_id: str, meta: RouteMeta, secret: str):
+@app.put("/admin/meta/{video_id}", dependencies=[Depends(verify_admin_secret)])
+def admin_update_meta(video_id: str, meta: RouteMeta):
     """
     Sets the homepage-grid curation fields (price category, filter tags,
     creator handle) an admin picks when curating a route — separate from
     the content editor since these don't come from the AI extraction.
     """
-    _check_admin_secret(secret)
     if not database.set_route_meta(video_id, meta.price_category, meta.tags, meta.creator_handle):
         raise HTTPException(404, "Route not found")
     return {"status": "ok", "video_id": video_id}
 
 
-@app.put("/admin/route/{video_id}")
-def admin_update_route(video_id: str, itinerary: Itinerary, secret: str):
+@app.put("/admin/route/{video_id}", dependencies=[Depends(verify_admin_secret)])
+def admin_update_route(video_id: str, itinerary: Itinerary):
     """
     Overwrites a route's content (stops, hero/gallery photos, destination,
     duration) from the admin panel's inline editor. Status is untouched —
     use /admin/approve, /admin/reject, or /admin/hide for that.
     """
-    _check_admin_secret(secret)
     if not database.update_itinerary_content(video_id, itinerary):
         raise HTTPException(404, "Route not found")
     # A manual save is an even stronger signal than approval that these
@@ -1726,10 +1711,9 @@ def admin_update_route(video_id: str, itinerary: Itinerary, secret: str):
     return {"status": "ok", "video_id": video_id}
 
 
-@app.delete("/admin/route/{video_id}")
-def admin_delete_route(video_id: str, secret: str):
+@app.delete("/admin/route/{video_id}", dependencies=[Depends(verify_admin_secret)])
+def admin_delete_route(video_id: str):
     """Permanently deletes a route (the panel's 'Изтрий' button)."""
-    _check_admin_secret(secret)
     if not database.delete_itinerary_permanently(video_id):
         raise HTTPException(404, "Route not found")
     return {"status": "ok", "video_id": video_id, "deleted": True}

@@ -711,6 +711,11 @@
       </div>
       <button type="button" onclick="pasteFromClipboard('tiktok-url')" class="btn-interactive flex-shrink-0 h-[52px] w-[52px] sm:w-auto sm:px-4 rounded-2xl bg-[#8B5CF6]/10 text-[#6D28D9] text-xs font-medium flex items-center justify-center gap-1 border border-[#8B5CF6]/15"><i data-lucide="clipboard" class="w-3.5 h-3.5"></i><span class="hidden sm:inline">Paste</span></button>
     </div>
+    <!-- Simple field-level problems (empty field, non-TikTok/Instagram link)
+         show as a small in-page note right here — never a browser alert()
+         popup, which reads as a system error even when nothing actually
+         went wrong. -->
+    <div id="tiktok-url-error" class="hidden text-xs text-red-500 -mt-1 mb-4 px-1"></div>
     <button onclick="startMagicBox()" class="btn-interactive w-full h-[50px] flex items-center justify-center gap-2 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl mb-8">
       Build my route <i data-lucide="rocket" class="w-4 h-4"></i>
     </button>
@@ -731,16 +736,16 @@
       </div>
     </div>
   </div>
-  <!-- Simplified loading state: one steady "Video is generating..." label
-       + a rotating "did you know" fact about a different country every
-       ~8s, in a freshly shuffled order each time (see COUNTRY_FACTS +
+  <!-- Simplified loading state: one steady "Building your itinerary..."
+       label + a rotating "did you know" fact about a different country
+       every ~8s, in a freshly shuffled order each time (see COUNTRY_FACTS +
        startMagicBoxFactRotation() below). No progress-stage copy, no time
        estimate — kept deliberately quiet/minimal. -->
   <div id="magicbox-loading" class="hidden mx-5 md:mx-0 px-6 md:px-10 py-16 md:py-20 text-center glass-card rounded-[28px]">
     <div class="w-16 h-16 bg-[#F1EEFF] rounded-full flex items-center justify-center mx-auto mb-6">
       <span id="magicbox-loading-globe" class="text-2xl">🌍</span>
     </div>
-    <div class="text-sm font-medium mb-6">Video is generating…</div>
+    <div class="text-sm font-medium mb-6">Building your itinerary…</div>
     <div class="min-h-[40px] flex items-center justify-center px-2">
       <div id="loading-fact" class="text-[11px] text-gray-500 leading-relaxed max-w-xs transition-opacity duration-500"></div>
     </div>
@@ -761,6 +766,54 @@
     <div id="magicbox-days-container" class="text-left mb-8 max-h-[50vh] overflow-y-auto"></div>
     <button onclick="showScreen('home')" class="btn-interactive w-full h-[46px] bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">
       Back to routes
+    </button>
+  </div>
+  <!-- The AI couldn't find any real places to visit in this video — a
+       genuinely non-travel clip (cooking, a product, a vlog with no
+       destination), not a system error, so it gets its own calm in-page
+       state rather than reusing the "something broke" panel below. Also
+       shown for a stale pre-fix cached row whose destination is the
+       UNKNOWN sentinel — see main.py's _is_unknown_destination(). -->
+  <div id="magicbox-not-a-trip" class="hidden mx-5 md:mx-0 px-6 md:px-10 py-10 glass-card rounded-[28px]">
+    <div class="text-center mb-8">
+      <div class="w-16 h-16 bg-[#F1EEFF] rounded-full flex items-center justify-center mx-auto mb-6">
+        <i data-lucide="map-pin-off" class="w-7 h-7 text-[#8B5CF6]"></i>
+      </div>
+      <div class="text-lg font-semibold mb-2">This one isn't a trip</div>
+      <div class="text-[13px] text-gray-500 leading-relaxed px-2">We couldn't find any places to visit in this video. Try a clip that shows a destination, a city or a place you'd like to go.</div>
+    </div>
+    <button onclick="magicBoxTryAnother()" class="btn-interactive w-full h-[46px] bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">
+      Try another video
+    </button>
+  </div>
+  <!-- A genuine unexpected failure (server unreachable, timeout, bad
+       response) — the one case where something actually broke. Never
+       shows the server's own technical error text, just this one calm
+       sentence + a retry. -->
+  <div id="magicbox-error" class="hidden mx-5 md:mx-0 px-6 md:px-10 py-10 glass-card rounded-[28px]">
+    <div class="text-center mb-8">
+      <div class="w-16 h-16 bg-[#F1EEFF] rounded-full flex items-center justify-center mx-auto mb-6">
+        <i data-lucide="refresh-cw" class="w-7 h-7 text-[#8B5CF6]"></i>
+      </div>
+      <div class="text-[13px] text-gray-500 leading-relaxed px-2">We couldn't build this trip right now. Please try again in a minute.</div>
+    </div>
+    <button onclick="magicBoxRetry()" class="btn-interactive w-full h-[46px] bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">
+      Try again
+    </button>
+  </div>
+  <!-- A ?route=<id> or homepage route-card link pointing at something that
+       no longer resolves — doesn't exist, or was rejected/stale (see
+       _is_unknown_destination() again). Reuses this same glass-card shell
+       rather than a dedicated top-level screen. -->
+  <div id="magicbox-route-unavailable" class="hidden mx-5 md:mx-0 px-6 md:px-10 py-10 glass-card rounded-[28px]">
+    <div class="text-center mb-8">
+      <div class="w-16 h-16 bg-[#F1EEFF] rounded-full flex items-center justify-center mx-auto mb-6">
+        <i data-lucide="link-2-off" class="w-7 h-7 text-[#8B5CF6]"></i>
+      </div>
+      <div class="text-lg font-semibold">This trip isn't available</div>
+    </div>
+    <button onclick="showScreen('home')" class="btn-interactive w-full h-[46px] bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">
+      Back to home
     </button>
   </div>
 </div>
@@ -2303,7 +2356,11 @@
         pushRouteHistoryState(data.itinerary, data.video_id, '', false, { name: 'route', value: data.video_id });
         showScreen('ai-route');
       })
-      .catch(err => { console.error('Could not open route "' + slug + '":', err); alert('Sorry, this route could not be loaded.'); });
+      .catch(err => {
+        console.error('Could not open route "' + slug + '":', err);
+        showScreen('magicbox');
+        magicBoxShowPanel('magicbox-route-unavailable');
+      });
   }
   // Fetches every approved AI-generated route from the backend and merges
   // it into the (otherwise hardcoded) ROUTES array so it shows up as a
@@ -3300,7 +3357,7 @@
       statusEl.style.color = '#6b7280';
       statusEl.textContent = 'Clearing…';
       try {
-        const res = await fetch(`${BACKEND_URL}/admin/clear-cache?secret=${encodeURIComponent(secret)}`, { method: 'POST' });
+        const res = await fetch(`${BACKEND_URL}/admin/clear-cache`, { method: 'POST', headers: { 'X-Admin-Secret': secret } });
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
           statusEl.style.color = '#16A34A';
@@ -4463,16 +4520,49 @@
       el.textContent = frames[i];
     }, 700);
   }
+  // Switches which of the magicbox screen's panels is visible — the form,
+  // the loading state, a successful result, or one of the three error
+  // states below. Replaces the old pattern of toggling 'hidden' on two
+  // elements by hand at every call site (easy to miss one, which is how
+  // this used to leave the loading spinner showing under an alert()).
+  function magicBoxShowPanel(id) {
+    ['magicbox-form', 'magicbox-loading', 'magicbox-result', 'magicbox-not-a-trip', 'magicbox-error', 'magicbox-route-unavailable'].forEach(pid => {
+      const el = document.getElementById(pid);
+      if (el) el.classList.toggle('hidden', pid !== id);
+    });
+    if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+  }
+  function magicBoxShowFieldError(message) {
+    const el = document.getElementById('tiktok-url-error');
+    if (el) { el.textContent = message; el.classList.remove('hidden'); }
+  }
+  function magicBoxClearFieldError() {
+    const el = document.getElementById('tiktok-url-error');
+    if (el) { el.classList.add('hidden'); el.textContent = ''; }
+  }
+  // "Try another video" (not-a-trip panel) — clears the field and returns
+  // focus to it, ready for a different link.
+  function magicBoxTryAnother() {
+    magicBoxShowPanel('magicbox-form');
+    magicBoxClearFieldError();
+    const input = document.getElementById('tiktok-url');
+    if (input) { input.value = ''; input.focus(); }
+  }
+  // "Try again" (genuine-error panel) — just goes back to the form with
+  // whatever link was already typed, so retrying doesn't mean re-pasting.
+  function magicBoxRetry() {
+    magicBoxShowPanel('magicbox-form');
+    magicBoxClearFieldError();
+  }
   async function startMagicBox() {
     const url = document.getElementById('tiktok-url').value.trim();
+    magicBoxClearFieldError();
     if (!url) {
-      alert('Please paste a TikTok or Instagram Reel link first.');
+      magicBoxShowFieldError('Paste a TikTok or Instagram link first');
       return;
     }
-    document.getElementById('magicbox-form').classList.add('hidden');
-    document.getElementById('magicbox-loading').classList.remove('hidden');
-    if (typeof lucide !== 'undefined') { lucide.createIcons(); }
-    // Simplified loading state: a steady "Video is generating…" label
+    magicBoxShowPanel('magicbox-loading');
+    // Simplified loading state: a steady "Building your itinerary…" label
     // (static, set in the HTML) plus a rotating country fact below it —
     // see COUNTRY_FACTS + startMagicBoxFactRotation() above. No stage-by-
     // stage progress copy, no time estimate.
@@ -4512,17 +4602,23 @@
     } catch (err) {
       clearInterval(interval);
       clearInterval(globeInterval);
-      document.getElementById('magicbox-loading').classList.add('hidden');
-      document.getElementById('magicbox-form').classList.remove('hidden');
-      // The backend's "couldn't identify a real destination" rejection
-      // (fresh analysis, or a stale cached UNKNOWN row) is already a
-      // clean, complete sentence — showing it under "Something went
-      // wrong" + "make sure you pasted a valid link" just confuses a
-      // visitor whose link WAS valid, it just wasn't a travel video.
-      if (err.message && err.message.includes("doesn't look like a travel video")) {
-        alert(err.message);
+      const msg = (err && err.message) || '';
+      if (msg.includes("doesn't look like a travel video")) {
+        // Not a system error — the AI looked and genuinely found no real
+        // destination (fresh analysis, or a stale pre-fix cached UNKNOWN
+        // row). Its own calm, no-alert state, not the generic error panel.
+        magicBoxShowPanel('magicbox-not-a-trip');
+      } else if (msg.includes('We support TikTok and Instagram videos')) {
+        // A link format/platform problem is the same kind of thing as an
+        // empty field — a small note under the field, not a popup or the
+        // big error panel.
+        magicBoxShowPanel('magicbox-form');
+        magicBoxShowFieldError('We support TikTok and Instagram videos');
       } else {
-        alert('Something went wrong: ' + err.message + '\n\nMake sure you pasted a valid TikTok or Instagram link.');
+        // A genuine unexpected failure (server unreachable, timeout,
+        // malformed response) — the one case that really is an error.
+        // Never show the server's own technical message here.
+        magicBoxShowPanel('magicbox-error');
       }
     }
   }
@@ -4561,10 +4657,16 @@
         console.error('Could not restore shared route "' + routeParam + '":', err);
         // A broken shared link (a stale UNKNOWN-destination row, or a
         // genuinely bad/unknown id) used to just silently leave the
-        // visitor on the homepage with zero explanation. Say so plainly —
-        // whatever message the backend sent (e.g. "This video doesn't
-        // look like a travel video...") is shown as-is.
-        alert(err.message || 'This route could not be loaded. It may no longer exist.');
+        // visitor on the homepage with zero explanation. Show the
+        // "unavailable" panel instead of an alert() — and strip the dead
+        // ?route= param from the address bar so reloading, or copying the
+        // link from here, doesn't just keep hitting the same dead route.
+        const cleanParams = new URLSearchParams(location.search);
+        cleanParams.delete('route');
+        const cleanQuery = cleanParams.toString();
+        history.replaceState({ screen: 'home' }, '', location.pathname + (cleanQuery ? '?' + cleanQuery : ''));
+        showScreen('magicbox');
+        magicBoxShowPanel('magicbox-route-unavailable');
       });
   }
   // ======================================================================

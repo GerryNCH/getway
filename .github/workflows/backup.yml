@@ -27,7 +27,8 @@ jobs:
           OUT="backups/routes-${DATE}.json"
 
           HTTP_STATUS=$(curl -sS -o "$OUT" -w "%{http_code}" \
-            "${RAILWAY_BACKEND_URL%/}/admin/export?secret=${ADMIN_TOKEN}")
+            -H "X-Admin-Secret: ${ADMIN_TOKEN}" \
+            "${RAILWAY_BACKEND_URL%/}/admin/export")
 
           if [ "$HTTP_STATUS" != "200" ]; then
             echo "::error::Export request failed with HTTP $HTTP_STATUS"

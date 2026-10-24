@@ -118,8 +118,9 @@ const SITE_URL = "https://getway-theta.vercel.app";
 async function uploadImageFile(file) {
   const formData = new FormData();
   formData.append("file", file);
-  const res = await fetch(`${API_BASE}/admin/upload-image?secret=${encodeURIComponent(SECRET)}`, {
+  const res = await fetch(`${API_BASE}/admin/upload-image`, {
     method: "POST",
+    headers: { "X-Admin-Secret": SECRET },
     body: formData,
   });
   if (!res.ok) {
@@ -189,7 +190,7 @@ async function tryLogin(pw) {
   document.getElementById("login-error").classList.add("hidden");
 
   try {
-    const res = await fetch(`${API_BASE}/admin/stats?secret=${encodeURIComponent(SECRET)}`);
+    const res = await fetch(`${API_BASE}/admin/stats`, { headers: { "X-Admin-Secret": SECRET } });
     if (!res.ok) throw new Error("bad secret");
     sessionStorage.setItem("getway_admin_secret", SECRET);
     document.getElementById("login-screen").classList.add("hidden");
@@ -210,21 +211,23 @@ document.getElementById("logout-btn").addEventListener("click", () => { sessionS
 if (SECRET) tryLogin(SECRET);
 
 // ── API helpers ───────────────────────────────────────────────────────
-function withSecret(path) {
-  const sep = path.includes("?") ? "&" : "?";
-  return `${API_BASE}${path}${sep}secret=${encodeURIComponent(SECRET)}`;
-}
-async function apiGet(path) { const r = await fetch(withSecret(path)); if (!r.ok) throw new Error(await r.text()); return r.json(); }
-async function apiPost(path) { const r = await fetch(withSecret(path), { method: "POST" }); if (!r.ok) throw new Error(await r.text()); return r.json(); }
+// The admin secret travels as the X-Admin-Secret header, never as a
+// ?secret= query param — a query param gets written into Railway's
+// request logs (and any proxy/browser history along the way) in plain
+// text, a header doesn't.
+function apiUrl(path) { return `${API_BASE}${path}`; }
+function authHeaders(extra) { return Object.assign({ "X-Admin-Secret": SECRET }, extra || {}); }
+async function apiGet(path) { const r = await fetch(apiUrl(path), { headers: authHeaders() }); if (!r.ok) throw new Error(await r.text()); return r.json(); }
+async function apiPost(path) { const r = await fetch(apiUrl(path), { method: "POST", headers: authHeaders() }); if (!r.ok) throw new Error(await r.text()); return r.json(); }
 async function apiPut(path, body) {
-  const r = await fetch(withSecret(path), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const r = await fetch(apiUrl(path), { method: "PUT", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
-async function apiDelete(path) { const r = await fetch(withSecret(path), { method: "DELETE" }); if (!r.ok) throw new Error(await r.text()); return r.json(); }
+async function apiDelete(path) { const r = await fetch(apiUrl(path), { method: "DELETE", headers: authHeaders() }); if (!r.ok) throw new Error(await r.text()); return r.json(); }
 
 async function exportAllRoutes() {
-  const r = await fetch(withSecret("/admin/export"));
+  const r = await fetch(apiUrl("/admin/export"), { headers: authHeaders() });
   if (!r.ok) throw new Error(await r.text());
   const blob = await r.blob();
   const disposition = r.headers.get("Content-Disposition") || "";

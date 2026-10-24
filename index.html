@@ -1152,6 +1152,7 @@
         <i data-lucide="map-pin" class="w-[18px] h-[18px] text-gray-500 flex-shrink-0"></i>
         <input id="bt-destination" type="text" placeholder="e.g. Lisbon, Portugal" class="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-gray-400">
       </div>
+      <div id="bt-destination-error" class="hidden text-xs text-red-500 mt-1.5 px-1"></div>
     </div>
     <div class="grid grid-cols-2 gap-3 mb-8">
       <div>
@@ -1162,6 +1163,7 @@
           <button type="button" onclick="adjustTripCounter('bt-days', 1)" aria-label="More days" class="btn-interactive w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full bg-[#F1EEFF] text-[#6D28D9] text-base font-semibold leading-none">&plus;</button>
           <input type="hidden" id="bt-days" min="1" max="30" value="3">
         </div>
+        <div id="bt-days-error" class="hidden text-xs text-red-500 mt-1.5 px-1"></div>
       </div>
       <div>
         <label class="text-[11px] font-medium text-gray-500 mb-1.5 block">People</label>
@@ -1171,6 +1173,7 @@
           <button type="button" onclick="adjustTripCounter('bt-people', 1)" aria-label="More people" class="btn-interactive w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full bg-[#F1EEFF] text-[#6D28D9] text-base font-semibold leading-none">&plus;</button>
           <input type="hidden" id="bt-people" min="1" max="20" value="2">
         </div>
+        <div id="bt-people-error" class="hidden text-xs text-red-500 mt-1.5 px-1"></div>
       </div>
     </div>
     <button onclick="buildTripStep1Continue()" class="btn-interactive w-full h-[50px] flex items-center justify-center gap-2 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">
@@ -1411,6 +1414,22 @@
       <button id="confirm-modal-cancel-btn" class="btn-outline-interactive flex-1 h-[44px] bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-xl">Cancel</button>
       <button id="confirm-modal-ok-btn" class="btn-interactive flex-1 h-[44px] bg-[#8B5CF6] text-white text-sm font-medium rounded-xl">Continue</button>
     </div>
+  </div>
+</div>
+<!-- Generic "couldn't build this trip" card for Build Your Own Trip's
+     network/server errors (finding places, building the itinerary, saving a
+     trip) — replaces three separate alert() calls. Always this same
+     reassuring copy, never the raw err.message/server detail: a traveler
+     doesn't need to see "500 Internal Server Error". showTripErrorModal()
+     optionally takes a retry callback so each call site resumes right where
+     it failed. -->
+<div id="trip-error-modal-overlay" class="hidden fixed inset-0 z-[180] bg-black/50 flex items-center justify-center p-4">
+  <div class="bento-card bg-white rounded-[22px] p-6 w-full max-w-sm text-center">
+    <div class="w-14 h-14 bg-[#F1EEFF] rounded-full flex items-center justify-center mx-auto mb-5">
+      <i data-lucide="refresh-cw" class="w-6 h-6 text-[#8B5CF6]"></i>
+    </div>
+    <div class="text-sm text-gray-700 leading-relaxed mb-6">We couldn't build this trip right now. Please try again in a minute.</div>
+    <button id="trip-error-modal-retry-btn" class="btn-interactive w-full h-[46px] bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">Try again</button>
   </div>
 </div>
 <button onclick="toggleSupportChat()" class="btn-interactive fixed bottom-6 right-6 z-[150] w-14 h-14 rounded-full bg-[#8B5CF6] shadow-xl flex items-center justify-center">
@@ -4742,13 +4761,29 @@
     input.value = next;
     if (display) display.textContent = next;
   }
+  // Inline, in-page field errors for Build Your Own Trip step 1 — replaces
+  // the three alert() calls that used to fire here (Gerry: no system-style
+  // popups, a short note under the field instead, in the site's own style).
+  function buildTripClearFieldErrors() {
+    ['bt-destination-error', 'bt-days-error', 'bt-people-error'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.classList.add('hidden'); el.textContent = ''; }
+    });
+  }
+  function buildTripShowFieldError(id, message) {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = message; el.classList.remove('hidden'); }
+  }
   function buildTripStep1Continue() {
+    buildTripClearFieldErrors();
     const dest = (document.getElementById('bt-destination').value || '').trim();
     const days = parseInt(document.getElementById('bt-days').value, 10);
     const people = parseInt(document.getElementById('bt-people').value, 10);
-    if (!dest) { alert('Please enter a destination.'); return; }
-    if (!days || days < 1) { alert('Please enter a valid number of days.'); return; }
-    if (!people || people < 1) { alert('Please enter a valid number of people.'); return; }
+    let ok = true;
+    if (!dest) { buildTripShowFieldError('bt-destination-error', 'Pick a destination first'); ok = false; }
+    if (!days || days < 1) { buildTripShowFieldError('bt-days-error', "Choose how many days you're going for"); ok = false; }
+    if (!people || people < 1) { buildTripShowFieldError('bt-people-error', 'Tell us how many people are going'); ok = false; }
+    if (!ok) return;
     _buildTripState.destination = dest;
     _buildTripState.days = days;
     _buildTripState.people = people;
@@ -4977,8 +5012,8 @@
       if (window._buildTripLoadingFactInterval) { clearInterval(window._buildTripLoadingFactInterval); window._buildTripLoadingFactInterval = null; }
       if (window._buildTripLoadingGlobeInterval) { clearInterval(window._buildTripLoadingGlobeInterval); window._buildTripLoadingGlobeInterval = null; }
       document.getElementById('build-trip-candidates-loading').classList.add('hidden');
-      alert('Something went wrong finding places: ' + err.message);
       showBuildTripStep(3);
+      showTripErrorModal(() => { showBuildTripStep(4); loadBuildTripCandidates(); });
     }
   }
   function buildTripCandidateCardHtml(c, i) {
@@ -5239,9 +5274,9 @@
       pushRouteHistoryState(data.itinerary, '', '', true);
       showScreen('ai-route');
     } catch (err) {
-      alert('Something went wrong building your itinerary: ' + err.message);
       showBuildTripStep(5);
       showScreen('build-trip');
+      showTripErrorModal(buildAndPreviewTrip);
     } finally {
       if (window._buildTripStep6FactInterval) { clearInterval(window._buildTripStep6FactInterval); window._buildTripStep6FactInterval = null; }
       if (window._buildTripStep6GlobeInterval) { clearInterval(window._buildTripStep6GlobeInterval); window._buildTripStep6GlobeInterval = null; }
@@ -5353,7 +5388,7 @@
       // auto-copy right after the awaited fetch above.
       showSavedTripToast(location.href);
     } catch (err) {
-      alert('Could not save your trip: ' + err.message);
+      showTripErrorModal();
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = 'Save trip'; }
     }
@@ -5594,6 +5629,27 @@
   document.getElementById('confirm-modal-ok-btn').addEventListener('click', () => _resolveConfirmModal(true));
   document.getElementById('confirm-modal-overlay').addEventListener('click', (e) => {
     if (e.target === e.currentTarget) _resolveConfirmModal(false);
+  });
+  // Generic "couldn't build this trip" card — see #trip-error-modal-overlay
+  // above. showTripErrorModal(retryFn) displays it; tapping "Try again"
+  // hides it and calls retryFn (if given) so the caller resumes exactly
+  // where it failed, never showing the raw server error text.
+  let _tripErrorRetry = null;
+  function showTripErrorModal(retryFn) {
+    _tripErrorRetry = (typeof retryFn === 'function') ? retryFn : null;
+    document.getElementById('trip-error-modal-overlay').classList.remove('hidden');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+  function closeTripErrorModal() {
+    document.getElementById('trip-error-modal-overlay').classList.add('hidden');
+  }
+  document.getElementById('trip-error-modal-retry-btn').addEventListener('click', () => {
+    const fn = _tripErrorRetry;
+    closeTripErrorModal();
+    if (fn) fn();
+  });
+  document.getElementById('trip-error-modal-overlay').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeTripErrorModal();
   });
   function dismissInstallBanner(startCooldown) {
     const el = document.getElementById('install-banner');

@@ -4514,7 +4514,16 @@
       clearInterval(globeInterval);
       document.getElementById('magicbox-loading').classList.add('hidden');
       document.getElementById('magicbox-form').classList.remove('hidden');
-      alert('Something went wrong: ' + err.message + '\n\nMake sure you pasted a valid TikTok or Instagram link.');
+      // The backend's "couldn't identify a real destination" rejection
+      // (fresh analysis, or a stale cached UNKNOWN row) is already a
+      // clean, complete sentence — showing it under "Something went
+      // wrong" + "make sure you pasted a valid link" just confuses a
+      // visitor whose link WAS valid, it just wasn't a travel video.
+      if (err.message && err.message.includes("doesn't look like a travel video")) {
+        alert(err.message);
+      } else {
+        alert('Something went wrong: ' + err.message + '\n\nMake sure you pasted a valid TikTok or Instagram link.');
+      }
     }
   }
   // Restores a shared route from the URL's ?route= param on page load.
@@ -4536,8 +4545,11 @@
       return;
     }
     fetch(`${BACKEND_URL}/itinerary/${encodeURIComponent(routeParam)}`)
-      .then(res => {
-        if (!res.ok) throw new Error('Route not found: ' + res.status);
+      .then(async res => {
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || ('Route not found: ' + res.status));
+        }
         return res.json();
       })
       .then(data => {
@@ -4547,6 +4559,12 @@
       })
       .catch(err => {
         console.error('Could not restore shared route "' + routeParam + '":', err);
+        // A broken shared link (a stale UNKNOWN-destination row, or a
+        // genuinely bad/unknown id) used to just silently leave the
+        // visitor on the homepage with zero explanation. Say so plainly —
+        // whatever message the backend sent (e.g. "This video doesn't
+        // look like a travel video...") is shown as-is.
+        alert(err.message || 'This route could not be loaded. It may no longer exist.');
       });
   }
   // ======================================================================

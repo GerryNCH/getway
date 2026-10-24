@@ -252,6 +252,22 @@ def startup():
     threading.Thread(target=_backfill_travel_tips_background, daemon=True).start()
 
 
+def _is_unknown_destination(destination: str | None) -> bool:
+    """
+    True for the "couldn't identify a real destination" sentinel
+    ai_analyzer.py's system prompt tells the model to output ("UNKNOWN"),
+    and for the blank/equivalent values a pre-fix cached row can still have
+    (NULL, empty string, or "Unknown" in any case/whitespace). Shared by
+    every place that SERVES an already-cached itinerary — the /extract
+    cache-hit path and GET /itinerary/{video_id} below — so a stale
+    UNKNOWN row from before this check existed (e.g. the @majasrecipes
+    pasta video, tt_7496606826109078839) gets the same clean rejection a
+    fresh analysis would now get, instead of being served as a real route.
+    """
+    d = (destination or "").strip().upper()
+    return d in ("", "UNKNOWN")
+
+
 # ── Main extraction endpoint ──────────────────────────────────────────────────
 
 @app.post("/extract", response_model=ExtractResponse)
@@ -285,6 +301,16 @@ async def extract(req: ExtractRequest):
     # ── Layer 2: database cache check (FREE) ──────────────────────────────────
     cached = database.get_itinerary(video_id)
     if cached:
+        if _is_unknown_destination(cached.destination):
+            # A stale row from before the UNKNOWN-rejection fix existed —
+            # don't serve it as a route. Same clean message a fresh
+            # analysis gives now; the row itself gets purged by the
+            # one-time /admin/clear-unknown-routes cleanup, not here.
+            print(f"[Cache HIT] {video_id} is a stale UNKNOWN-destination row — rejecting")
+            raise HTTPException(
+                422,
+                "This video doesn't look like a travel video. Please try another."
+            )
         print(f"[Cache HIT] Serving {video_id} from database — $0 spent")
         return ExtractResponse(
             itinerary=cached,
@@ -1060,6 +1086,23 @@ def clear_cache(secret: str):
     return {"status": "ok", "cleared": count}
 
 
+@app.post("/admin/clear-unknown-routes")
+def clear_unknown_routes(secret: str):
+    """
+    One-time cleanup: deletes only the stale rows saved before main.py
+    started rejecting "couldn't identify a destination" results instead of
+    caching them (destination == "UNKNOWN", or blank). Unlike
+    /admin/clear-cache above, this leaves every real route untouched — run
+    it once after deploying the UNKNOWN-rejection fix to purge old broken
+    links like the @majasrecipes pasta video (tt_7496606826109078839)
+    without wiping good cached routes.
+    """
+    if secret != ADMIN_SECRET:
+        raise HTTPException(403, "Invalid admin secret")
+    count = database.delete_unknown_itineraries()
+    return {"status": "ok", "deleted": count}
+
+
 @app.get("/admin/places-diagnostic")
 def places_diagnostic(secret: str):
     """
@@ -1204,6 +1247,14 @@ def get_itinerary(video_id: str):
     cached = database.get_itinerary(video_id)
     if not cached:
         raise HTTPException(404, "Itinerary not found for this route ID")
+    if _is_unknown_destination(cached.destination):
+        # A shared link pointing at a stale UNKNOWN-destination row (see
+        # _is_unknown_destination above) — same clean rejection, not a
+        # route full of invented "Unknown" stops.
+        raise HTTPException(
+            422,
+            "This video doesn't look like a travel video. Please try another."
+        )
     return ExtractResponse(
         itinerary=cached,
         source="cache",

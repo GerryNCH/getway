@@ -1118,6 +1118,28 @@ def clear_all_itineraries() -> int:
     return count
 
 
+def delete_unknown_itineraries() -> int:
+    """
+    Hard-deletes every cached itinerary whose destination is the AI's
+    "couldn't identify a real place" sentinel ("UNKNOWN"), or an equivalent
+    blank/placeholder value a pre-fix row could have had (NULL, empty
+    string, or "Unknown" in any case/whitespace). One-time cleanup for rows
+    saved before ai_analyzer.py/main.py started rejecting these instead of
+    caching them (see the UNKNOWN-destination check in main.py's /extract
+    and GET /itinerary/{video_id}). Returns the number of rows deleted.
+    """
+    with _conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM itineraries "
+            "WHERE destination IS NULL "
+            "   OR TRIM(destination) = '' "
+            "   OR UPPER(TRIM(destination)) = 'UNKNOWN'"
+        )
+        count = cur.rowcount
+    print(f"[DB] Deleted {count} stale UNKNOWN-destination itineraries")
+    return count
+
+
 # ── Troll filter cache ────────────────────────────────────────────────────────
 
 def get_troll_decision(video_id: str) -> bool | None:

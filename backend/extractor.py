@@ -76,6 +76,20 @@ def is_instagram_url(url: str) -> bool:
     return "instagram.com" in url and any(seg in url for seg in ("/reel/", "/reels/", "/p/"))
 
 
+# ── Supported-platform gate ───────────────────────────────────────────────────
+# GetWay only reliably supports TikTok and Instagram. YouTube used to be
+# attempted too (see extract_video_id's yt_ prefix, kept for any old cached
+# rows) but yt-dlp support for it is unreliable enough that it's not worth
+# fixing — a YouTube (or any other) link should get a clean, friendly
+# rejection here instead of silently falling through to download_video and
+# failing with a confusing yt-dlp error, or worse, succeeding unreliably.
+def is_supported_platform(url: str) -> bool:
+    """True only for TikTok and Instagram links — the two platforms GetWay
+    actually supports end-to-end."""
+    u = url.lower()
+    return "tiktok.com" in u or "instagram.com" in u
+
+
 # ── Metadata fetch (no download) ─────────────────────────────────────────────
 
 def fetch_metadata(url: str) -> dict:

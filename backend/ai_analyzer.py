@@ -156,9 +156,19 @@ Your job:
 
 Return ONLY valid JSON — no markdown, no code fences, no explanation.
 
+If you cannot confidently identify a real, specific geographic destination
+from the frames and comments (e.g. the video turns out to be mostly indoors
+with no identifiable city/region — a home cooking video, a studio vlog,
+generic lifestyle content that slipped past the earlier travel filter),
+do NOT guess or invent a destination. Set "destination" to exactly the
+string "UNKNOWN" instead, and leave the rest of the fields as empty/minimal
+as the schema allows — the caller checks for this exact sentinel and will
+show the visitor a "this doesn't look like a travel video" message instead
+of a fabricated itinerary full of invented Unknown hotels and flights.
+
 Schema:
 {
-  "destination": "City, Country",
+  "destination": "City, Country" (or exactly "UNKNOWN" — see above),
   "duration": "X days",
   "summary": "2-3 sentence personal intro in a specific tone — see the 'summary' rule below, don't improvise the structure",
   "fun_fact": "One genuinely true fact about the destination itself that's surprising, quirky, or slightly odd — the kind that makes someone think 'huh, no way' or 'okay, now I want to go there.' NOT about any specific stop in this route, and NOT a flat postcard statement. One sentence, max ~20 words.",

@@ -50,7 +50,7 @@ from extractor import (
     extract_video_id, fetch_metadata, download_video, extract_frames,
     is_slideshow, fetch_slideshow_post, download_slideshow_images,
     fetch_top_comments, is_instagram_url, fetch_instagram_post,
-    download_instagram_video, resolve_canonical_url,
+    download_instagram_video, resolve_canonical_url, is_supported_platform,
 )
 from troll_filter import check_is_travel
 from ai_analyzer import (
@@ -267,6 +267,17 @@ async def extract(req: ExtractRequest):
     # triggering a second paid generation for content already on file.
     url = resolve_canonical_url(url)
 
+    # ── Layer 0: supported-platform gate ───────────────────────────────────────
+    # Checked before touching the cache or spending anything — a YouTube (or
+    # any other non-TikTok/Instagram) link gets one clean, friendly rejection
+    # instead of an eventual confusing yt-dlp failure further down.
+    if not is_supported_platform(url):
+        raise HTTPException(
+            422,
+            "We support TikTok and Instagram videos right now. "
+            "Please paste a link from one of those."
+        )
+
     # ── Layer 1: stable video ID ──────────────────────────────────────────────
     video_id = extract_video_id(url)
     print(f"\n[Request] {video_id}  {url}")
@@ -403,6 +414,20 @@ async def extract(req: ExtractRequest):
                   f"{len(itinerary.days)} days")
         except Exception as e:
             raise HTTPException(500, f"AI analysis failed: {e}")
+
+        # ── Layer 7a: reject "can't identify a destination" results ─────────────
+        # ai_analyzer's system prompt tells the model to output the literal
+        # sentinel "UNKNOWN" for destination when it can't confidently identify
+        # a real place (e.g. a home-cooking or studio vlog that slipped past the
+        # cheap troll filter). Catch that here, before any caching/enrichment/
+        # saving happens, and give the visitor a clean, friendly rejection
+        # instead of a fabricated itinerary full of invented "Unknown" hotels
+        # and flights.
+        if not itinerary.destination or itinerary.destination.strip().upper() == "UNKNOWN":
+            raise HTTPException(
+                422,
+                "This video doesn't look like a travel video. Please try another."
+            )
 
         # ── Layer 7b: enrich with Google Places photos ────────────────────────
         try:

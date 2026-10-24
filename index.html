@@ -2236,14 +2236,37 @@
   // regardless of whether "back" came from our button, the browser's
   // native button, or a swipe gesture — they all fire the same
   // 'popstate' event below.
-  function pushRouteHistoryState(itinerary, videoId, sourceUrl, isBuildTripPreview) {
+  function pushRouteHistoryState(itinerary, videoId, sourceUrl, isBuildTripPreview, urlParam) {
+    // urlParam = {name: 'route'|'trip', value: <id>} — pass this whenever the
+    // route being shown actually has a real, reloadable identifier, so the
+    // address bar reflects it. Real bug this fixes: this used to always push
+    // state onto location.href UNCHANGED, so the address bar silently stayed
+    // on whatever URL was already there (usually the bare homepage) after
+    // generating or opening a route — reloading the page lost the route
+    // entirely, and copying the URL to share it just sent people to the
+    // homepage (Gerry: "click save and nothing saves or copies anywhere" /
+    // the older known "share URL doesn't load saved route" bug). An unsaved
+    // Build Your Own Trip preview has no id yet — omit urlParam for that
+    // case; its survival across back-navigation already works via
+    // history.state.itinerary, not the URL, same as before.
+    let url = location.href;
+    if (urlParam && urlParam.value) {
+      const params = new URLSearchParams(location.search);
+      // 'route' (AI-generated or static demo routes) and 'trip' (saved
+      // Build Your Own Trip routes) are mutually exclusive — never leave
+      // the other one stale in the URL when switching between them.
+      params.delete('route');
+      params.delete('trip');
+      params.set(urlParam.name, urlParam.value);
+      url = `${location.pathname}?${params.toString()}`;
+    }
     history.pushState({
       screen: 'ai-route',
       itinerary: itinerary,
       videoId: videoId || '',
       sourceUrl: sourceUrl || '',
       isBuildTripPreview: !!isBuildTripPreview,
-    }, '', location.href);
+    }, '', url);
   }
   window.addEventListener('popstate', function (event) {
     const state = event.state;
@@ -2266,7 +2289,10 @@
   }
   function openRouteCard(slug) {
     if (STATIC_ROUTE_SLUGS.has(slug)) {
-      history.pushState({ screen: 'route' }, '', location.href);
+      const params = new URLSearchParams(location.search);
+      params.delete('trip');
+      params.set('route', slug);
+      history.pushState({ screen: 'route' }, '', `${location.pathname}?${params.toString()}`);
       showScreen('route');
       return;
     }
@@ -2274,7 +2300,7 @@
       .then(res => { if (!res.ok) throw new Error('Route not found: ' + res.status); return res.json(); })
       .then(data => {
         renderAiRoute(data.itinerary, data.video_id, '');
-        pushRouteHistoryState(data.itinerary, data.video_id, '', false);
+        pushRouteHistoryState(data.itinerary, data.video_id, '', false, { name: 'route', value: data.video_id });
         showScreen('ai-route');
       })
       .catch(err => { console.error('Could not open route "' + slug + '":', err); alert('Sorry, this route could not be loaded.'); });
@@ -3079,9 +3105,29 @@
   function worldNomadsUrl() {
     return withAffiliateMarker('https://www.worldnomads.com/travel-insurance', 'worldnomads');
   }
+  // Go City only sells passes for a fixed set of cities, and its real URLs
+  // are lowercase, hyphenated, and under /en/ — e.g. https://gocity.com/en/
+  // los-angeles, never https://gocity.com/Los%20Angeles. The old code built
+  // the latter (wrong path, wrong case, no hyphenation), which 404s, AND
+  // showed the "View pass" button for every single destination regardless
+  // of whether Go City even covers it. List confirmed live against
+  // gocity.com/en on 2026-10-23 — update this if Go City adds/drops cities.
+  const GOCITY_SUPPORTED_SLUGS = new Set([
+    'new-york', 'paris', 'san-diego', 'las-vegas', 'london', 'oahu', 'chicago',
+    'boston', 'cancun', 'los-angeles', 'miami', 'new-orleans', 'orlando',
+    'philadelphia', 'san-antonio', 'san-francisco', 'amsterdam', 'barcelona',
+    'dublin', 'gothenburg', 'madrid', 'prague', 'rome', 'stockholm', 'dubai',
+    'hong-kong', 'singapore', 'sydney',
+  ]);
+  function goCitySlug(destination) {
+    const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim();
+    return city.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-');
+  }
+  function isGoCitySupported(destination) {
+    return GOCITY_SUPPORTED_SLUGS.has(goCitySlug(destination));
+  }
   function goCityUrl(destination) {
-    const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim() || destination || '';
-    return 'https://tp.media/r?campaign_id=62&marker=772114&p=1942&trs=568652&u=' + encodeURIComponent('https://gocity.com/' + encodeURIComponent(city));
+    return 'https://tp.media/r?campaign_id=62&marker=772114&p=1942&trs=568652&u=' + encodeURIComponent('https://gocity.com/en/' + goCitySlug(destination));
   }
   // Airport transfers — both are real, working homepages; a true per-city
   // deep link would need a confirmed country/city slug format from each
@@ -3205,7 +3251,7 @@
   function renderGoCityBanner(destination, videoId) {
     const container = document.getElementById('ai-route-gocity-banner');
     if (!container) return;
-    container.innerHTML = isAffiliateSectionEnabled('gocity') ? buildGoCityBannerHtml(destination, videoId) : '';
+    container.innerHTML = (isAffiliateSectionEnabled('gocity') && isGoCitySupported(destination)) ? buildGoCityBannerHtml(destination, videoId) : '';
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
   // Airport transfer — shown only on Day 1 (arrival day) of the route.
@@ -4166,7 +4212,7 @@
     if (isAffiliateSectionEnabled('insurance')) {
       rows.push({ icon: 'shield-check', title: 'Travel insurance', sub: 'Cover this trip in case plans change', cta: 'Cover', href: safetyWingUrl(), partner: 'safetywing' });
     }
-    if (isAffiliateSectionEnabled('gocity')) {
+    if (isAffiliateSectionEnabled('gocity') && isGoCitySupported(city)) {
       rows.push({ icon: 'ticket', title: `Save on attractions in ${escapeHtml(city)}`, sub: 'City pass covers top sights, skip the line', cta: 'View', href: goCityUrl(city), partner: 'gocity' });
     }
     if (!rows.length) return '';
@@ -4461,14 +4507,14 @@
       const daysContainerReset = document.getElementById('ai-route-days');
       if (daysContainerReset) daysContainerReset.classList.remove('hidden');
       renderAiRoute(data.itinerary, data.video_id, url);
-      pushRouteHistoryState(data.itinerary, data.video_id, url, false);
+      pushRouteHistoryState(data.itinerary, data.video_id, url, false, { name: 'route', value: data.video_id });
       showScreen('ai-route');
     } catch (err) {
       clearInterval(interval);
       clearInterval(globeInterval);
       document.getElementById('magicbox-loading').classList.add('hidden');
       document.getElementById('magicbox-form').classList.remove('hidden');
-      alert('Something went wrong: ' + err.message + '\n\nMake sure you pasted a valid TikTok or YouTube link.');
+      alert('Something went wrong: ' + err.message + '\n\nMake sure you pasted a valid TikTok or Instagram link.');
     }
   }
   // Restores a shared route from the URL's ?route= param on page load.
@@ -4496,7 +4542,7 @@
       })
       .then(data => {
         renderAiRoute(data.itinerary, data.video_id, '');
-        pushRouteHistoryState(data.itinerary, data.video_id, '', false);
+        pushRouteHistoryState(data.itinerary, data.video_id, '', false, { name: 'route', value: data.video_id });
         showScreen('ai-route');
       })
       .catch(err => {
@@ -5208,7 +5254,7 @@
       .then(data => {
         data.itinerary.source = data.source; // see buildAndPreviewTrip's comment
         renderAiRoute(data.itinerary, data.video_id, '');
-        pushRouteHistoryState(data.itinerary, data.video_id, '', false);
+        pushRouteHistoryState(data.itinerary, data.video_id, '', false, { name: 'trip', value: slug });
         showScreen('ai-route');
       })
       .catch(err => {

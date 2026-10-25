@@ -8,6 +8,30 @@
      through Impact.com) — proves Gerry controls this domain. -->
 <meta name="impact-site-verification" value="5e4e629a-78c9-4ec5-a632-1b4b7b9a1295">
 <title>GetWay — Turn TikTok trips into real itineraries</title>
+<!-- Social-share meta tags (Oct 23 bug sprint, task 12) — the site had none
+     at all before this, so any link shared to Facebook/WhatsApp/iMessage/
+     X/etc. showed a bare URL with no preview card. This is a single static
+     SPA page (no server-side rendering per route), and share-preview
+     crawlers don't execute JS, so these are intentionally site-wide/generic
+     rather than per-route — a shared ?route=/?trip= link still shows the
+     GetWay brand card below, not that specific destination's photo. A true
+     per-route preview (dynamic og:image per itinerary) would need
+     server-rendered meta tags and is a separate, bigger piece of work if
+     wanted later. og:image reuses the first homepage hero photo, cropped to
+     the standard 1200x630 share size. -->
+<meta name="description" content="Turn any TikTok or Instagram travel video into a real, bookable itinerary — or build your own trip from scratch. Free AI trip planner.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="GetWay">
+<meta property="og:url" content="https://www.gogetway.com/">
+<meta property="og:title" content="GetWay — Turn TikTok trips into real itineraries">
+<meta property="og:description" content="Turn any TikTok or Instagram travel video into a real, bookable itinerary — or build your own trip from scratch. Free AI trip planner.">
+<meta property="og:image" content="https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=1200&h=630&fit=crop&auto=format">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="GetWay — Turn TikTok trips into real itineraries">
+<meta name="twitter:description" content="Turn any TikTok or Instagram travel video into a real, bookable itinerary — or build your own trip from scratch. Free AI trip planner.">
+<meta name="twitter:image" content="https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=1200&h=630&fit=crop&auto=format">
 <!-- PWA / "Add to Home Screen" support -->
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#8B5CF6">
@@ -206,16 +230,7 @@
     <span class="nav-logo font-serif-display text-xl md:text-2xl text-white transition-colors duration-300" style="text-shadow: 0 1px 8px rgba(0,0,0,0.35);">GetWay<span class="text-[#C4B5FD]">.</span></span>
     <div class="hidden lg:flex items-center gap-5">
       <button type="button" onclick="scrollToRoutes()" class="nav-link nav-hover-outline text-xs font-medium whitespace-nowrap">Routes</button>
-      <!-- "Find your vibe" nav link hidden (Oct 23 bug sprint, task 10):
-           startVibeQuiz()/openVibeQuiz() never scrolls the quiz card into
-           view, so clicking this from anywhere above the card (e.g. right
-           after landing on the page) visibly does nothing — the quiz loads
-           correctly, just off-screen. The quiz itself (questions + AI match)
-           works fine when reached by scrolling down manually, so the
-           on-page "Find your travel vibe" card further down is left as-is;
-           only this always-visible, easy-to-hit entry point is hidden.
-           One-line fix (add a scrollIntoView call to openVibeQuiz) is
-           possible later — see task 11 in the bug sprint doc. -->
+      <button type="button" onclick="startVibeQuiz()" class="nav-link nav-hover-outline text-xs font-medium whitespace-nowrap">Find your vibe</button>
       <button type="button" onclick="startBuildTrip()" class="nav-link nav-hover-outline text-xs font-medium whitespace-nowrap">Build your trip</button>
       <button type="button" onclick="scrollToHowItWorks()" class="nav-link nav-hover-outline text-xs font-medium whitespace-nowrap">How it works</button>
       <button type="button" onclick="toggleSupportChat()" class="nav-link nav-hover-outline text-xs font-medium whitespace-nowrap">Support</button>
@@ -243,8 +258,7 @@
       </div>
       <div class="flex flex-col gap-0.5">
         <button type="button" onclick="mobileMenuGo(scrollToRoutes)" class="mobile-menu-link">Routes</button>
-        <!-- "Find your vibe" hidden here too — see matching comment by the
-             desktop nav link above. -->
+        <button type="button" onclick="mobileMenuGo(startVibeQuiz)" class="mobile-menu-link">Find your vibe</button>
         <button type="button" onclick="mobileMenuGo(startBuildTrip)" class="mobile-menu-link">Build your trip</button>
         <button type="button" onclick="mobileMenuGo(scrollToHowItWorks)" class="mobile-menu-link">How it works</button>
         <button type="button" onclick="mobileMenuGo(toggleSupportChat)" class="mobile-menu-link">Support</button>
@@ -1923,6 +1937,15 @@
     document.getElementById('vibe-quiz-teaser').classList.add('hidden');
     document.getElementById('vibe-quiz-inline').classList.remove('hidden');
     renderVibeQuizStep();
+    // Oct 23 bug sprint, task 10: the nav-bar "Find your vibe" link used to
+    // visibly do nothing when clicked from above this card (e.g. right
+    // after landing on the page) — the quiz loaded correctly, just off-
+    // screen, so nothing appeared to happen. Scroll the card into view on
+    // every open, not just the nav-link entry point, so this also covers
+    // Retake the quiz / any future entry point that isn't already scrolled
+    // here.
+    const card = document.getElementById('vibe-quiz-card');
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
   function closeVibeQuiz() {
     vibeQuizResultToken++; // cancel any in-flight /vibe-quiz/match — see renderVibeQuizResults

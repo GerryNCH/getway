@@ -242,26 +242,50 @@ def init_db() -> None:
             # status (pending/approved/rejected), which stays a manual call.
             conn.execute("ALTER TABLE itineraries ADD COLUMN qc_json TEXT DEFAULT NULL")
         if "fun_fact" not in existing_cols:
-            # One real, verifiable fact about the destination itself — see
-            # models.Itinerary.fun_fact for the full explanation. New rows
-            # get it from the same Sonnet call that generates the rest of
-            # the itinerary; existing rows start empty and are backfilled
-            # by main.py's startup task / POST /admin/backfill-fun-facts.
+            # RETIRED (task 8, Oct 2026) — see models.Itinerary.fun_fact.
+            # Column kept only so old rows don't need a migration to drop
+            # it; nothing writes to it anymore.
             conn.execute("ALTER TABLE itineraries ADD COLUMN fun_fact TEXT DEFAULT ''")
         if "travel_tips_json" not in existing_cols:
             # 3-5 short, practical, destination-specific tips — see
-            # models.Itinerary.travel_tips. Same split as fun_fact: new
-            # routes get it from the same Sonnet call; existing rows start
-            # empty and are backfilled by main.py's startup task / POST
-            # /admin/backfill-travel-tips.
+            # models.Itinerary.travel_tips. New routes get it from the same
+            # Sonnet call; existing rows start empty and are backfilled by
+            # main.py's startup task / POST /admin/backfill-travel-tips.
             conn.execute("ALTER TABLE itineraries ADD COLUMN travel_tips_json TEXT DEFAULT '[]'")
         if "fun_facts_json" not in existing_cols:
-            # 3-4 facts at the same bar as fun_fact — see
-            # models.Itinerary.fun_facts. Same split: new routes get it
-            # from the same Sonnet call; existing rows start empty and are
-            # backfilled by main.py's startup task / POST /admin/backfill-fun-facts
-            # (same endpoint that backfills the singular fun_fact).
+            # RETIRED (task 8, Oct 2026) — see models.Itinerary.fun_facts.
+            # Column kept only so old rows don't need a migration to drop
+            # it; nothing writes to it anymore.
             conn.execute("ALTER TABLE itineraries ADD COLUMN fun_facts_json TEXT DEFAULT '[]'")
+
+        # Migration: stop_cache gained lat/lng (so a cache hit can restore
+        # the stop's map pin, not just its photo — previously only a fresh
+        # Places lookup ever set Stop.lat/lng) and task-8's Places facts
+        # (place_type, address, area_label, opening_hours_weekly as JSON,
+        # rating, user_rating_count, price_level) — see places.py's
+        # _facts_from_place for where these come from. Existing rows start
+        # empty/NULL and simply won't show facts until that stop's photo is
+        # next (re)saved via upsert_stop_cache, which is harmless — the
+        # frontend already treats an empty fact as "don't show this field".
+        existing_stop_cache_cols = {row["name"] for row in conn.execute("PRAGMA table_info(stop_cache)")}
+        if "lat" not in existing_stop_cache_cols:
+            conn.execute("ALTER TABLE stop_cache ADD COLUMN lat REAL DEFAULT NULL")
+        if "lng" not in existing_stop_cache_cols:
+            conn.execute("ALTER TABLE stop_cache ADD COLUMN lng REAL DEFAULT NULL")
+        if "place_type" not in existing_stop_cache_cols:
+            conn.execute("ALTER TABLE stop_cache ADD COLUMN place_type TEXT DEFAULT ''")
+        if "address" not in existing_stop_cache_cols:
+            conn.execute("ALTER TABLE stop_cache ADD COLUMN address TEXT DEFAULT ''")
+        if "area_label" not in existing_stop_cache_cols:
+            conn.execute("ALTER TABLE stop_cache ADD COLUMN area_label TEXT DEFAULT ''")
+        if "opening_hours_weekly_json" not in existing_stop_cache_cols:
+            conn.execute("ALTER TABLE stop_cache ADD COLUMN opening_hours_weekly_json TEXT DEFAULT '[]'")
+        if "rating" not in existing_stop_cache_cols:
+            conn.execute("ALTER TABLE stop_cache ADD COLUMN rating REAL DEFAULT 0.0")
+        if "user_rating_count" not in existing_stop_cache_cols:
+            conn.execute("ALTER TABLE stop_cache ADD COLUMN user_rating_count INTEGER DEFAULT 0")
+        if "price_level" not in existing_stop_cache_cols:
+            conn.execute("ALTER TABLE stop_cache ADD COLUMN price_level TEXT DEFAULT ''")
 
         # Migration: trip_candidates_cache gained an activity_types column
         # (Build Your Own Trip's "what kind of activities?" wizard step) —
@@ -746,13 +770,23 @@ def list_approved_with_google_photo_urls(force: bool = False) -> list[dict]:
     return result
 
 
+# RETIRED (task 8, Oct 2026) — the six functions below (set_fun_fact
+# through list_approved_for_fun_facts_refresh) have no remaining caller.
+# "Curious facts" were removed site-wide per Gerry's instruction — an
+# "AI"-labeled fact that happens to be wrong isn't made true by the label.
+# Kept in place, unused, rather than deleted: removing them would mean
+# also touching every fun_fact/fun_facts_json SQL site in save_itinerary/
+# get_itinerary (risk of a positional-parameter bug for no functional
+# gain, since those columns just stay empty either way). See
+# models.Itinerary.fun_fact/fun_facts for the same note on the columns
+# themselves. If facts are ever reintroduced, task 8's spec requires a
+# cited source + link, which none of this plumbing has room for — build
+# that as new fields/functions rather than reviving these.
+
 def set_fun_fact(video_id: str, fun_fact: str) -> bool:
     """
-    Updates ONLY the fun_fact column for an existing route — used by the
-    backfill path (main.py's startup task and POST /admin/backfill-fun-facts)
-    to fill in a fact for a route that was generated before this field
-    existed, without touching anything else about the route. Returns False
-    if video_id doesn't exist.
+    Updates ONLY the fun_fact column for an existing route. RETIRED — see
+    the module note immediately above; no caller remains.
     """
     with _conn() as conn:
         cur = conn.execute(
@@ -1247,36 +1281,94 @@ def _stop_cache_key(city: str, stop_name: str) -> str:
 
 def get_cached_stop(city: str, stop_name: str) -> dict | None:
     """
-    Returns {"photo_url": ..., "maps_url_override": ...} if this exact
-    city+stop_name combination was already saved from a previous route,
-    else None. Called during photo enrichment, before falling back to a
-    fresh Places/Unsplash lookup.
+    Returns the saved photo/location/task-8-facts for this exact
+    city+stop_name combination if a previous route already saved one, else
+    None. Called during photo enrichment, before falling back to a fresh
+    Places/Unsplash lookup. lat/lng and the fact fields can be None/empty
+    even when photo_url is set, for rows saved before those columns existed
+    (see the stop_cache migration) — callers already treat empty facts as
+    "nothing to show".
     """
     key = _stop_cache_key(city, stop_name)
     with _conn() as conn:
         row = conn.execute(
-            "SELECT photo_url, maps_url_override FROM stop_cache WHERE cache_key = ?",
+            """SELECT photo_url, maps_url_override, lat, lng, place_type, address,
+                      area_label, opening_hours_weekly_json, rating, user_rating_count,
+                      price_level
+               FROM stop_cache WHERE cache_key = ?""",
             (key,),
         ).fetchone()
     if not row or not row["photo_url"]:
         return None
-    return {"photo_url": row["photo_url"], "maps_url_override": row["maps_url_override"] or ""}
+    return {
+        "photo_url": row["photo_url"],
+        "maps_url_override": row["maps_url_override"] or "",
+        "lat": row["lat"],
+        "lng": row["lng"],
+        "place_type": row["place_type"] or "",
+        "address": row["address"] or "",
+        "area_label": row["area_label"] or "",
+        "opening_hours_weekly": json.loads(row["opening_hours_weekly_json"] or "[]"),
+        "rating": row["rating"] or 0.0,
+        "user_rating_count": row["user_rating_count"] or 0,
+        "price_level": row["price_level"] or "",
+    }
 
 
-def upsert_stop_cache(city: str, stop_name: str, photo_url: str, maps_url_override: str = "") -> None:
-    """Saves/updates one stop's photo+address for reuse in future routes for the same city."""
+def upsert_stop_cache(
+    city: str,
+    stop_name: str,
+    photo_url: str,
+    maps_url_override: str = "",
+    lat: float | None = None,
+    lng: float | None = None,
+    facts: dict | None = None,
+) -> None:
+    """
+    Saves/updates one stop's photo+address+facts for reuse in future routes
+    for the same city. `facts` is a dict shaped like places._facts_from_place
+    (place_type, address, area_label, opening_hours_weekly, rating,
+    user_rating_count, price_level) — omitted/None leaves those columns at
+    their existing/default values rather than wiping them, so callers that
+    don't have facts handy (e.g. an admin manually overriding just a photo)
+    don't accidentally blank out facts saved by an earlier, fact-aware call.
+    """
     if not stop_name or not photo_url:
         return
+    facts = facts or {}
     key = _stop_cache_key(city, stop_name)
     with _conn() as conn:
         conn.execute(
-            """INSERT INTO stop_cache (cache_key, city, stop_name, photo_url, maps_url_override, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?)
+            """INSERT INTO stop_cache (
+                   cache_key, city, stop_name, photo_url, maps_url_override, updated_at,
+                   lat, lng, place_type, address, area_label, opening_hours_weekly_json,
+                   rating, user_rating_count, price_level
+               )
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(cache_key) DO UPDATE SET
                    photo_url = excluded.photo_url,
                    maps_url_override = excluded.maps_url_override,
-                   updated_at = excluded.updated_at""",
-            (key, city, stop_name, photo_url, maps_url_override or "", datetime.utcnow().isoformat()),
+                   updated_at = excluded.updated_at,
+                   lat = COALESCE(excluded.lat, stop_cache.lat),
+                   lng = COALESCE(excluded.lng, stop_cache.lng),
+                   place_type = CASE WHEN excluded.place_type != '' THEN excluded.place_type ELSE stop_cache.place_type END,
+                   address = CASE WHEN excluded.address != '' THEN excluded.address ELSE stop_cache.address END,
+                   area_label = CASE WHEN excluded.area_label != '' THEN excluded.area_label ELSE stop_cache.area_label END,
+                   opening_hours_weekly_json = CASE WHEN excluded.opening_hours_weekly_json != '[]' THEN excluded.opening_hours_weekly_json ELSE stop_cache.opening_hours_weekly_json END,
+                   rating = CASE WHEN excluded.rating != 0 THEN excluded.rating ELSE stop_cache.rating END,
+                   user_rating_count = CASE WHEN excluded.user_rating_count != 0 THEN excluded.user_rating_count ELSE stop_cache.user_rating_count END,
+                   price_level = CASE WHEN excluded.price_level != '' THEN excluded.price_level ELSE stop_cache.price_level END""",
+            (
+                key, city, stop_name, photo_url, maps_url_override or "", datetime.utcnow().isoformat(),
+                lat, lng,
+                facts.get("place_type", "") or "",
+                facts.get("address", "") or "",
+                facts.get("area_label", "") or "",
+                json.dumps(facts.get("opening_hours_weekly") or []),
+                facts.get("rating", 0) or 0.0,
+                facts.get("user_rating_count", 0) or 0,
+                facts.get("price_level", "") or "",
+            ),
         )
 
 
@@ -1683,12 +1775,28 @@ def get_custom_trip(slug: str) -> dict | None:
 
 def cache_stops_from_itinerary(destination: str, itinerary: Itinerary) -> None:
     """
-    Bulk-saves every stop's current photo+address into the cache — called
-    whenever an admin saves edits or approves a route, since that's the
-    signal that the photos in it (at least the ones worth keeping) are
-    good. Cheap no-op for stops with no photo set.
+    Bulk-saves every stop's current photo+address+facts into the cache —
+    called whenever an admin saves edits or approves a route, since that's
+    the signal that the photos/facts in it (at least the ones worth
+    keeping) are good. Cheap no-op for stops with no photo set.
     """
     city = (destination or "").split(",")[0].strip()
     for day in itinerary.days:
         for stop in day.stops:
-            upsert_stop_cache(city, stop.name, stop.photo_url, getattr(stop, "maps_url_override", ""))
+            upsert_stop_cache(
+                city,
+                stop.name,
+                stop.photo_url,
+                getattr(stop, "maps_url_override", ""),
+                lat=getattr(stop, "lat", None),
+                lng=getattr(stop, "lng", None),
+                facts={
+                    "place_type": getattr(stop, "place_type", ""),
+                    "address": getattr(stop, "address", ""),
+                    "area_label": getattr(stop, "area_label", ""),
+                    "opening_hours_weekly": getattr(stop, "opening_hours_weekly", []),
+                    "rating": getattr(stop, "rating", 0.0),
+                    "user_rating_count": getattr(stop, "user_rating_count", 0),
+                    "price_level": getattr(stop, "price_level", ""),
+                },
+            )

@@ -42,7 +42,7 @@ from models import (
     ReviewsResponse, RouteMeta, SiteSettings, TripCandidate, TripCandidatesRequest,
     TripCandidatesResponse, TripHotelRequest, TripHotelRecommendation, TripHotelResponse,
     TripBuildRequest, TripSaveRequest, TripSaveResponse, TripEditStateResponse,
-    TripFunFactRequest, TripFunFactResponse, TripSearchRequest, TripSearchResponse,
+    TripSearchRequest, TripSearchResponse,
     VibeQuizMatchRequest, VibeQuizMatchResponse, MonthDestinationsResponse,
 )
 import database
@@ -54,8 +54,9 @@ from extractor import (
 )
 from troll_filter import check_is_travel
 from ai_analyzer import (
-    analyse_frames, generate_fun_fact, generate_vibe_match, generate_travel_tips,
-    generate_trip_summary, generate_month_calendar, generate_fun_facts,
+    analyse_frames, generate_vibe_match, generate_travel_tips,
+    generate_trip_summary, generate_month_calendar, generate_grounded_descriptions,
+    _booking_affiliate_url, _expedia_affiliate_url, _hotel_checkin_checkout_for_nights,
 )
 from quality_check import ai_quality_check
 # Module handle alongside the named imports below purely so
@@ -164,57 +165,12 @@ def _rate_limit(bucket: str, max_requests: int, window_seconds: int):
 # couple of budgets/activity combinations, building 1-2 previews) while
 # blocking a script hammering arbitrary destinations. /trip/candidates and
 # /trip/build are the expensive ones (multiple Places calls + an AI
-# curation/summary pass each); /trip/hotel and /trip/fun-fact are cheaper
-# but still real spend, so still limited, just more generously.
+# curation/summary pass each); /trip/hotel is cheaper but still real
+# spend, so still limited, just more generously.
 _trip_candidates_rate_limit = _rate_limit("trip_candidates", max_requests=20, window_seconds=600)
 _trip_build_rate_limit = _rate_limit("trip_build", max_requests=15, window_seconds=600)
 _trip_hotel_rate_limit = _rate_limit("trip_hotel", max_requests=30, window_seconds=600)
-_trip_fun_fact_rate_limit = _rate_limit("trip_fun_fact", max_requests=30, window_seconds=600)
 _trip_search_place_rate_limit = _rate_limit("trip_search_place", max_requests=30, window_seconds=600)
-
-
-def _backfill_fun_facts_background():
-    """
-    Fills `fun_fact` (see models.Itinerary.fun_fact) for every already-
-    approved route that doesn't have one yet, so the homepage fact chip
-    (index.html) starts showing up on existing routes without needing to
-    re-run the full video analysis. Runs once at every startup, in a
-    background thread, so it never delays the app becoming ready to serve
-    requests. Cheap (one Haiku call per missing route — a few cents total
-    for a small catalog) and safe to run on every restart: already-filled
-    routes are skipped by list_approved_missing_fun_fact(), so once the
-    catalog is fully backfilled this becomes a fast no-op on later starts.
-    New routes never need this — they get their fun_fact for free as part
-    of the normal Sonnet analysis pass (analyse_frames in ai_analyzer.py).
-    """
-    try:
-        targets = database.list_approved_missing_fun_fact()
-        if targets:
-            print(f"[FunFact] Backfilling {len(targets)} route(s) missing a fun_fact...")
-            filled = 0
-            for row in targets:
-                fact, _cost = generate_fun_fact(row["destination"])
-                if fact:
-                    database.set_fun_fact(row["video_id"], fact)
-                    filled += 1
-            print(f"[FunFact] Backfill done — {filled}/{len(targets)} filled")
-
-        # Same pass, for the richer fun_facts array (route page's "getting
-        # to know [destination]" intro section) — independent "missing"
-        # criteria from the singular fun_fact above, so a route could need
-        # one, the other, or both.
-        facts_targets = database.list_approved_missing_fun_facts()
-        if facts_targets:
-            print(f"[FunFacts] Backfilling {len(facts_targets)} route(s) missing fun_facts...")
-            facts_filled = 0
-            for row in facts_targets:
-                facts, _cost = generate_fun_facts(row["destination"])
-                if facts:
-                    database.set_fun_facts(row["video_id"], facts)
-                    facts_filled += 1
-            print(f"[FunFacts] Backfill done — {facts_filled}/{len(facts_targets)} filled")
-    except Exception as e:
-        print(f"[FunFact] Background backfill crashed (non-fatal): {e}")
 
 
 def _backfill_travel_tips_background():
@@ -222,9 +178,9 @@ def _backfill_travel_tips_background():
     Fills `travel_tips` (see models.Itinerary.travel_tips) for every
     already-approved route that doesn't have any yet, so the "Tips &
     Tricks" section starts showing up on existing routes without needing
-    to re-run the full video analysis. Mirrors _backfill_fun_facts_background
-    exactly — runs once at every startup in a background thread, cheap
-    (one Haiku call per missing route), and a fast no-op once the catalog
+    to re-run the full video analysis. Runs once at every startup in a
+    background thread, cheap (one Haiku call per missing route), and a
+    fast no-op once the catalog
     is fully backfilled. New routes never need this — they get travel_tips
     for free as part of the normal Sonnet analysis pass.
     """
@@ -248,7 +204,6 @@ def _backfill_travel_tips_background():
 def startup():
     database.init_db()
     print("[Startup] GetWay backend ready")
-    threading.Thread(target=_backfill_fun_facts_background, daemon=True).start()
     threading.Thread(target=_backfill_travel_tips_background, daemon=True).start()
 
 
@@ -461,6 +416,52 @@ async def extract(req: ExtractRequest):
         except Exception as e:
             print(f"[Places] Enrichment failed (non-fatal): {e}")
 
+        # ── Layer 7c: task 8 — rewrite descriptions grounded ONLY in Places
+        # facts + the AI's own raw video observations ──────────────────────
+        # Must run AFTER enrichment above (needs each stop's place_type/
+        # address/area_label, which enrich_itinerary_with_photos just
+        # populated — rating/price_level/opening_hours_weekly are also read
+        # below but will be 0/""/[] for every video-route stop since Oct
+        # 2026's cost review: places._search_places now asks Google for
+        # only the Pro-tier fields for video routes, not rating/priceLevel/
+        # openingHours, which are Enterprise-tier and have a 5x smaller
+        # free monthly quota — see places._FACT_FIELDS_MASK_SUFFIX_PRO.
+        # generate_grounded_descriptions' own system prompt already tells
+        # the model 0/empty means "Google has no data", not "zero stars",
+        # so this degrades safely rather than fabricating a rating) and
+        # also uses each stop's CURRENT `description` as video_notes —
+        # enrich_itinerary_with_photos
+        # never touches that field, so at this point it's still exactly
+        # what analyse_frames' Sonnet call wrote from the video frames (see
+        # SYSTEM_PROMPT's "description" field — the raw, unpolished
+        # material this pass is allowed to draw from). Non-fatal: on any
+        # failure every stop just keeps its original video-derived
+        # description rather than being left half-updated.
+        try:
+            stop_inputs = [
+                {
+                    "name": stop.name,
+                    "video_notes": stop.description,
+                    "place_type": stop.place_type,
+                    "address": stop.address,
+                    "area_label": stop.area_label,
+                    "rating": stop.rating,
+                    "user_rating_count": stop.user_rating_count,
+                    "price_level": stop.price_level,
+                    "opening_hours_weekly": stop.opening_hours_weekly,
+                }
+                for day in itinerary.days for stop in day.stops
+            ]
+            grounded, grounding_cost_usd = generate_grounded_descriptions(stop_inputs)
+            for day in itinerary.days:
+                for stop in day.stops:
+                    if stop.name in grounded:
+                        stop.description = grounded[stop.name]
+            itinerary.generation_cost_usd += grounding_cost_usd
+            print(f"[Places] Grounded descriptions: {len(grounded)}/{len(stop_inputs)} stop(s) (${grounding_cost_usd:.4f})")
+        except Exception as e:
+            print(f"[Places] Grounded description generation failed (non-fatal): {e}")
+
         # Themed "Rent a car in {city}" banner photo — only worth fetching
         # when the AI actually recommended a car for this trip. Non-fatal:
         # an empty car_rental_photo_url just means the frontend's existing
@@ -657,23 +658,6 @@ def get_trip_candidates(req: TripCandidatesRequest):
     )
 
 
-@app.post("/trip/fun-fact", response_model=TripFunFactResponse, dependencies=[Depends(_trip_fun_fact_rate_limit)])
-def get_trip_fun_fact(req: TripFunFactRequest):
-    """
-    Thin wrapper around ai_analyzer.generate_fun_fact — its own endpoint,
-    separate from /trip/candidates, specifically so the frontend can fire
-    it in parallel with the slower candidates search and show it during
-    the "finding places" spinner rather than only after candidates finish
-    loading. No caching (it's already a single cheap Haiku call); never
-    raises, per generate_fun_fact's own non-fatal contract.
-    """
-    city = req.destination.strip()
-    if not city:
-        raise HTTPException(400, "Missing destination")
-    fun_fact, _cost = generate_fun_fact(city)
-    return TripFunFactResponse(fun_fact=fun_fact)
-
-
 @app.post("/vibe-quiz/match", response_model=VibeQuizMatchResponse)
 def get_vibe_quiz_match(req: VibeQuizMatchRequest):
     """
@@ -806,6 +790,30 @@ def search_trip_place(req: TripSearchRequest):
     )
 
 
+def _with_fresh_hotel_dates(hotel_dict: dict | None, city: str, nights: int) -> dict | None:
+    """
+    Task 7: rewrites a hotel dict's booking_url/expedia_url with dated
+    Booking/Expedia links (see ai_analyzer._hotel_checkin_checkout_for_nights)
+    computed RIGHT NOW, every call — deliberately applied AFTER any cache
+    read (database.get_trip_hotel_cache has up to a 30-day TTL — see
+    _TRIP_CACHE_TTL_DAYS below), never baked into the cached dict itself.
+    Baking "30 days from today" into a value that can be served back up
+    to 30 days later would mean the checkin date silently lands in the
+    past for a near-expiry cache hit — same staleness trap Gerry flagged
+    for "open now"/today's hours (task 8), just for dates instead of
+    hours. hotel_to_recommendation_dict's own booking_url/expedia_url
+    (date-less) are only ever an intermediate value overwritten here.
+    """
+    if not hotel_dict:
+        return hotel_dict
+    checkin, checkout = _hotel_checkin_checkout_for_nights(nights)
+    query = f"{hotel_dict.get('name', '')} {city}".strip()
+    hotel_dict = {**hotel_dict}
+    hotel_dict["booking_url"] = _booking_affiliate_url(query, checkin, checkout)
+    hotel_dict["expedia_url"] = _expedia_affiliate_url(query, checkin, checkout)
+    return hotel_dict
+
+
 @app.post("/trip/hotel", response_model=TripHotelResponse, dependencies=[Depends(_trip_hotel_rate_limit)])
 def get_trip_hotel(req: TripHotelRequest):
     """
@@ -831,12 +839,18 @@ def get_trip_hotel(req: TripHotelRequest):
         raise HTTPException(400, "selected_attractions had no usable coordinates")
     lat, lng = center
 
+    # No trip length is known at this standalone preview endpoint
+    # (TripHotelRequest carries no `days`) — 3 nights is the same default
+    # ai_analyzer._hotel_checkin_checkout falls back to when it can't
+    # parse a duration string either.
+    _PREVIEW_HOTEL_NIGHTS = 3
+
     cached = database.get_trip_hotel_cache(city, budget, lat, lng)
     if cached is not None:
         print(f"[TripBuilder] Hotel cache HIT for {city} / {budget} near ({lat:.2f}, {lng:.2f})")
         return TripHotelResponse(
             destination=city, budget=budget,
-            hotel=TripHotelRecommendation(**cached) if cached else None,
+            hotel=TripHotelRecommendation(**_with_fresh_hotel_dates(cached, city, _PREVIEW_HOTEL_NIGHTS)) if cached else None,
             cached=True,
         )
 
@@ -848,6 +862,7 @@ def get_trip_hotel(req: TripHotelRequest):
           f"{'picked ' + hotel_dict['name'] if hotel_dict else 'none qualified (4.0+ rating, within range)'}")
 
     database.save_trip_hotel_cache(city, budget, lat, lng, hotel_dict, ttl_days=_TRIP_CACHE_TTL_DAYS)
+    hotel_dict = _with_fresh_hotel_dates(hotel_dict, city, _PREVIEW_HOTEL_NIGHTS)
     return TripHotelResponse(
         destination=city, budget=budget,
         hotel=TripHotelRecommendation(**hotel_dict) if hotel_dict else None,
@@ -913,6 +928,10 @@ def build_trip(req: TripBuildRequest):
             chosen = pick_hotel(raw_hotels, budget, anchor=(lat, lng))
             hotel_dict = hotel_to_recommendation_dict(chosen, city) if chosen else None
             database.save_trip_hotel_cache(city, budget, lat, lng, hotel_dict, ttl_days=_TRIP_CACHE_TTL_DAYS)
+    # Task 7: fresh dated Booking/Expedia links, using the traveler's real
+    # chosen trip length — see _with_fresh_hotel_dates (applied after the
+    # cache read/write above so the baked-in cached value stays date-less).
+    hotel_dict = _with_fresh_hotel_dates(hotel_dict, city, req.days)
 
     days = assemble_days(selected_dicts, req.days, hotel_dict)
 
@@ -940,12 +959,6 @@ def build_trip(req: TripBuildRequest):
     summary, summary_cost_usd = generate_trip_summary(city, stop_names)
     print(f"[TripBuilder] Summary for {city}: {bool(summary)} (${summary_cost_usd:.4f})")
 
-    # Same gap again — the route page's "getting to know [destination]"
-    # intro section needs a richer fact set than the single fun_fact a
-    # video-extracted route already gets for free.
-    fun_facts, facts_cost_usd = generate_fun_facts(city)
-    print(f"[TripBuilder] Fun facts for {city}: {len(fun_facts)} fact(s) (${facts_cost_usd:.4f})")
-
     itinerary = Itinerary(
         destination=city,
         duration=f"{req.days} day{'s' if req.days != 1 else ''}",
@@ -957,8 +970,39 @@ def build_trip(req: TripBuildRequest):
         car_rental_photo_url=car_photo_url,
         car_rental_attribution=car_attribution,
         travel_tips=travel_tips,
-        fun_facts=fun_facts,
     )
+
+    # Task 8: rewrite every stop's description so it's grounded ONLY in its
+    # Google Places facts — Build Your Own Trip has no video at all, so
+    # video_notes="" for every stop (unlike the video-extraction pipeline,
+    # where video_notes is the AI's own frame-derived text). Non-fatal: on
+    # any failure generate_grounded_descriptions returns {} and every stop
+    # just keeps whatever description _candidate_dict_to_stop/
+    # _hotel_dict_to_stop already gave it (the bare Places name, or "" for
+    # the hotel) rather than being left in a half-updated state.
+    try:
+        stop_inputs = [
+            {
+                "name": stop.name,
+                "video_notes": "",
+                "place_type": stop.place_type,
+                "address": stop.address,
+                "area_label": stop.area_label,
+                "rating": stop.rating,
+                "user_rating_count": stop.user_rating_count,
+                "price_level": stop.price_level,
+                "opening_hours_weekly": stop.opening_hours_weekly,
+            }
+            for day in itinerary.days for stop in day.stops
+        ]
+        grounded, grounding_cost_usd = generate_grounded_descriptions(stop_inputs)
+        for day in itinerary.days:
+            for stop in day.stops:
+                if stop.name in grounded:
+                    stop.description = grounded[stop.name]
+        print(f"[TripBuilder] Grounded descriptions for {city}: {len(grounded)}/{len(stop_inputs)} stop(s) (${grounding_cost_usd:.4f})")
+    except Exception as e:
+        print(f"[TripBuilder] Grounded description generation failed (non-fatal): {e}")
 
     # Hero/gallery: reuse the existing destination Unsplash logic exactly
     # as-is (places._get_destination_gallery_unsplash — the same function
@@ -1405,66 +1449,16 @@ def admin_quality_check(video_id: str):
     return result
 
 
-@app.post("/admin/backfill-fun-facts", dependencies=[Depends(verify_admin_secret)])
-def admin_backfill_fun_facts(force: bool = False):
-    """
-    Manually re-triggers the same fun_fact backfill that already runs
-    automatically at every startup (see _backfill_fun_facts_background) —
-    useful to get an immediate result/count right after approving a batch
-    of new routes, instead of waiting for the next deploy/restart. Safe to
-    call any time; by default routes that already have a fun_fact are
-    skipped.
-
-    force=true instead re-generates EVERY approved route's fun_fact, even
-    ones that already have one — use this once after a prompt change (e.g.
-    asking for more surprising/quirky facts instead of generic ones) to
-    upgrade facts that were already written under the old prompt, not just
-    fill in blanks. Costs roughly $0.0005 x number of approved routes.
-
-    Also backfills the richer fun_facts array (route page's "getting to
-    know [destination]" intro section) in the same pass, using its own
-    independent "missing" criteria — a route could need one, the other,
-    or both.
-
-    Returns how many were checked, how many got filled, and the real
-    Anthropic cost of this run.
-    """
-    targets = database.list_approved_for_fun_fact_refresh(force=force)
-    filled = 0
-    total_cost = 0.0
-    for row in targets:
-        fact, cost = generate_fun_fact(row["destination"])
-        total_cost += cost
-        if fact:
-            database.set_fun_fact(row["video_id"], fact)
-            filled += 1
-
-    facts_targets = database.list_approved_for_fun_facts_refresh(force=force)
-    facts_filled = 0
-    for row in facts_targets:
-        facts, cost = generate_fun_facts(row["destination"])
-        total_cost += cost
-        if facts:
-            database.set_fun_facts(row["video_id"], facts)
-            facts_filled += 1
-
-    return {
-        "status": "ok",
-        "checked": len(targets),
-        "filled": filled,
-        "fun_facts_checked": len(facts_targets),
-        "fun_facts_filled": facts_filled,
-        "cost_usd": round(total_cost, 6),
-    }
-
-
 @app.post("/admin/backfill-travel-tips", dependencies=[Depends(verify_admin_secret)])
 def admin_backfill_travel_tips(force: bool = False):
     """
     Manually re-triggers the same travel_tips backfill that already runs
     automatically at every startup (see _backfill_travel_tips_background).
-    Mirrors POST /admin/backfill-fun-facts exactly — see that endpoint's
-    docstring for the force=true semantics.
+
+    force=true instead re-generates EVERY approved route's travel_tips,
+    even ones that already have some — use this once after a prompt
+    change to upgrade tips written under the old prompt, not just fill in
+    blanks. Costs roughly $0.0005 x number of approved routes.
     """
     targets = database.list_approved_for_travel_tips_refresh(force=force)
     filled = 0

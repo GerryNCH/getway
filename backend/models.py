@@ -55,8 +55,45 @@ class Stop(BaseModel):
                                # real Booking.com review scores, and inventing
                                # one would be showing a fabricated number as
                                # if it were a genuine guest rating.
-    area_label: str = ""  # Hotel stops only, e.g. "Old Town", "Beachfront" —
-                            # the neighbourhood/area, when identifiable.
+    area_label: str = ""  # Neighbourhood/area, e.g. "Old Town", "Beachfront"
+                            # — Oct 2026 task 8: now sourced from Google
+                            # Places' addressComponents (a neighborhood/
+                            # sublocality component) for EVERY stop, not
+                            # just hotels, and never AI-guessed. "" when
+                            # Places has no such component.
+    place_type: str = ""  # Google's own human-readable category for this
+                            # place (Places' primaryTypeDisplayName, e.g.
+                            # "Art museum", "Italian restaurant") — task 8.
+                            # "" when Places has no confident match for the
+                            # stop or no API key configured.
+    address: str = ""  # Google's formattedAddress for the matched place —
+                         # task 8. "" when unmatched.
+    opening_hours_weekly: list[str] = []  # Google's own 7-line weekly
+                                            # schedule text (Places'
+                                            # regularOpeningHours.weekdayDescriptions,
+                                            # e.g. "Monday: 9:00 AM – 6:00 PM"),
+                                            # verbatim — never reformatted or
+                                            # summarized by us. Deliberately
+                                            # NOT "open now" or "today's
+                                            # hours": those go stale the
+                                            # moment they're cached, so the
+                                            # frontend computes them from
+                                            # this weekly schedule at render
+                                            # time instead (task 8). Empty
+                                            # list when Places has no hours
+                                            # for this place.
+    rating: float = 0.0  # Places' own rating (0 when unmatched/unknown —
+                           # the frontend must treat 0 as "no rating", not
+                           # display it as a real 0-star score). Task 8.
+    user_rating_count: int = 0  # Places' userRatingCount, paired with
+                                  # rating above — task 8.
+    price_level: str = ""  # Places' priceLevel, task 8: "Free" when Places
+                             # reports PRICE_LEVEL_FREE; otherwise shown as
+                             # €/€€/€€€/€€€€ symbols for food stops only
+                             # (Gerry's call — Places has no real admission-
+                             # fee field for attractions/museums, so this is
+                             # never shown as a price for non-food stops).
+                             # "" when Places has no price signal.
     transfer_note: str = ""  # How to get here relative to the hotel/previous
                                # stop, e.g. "Short walk from Old Town", "Boat
                                # transfer needed" — kept qualitative rather
@@ -188,46 +225,45 @@ class Itinerary(BaseModel):
                                    # Empty for itineraries cached before this
                                    # field existed, or if the fetch failed
                                    # (non-fatal — see extractor.py).
-    fun_fact: str = ""  # One short, real, verifiable fact about the
-                          # destination itself (not the specific stops) —
-                          # e.g. "Rome has more fountains than any other
-                          # city in the world." Written by Claude: for new
-                          # routes it comes free as part of the same
-                          # multimodal analysis call (see ai_analyzer.py's
-                          # SYSTEM_PROMPT); for routes generated before this
-                          # field existed, it's backfilled with a separate,
-                          # cheap Haiku call (ai_analyzer.generate_fun_fact),
-                          # which main.py runs automatically once at startup
-                          # and can also be re-triggered manually via
-                          # POST /admin/backfill-fun-facts. Empty until
-                          # filled — the homepage fact chip (index.html)
-                          # just doesn't render for that route until it is.
-    fun_facts: list[str] = []  # 3-4 facts at the same real/verifiable bar
-                                 # as fun_fact — the richer version used by
-                                 # the route page's "getting to know
-                                 # [destination]" intro section (fun_fact
-                                 # singular is often just one of these
-                                 # four, kept separate for its own existing
-                                 # homepage-chip/loading-screen callers).
-                                 # Same generation split as fun_fact/
-                                 # travel_tips: free from the Sonnet call
-                                 # for new video routes, or
-                                 # ai_analyzer.generate_fun_facts for Build
-                                 # Your Own Trip / backfill.
+    fun_fact: str = ""  # RETIRED (task 8, Oct 2026) — "curious facts"
+                          # were removed site-wide: an "AI"-labeled fact
+                          # that happens to be wrong isn't made true by the
+                          # label. Nothing populates this anymore (the old
+                          # ai_analyzer.generate_fun_fact and the Sonnet
+                          # SYSTEM_PROMPT field it came from are both gone,
+                          # as is the startup backfill/POST
+                          # /admin/backfill-fun-facts that used to fill it).
+                          # Field kept, always "", only so existing stored
+                          # rows/DB columns don't need a migration to drop
+                          # it — if facts are ever reintroduced, task 8's
+                          # spec requires a cited source (e.g. Wikipedia)
+                          # and a link, which this field has no room for
+                          # anyway, so a reintroduction should use a new
+                          # field rather than reviving this one.
+    fun_facts: list[str] = []  # RETIRED (task 8, Oct 2026) — same removal
+                                 # as fun_fact above, just the former
+                                 # multi-fact version (ai_analyzer.
+                                 # generate_fun_facts, also removed). Kept,
+                                 # always [], for the same backward-compat
+                                 # reason.
     travel_tips: list[str] = []  # 3-5 short, practical, destination-specific
                                    # tips — e.g. "Cash is still king outside
                                    # Amsterdam's centre" or "Check in AND
                                    # check out your OV-chipkaart or you're
-                                   # charged the maximum fare." Same
-                                   # generation split as fun_fact: new
-                                   # routes get it free from the same Sonnet
-                                   # call (ai_analyzer.py's SYSTEM_PROMPT) or
+                                   # charged the maximum fare." New routes
+                                   # get it free from the same Sonnet call
+                                   # (ai_analyzer.py's SYSTEM_PROMPT) or
                                    # Build Your Own Trip's dedicated Haiku
                                    # call (ai_analyzer.generate_travel_tips);
                                    # older routes are backfilled the same
-                                   # way fun_fact is. Empty list until
-                                   # filled — the itinerary page's "Tips &
-                                   # Tricks" section just doesn't render.
+                                   # way (main.py's startup task / POST
+                                   # /admin/backfill-travel-tips). Empty
+                                   # list until filled — the itinerary
+                                   # page's "Tips & Tricks" section just
+                                   # doesn't render. NOT retired — unlike
+                                   # fun_fact/fun_facts above, Gerry's task
+                                   # 8 instructions only targeted "curious
+                                   # facts", not practical tips.
 
 
 class RouteMeta(BaseModel):
@@ -305,6 +341,14 @@ class TripCandidate(BaseModel):
                              # plaza, outdoor monument, etc. — see
                              # trip_builder._is_free_by_type), regardless of
                              # what price_level says.
+    place_type: str = ""  # Google's primaryTypeDisplayName — task 8, same
+                            # as Stop.place_type.
+    address: str = ""  # Google's formattedAddress — task 8.
+    area_label: str = ""  # Neighbourhood/area from addressComponents —
+                            # task 8, same as Stop.area_label.
+    opening_hours_weekly: list[str] = []  # Google's own weekly schedule
+                                            # text, verbatim — task 8, same
+                                            # as Stop.opening_hours_weekly.
     lat: Optional[float] = None
     lng: Optional[float] = None
     is_famous: bool = False  # True = included regardless of budget tier
@@ -356,22 +400,6 @@ class TripCandidatesResponse(BaseModel):
     cached: bool = False
 
 
-class TripFunFactRequest(BaseModel):
-    destination: str
-
-
-class TripFunFactResponse(BaseModel):
-    fun_fact: str = ""  # One real fact about the destination itself (see
-                          # ai_analyzer.generate_fun_fact). Deliberately its
-                          # own endpoint (POST /trip/fun-fact), not part of
-                          # /trip/candidates: it's fast (one cheap Haiku
-                          # call, no Places search), so the frontend fires
-                          # it in parallel with the slower candidates call
-                          # and can show it during the "finding places"
-                          # spinner instead of only after candidates finish
-                          # loading. Empty on failure (non-fatal).
-
-
 class VibeQuizAnswer(BaseModel):
     question: str
     answer: str
@@ -384,8 +412,9 @@ class VibeQuizMatchRequest(BaseModel):
 
 class VibeQuizMatchResponse(BaseModel):
     destination: str = ""  # "" on failure — frontend falls back to its own
-                             # static VIBE_DESTINATIONS matching, same
-                             # non-fatal contract as TripFunFactResponse
+                             # static VIBE_DESTINATIONS matching (same
+                             # non-fatal philosophy as everywhere else a
+                             # Haiku call backs a response field)
     blurb: str = ""
 
 
@@ -440,7 +469,11 @@ class TripHotelRecommendation(BaseModel):
     property_type: str = ""  # Not populated by Places directly in Phase B —
                                # left empty for now, same convention as
                                # Stop.property_type when not confidently known.
-    area_label: str = ""  # Same — left empty in Phase B.
+    area_label: str = ""  # Neighbourhood/area from addressComponents — task 8.
+    place_type: str = ""  # Google's primaryTypeDisplayName — task 8.
+    address: str = ""  # Google's formattedAddress — task 8.
+    opening_hours_weekly: list[str] = []  # Google's own weekly schedule
+                                            # text, verbatim — task 8.
     lat: Optional[float] = None
     lng: Optional[float] = None
     booking_url: str = ""  # Built via ai_analyzer._booking_affiliate_url — same

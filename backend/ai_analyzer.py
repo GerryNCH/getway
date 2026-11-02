@@ -11,8 +11,10 @@ that handles the "unnamed restaurant" problem:
 
 import base64
 import json
+import re
 import time
 import urllib.parse
+from datetime import date, timedelta
 
 import anthropic
 from models import Itinerary
@@ -26,8 +28,10 @@ _SONNET_INPUT_PER_MTOK = 3.00
 _SONNET_OUTPUT_PER_MTOK = 15.00
 
 # Claude Haiku 4.5 standard rate, $ per million tokens — same figures used
-# in quality_check.py and troll_filter.py. Only used here by
-# generate_fun_fact() (the backfill path), never by the main Sonnet pass.
+# in quality_check.py and troll_filter.py. Used here by
+# generate_grounded_descriptions() (task 8's fact-grounded stop
+# descriptions) and generate_travel_tips()/generate_trip_summary(), never
+# by the main Sonnet pass.
 _HAIKU_INPUT_PER_MTOK = 1.00
 _HAIKU_OUTPUT_PER_MTOK = 5.00
 
@@ -39,13 +43,67 @@ _BOOKING_LINK_ID = "17293132"
 _CJ_BASE_URL = f"https://www.anrdoezrs.net/click-{_CJ_PUBLISHER_ID}-{_BOOKING_LINK_ID}"
 
 
-def _booking_affiliate_url(search_query: str) -> str:
+# Task 7: Booking/Expedia links must carry real dates + occupancy, not
+# just the destination — confirmed live (2026-10-29, via the browser
+# tool) against both booking.com/searchresults.html (checkin/checkout=
+# YYYY-MM-DD, group_adults, no_rooms, group_children) and
+# expedia.com/Hotel-Search (startDate/endDate=YYYY-MM-DD, adults, rooms) —
+# both resolved to real, correctly-dated/occupied search results, not a
+# guess. Gerry approved "30 days from now + the route's own duration" for
+# the date range, and 2 adults/1 room as the fixed occupancy (no per-
+# traveler people count exists in this flow to use instead).
+_HOTEL_SEARCH_LEAD_DAYS = 30
+
+
+def _hotel_checkin_checkout_for_nights(nights: int) -> tuple[str, str]:
+    """
+    Returns (checkin, checkout) as YYYY-MM-DD strings: checkin is
+    _HOTEL_SEARCH_LEAD_DAYS from today, checkout is that plus `nights`
+    (at least 1). Use this directly when the caller already has a real
+    integer day count (e.g. main.py's /trip/build, TripBuildRequest.days)
+    rather than going through _hotel_checkin_checkout's string parsing.
+    """
+    nights = max(1, int(nights))
+    checkin = date.today() + timedelta(days=_HOTEL_SEARCH_LEAD_DAYS)
+    checkout = checkin + timedelta(days=nights)
+    return checkin.isoformat(), checkout.isoformat()
+
+
+def _hotel_checkin_checkout(duration: str) -> tuple[str, str]:
+    """
+    Same as _hotel_checkin_checkout_for_nights, but `nights` is parsed
+    from a duration STRING (e.g. Itinerary.duration, "5 days" — the
+    leading integer) instead of a known integer — for callers that only
+    have that string (video-extracted routes; places.py's hotel-upgrade
+    branch). Defaults to 3 nights if it can't be parsed, same fallback
+    depth as other best-effort parses in this file.
+    """
+    match = re.search(r"\d+", duration or "")
+    nights = int(match.group()) if match else 3
+    return _hotel_checkin_checkout_for_nights(nights)
+
+
+def _booking_affiliate_url(search_query: str, checkin: str = "", checkout: str = "") -> str:
     """
     Booking.com search-results URL, wrapped in the CJ affiliate tracking
     link so hotel clicks are attributed to Gerry's account.
     NOTE: the real search path is /searchresults.html, not /search.html.
+
+    checkin/checkout (YYYY-MM-DD, both or neither — see
+    _hotel_checkin_checkout): when given, also fixes occupancy at 2
+    adults / 1 room / 0 children, confirmed live to produce a real dated
+    search rather than Booking's default "tonight" search.
     """
-    target = f"https://www.booking.com/searchresults.html?ss={urllib.parse.quote_plus(search_query)}"
+    params = {"ss": search_query}
+    if checkin and checkout:
+        params.update({
+            "checkin": checkin,
+            "checkout": checkout,
+            "group_adults": "2",
+            "no_rooms": "1",
+            "group_children": "0",
+        })
+    target = f"https://www.booking.com/searchresults.html?{urllib.parse.urlencode(params)}"
     return f"{_CJ_BASE_URL}?url={urllib.parse.quote(target, safe='')}"
 
 
@@ -58,13 +116,20 @@ _EXPEDIA_CREATIVEREF = "1100l68075"
 _EXPEDIA_ADREF = "PZTaSwOiKr"
 
 
-def _expedia_affiliate_url(search_query: str) -> str:
+def _expedia_affiliate_url(search_query: str, checkin: str = "", checkout: str = "") -> str:
     """
     Expedia Hotel-Search URL, wrapped in Gerry's Expedia Group affiliate
     link (via their Travel Creator Program) so hotel clicks are attributed
     to his account.
+
+    checkin/checkout (YYYY-MM-DD, both or neither — see
+    _hotel_checkin_checkout): when given, also fixes occupancy at 2
+    adults / 1 room, confirmed live to produce a real dated search.
     """
-    target = f"https://www.expedia.com/Hotel-Search?destination={urllib.parse.quote_plus(search_query)}"
+    target_params = {"destination": search_query}
+    if checkin and checkout:
+        target_params.update({"startDate": checkin, "endDate": checkout, "adults": "2", "rooms": "1"})
+    target = f"https://www.expedia.com/Hotel-Search?{urllib.parse.urlencode(target_params)}"
     params = {
         "siteid": "1",
         "landingPage": target,
@@ -123,6 +188,10 @@ def _attach_booking_urls(data: dict) -> dict:
     """
     destination = data.get("destination", "")
     city = destination.split(",")[0].strip() if destination else ""
+    # Task 7: dates for the hotel links — see _hotel_checkin_checkout.
+    # Computed once per route (not per stop): every hotel stop in the
+    # same route shares the same trip dates.
+    checkin, checkout = _hotel_checkin_checkout(data.get("duration", ""))
 
     for day in data.get("days", []):
         for stop in day.get("stops", []):
@@ -132,8 +201,8 @@ def _attach_booking_urls(data: dict) -> dict:
 
             if category == "hotel":
                 query = f"{name} {city}".strip() if is_specific else city
-                stop["booking_url"] = _booking_affiliate_url(query)
-                stop["expedia_url"] = _expedia_affiliate_url(query)
+                stop["booking_url"] = _booking_affiliate_url(query, checkin, checkout)
+                stop["expedia_url"] = _expedia_affiliate_url(query, checkin, checkout)
             elif category == "food":
                 query = f"{name} {city}".strip()
                 stop["booking_url"] = _google_maps_search_url(query)
@@ -171,8 +240,6 @@ Schema:
   "destination": "City, Country" (or exactly "UNKNOWN" — see above),
   "duration": "X days",
   "summary": "2-3 sentence personal intro in a specific tone — see the 'summary' rule below, don't improvise the structure",
-  "fun_fact": "One genuinely true fact about the destination itself that's surprising, quirky, or slightly odd — the kind that makes someone think 'huh, no way' or 'okay, now I want to go there.' NOT about any specific stop in this route, and NOT a flat postcard statement. One sentence, max ~20 words.",
-  "fun_facts": ["3-4 DIFFERENT genuinely true facts about the destination, same bar as fun_fact above (surprising/quirky, never generic) — for the route page's 'getting to know [destination]' intro section. fun_fact above can be (and usually is) one of these four; don't strain to make all four distinct topics if the destination doesn't support it, but never repeat the exact same fact twice."],
   "travel_tips": ["3-5 short, practical, destination-specific tips a first-time visitor genuinely needs — see guidance below"],
   "price_category": "€ | €€ | €€€",
   "tags": ["0-3 of: most_popular, luxury, budget_friendly, exotic, mountain, city, beach"],
@@ -186,7 +253,7 @@ Schema:
         {
           "name": "Exact location name as a tourist would search it",
           "category": "hotel|sight|food|activity|beach|village",
-          "description": "One sentence — what makes it special",
+          "description": "One sentence of plain observation — what you can actually see/read in the frames about this stop (appearance, setting, atmosphere, what's visible on screen). NOT a claim about history, fame, rank ('most'/'best'), or anything you can't actually see. This is raw internal material — a later fact-grounded pass rewrites the user-facing description from this plus verified Google Places data, so keep it concrete and visual, not a polished pitch.",
           "tip": "Practical tip from the creator, max 12 words (empty string if none)",
           "is_specific_name": true,
           "property_type": "Hotel stops only — e.g. Boutique Hotel, Beach Resort, Guesthouse, Design Hotel (empty string for non-hotel stops)",
@@ -197,32 +264,6 @@ Schema:
     }
   ]
 }
-
-"fun_fact" — one REAL, verifiable fact about the destination itself (the
-city/region/country as a whole), never about a specific stop in this
-itinerary. Aim for something that actually surprises people — a fact that
-makes them go "wait, really?" and gives them a genuine reason to want to
-visit, not a flat, generic statement. Good angles to look for: an unusual
-law or local custom, a record the place quietly holds, a strange bit of
-history, an oddly specific number, something counter-intuitive about its
-size/age/location, or a "most people don't know this" detail. Bad
-examples to avoid: "has beautiful beaches", "is known for its rich
-culture", "is a popular tourist destination" — these say nothing. Never
-invent or guess a fact — if you aren't confident an intriguing fact is
-actually true, fall back to a more general but definitely-true fact
-instead (e.g. a well-established geographic or historical fact) rather
-than risk a wrong specific statistic. One sentence. No source citation
-needed, just the fact itself.
-
-"fun_facts" — 3-4 facts meeting that exact same bar (real, verifiable,
-genuinely surprising, never generic filler), for the route page's
-"getting to know [destination]" intro section — a richer version of the
-single fun_fact above, not a different kind of content. Vary the angle
-across the 3-4 where the destination genuinely supports it (e.g. one
-historical, one about a local custom, one a surprising number) rather
-than four facts about the same narrow topic — but never force a stretch
-just to hit variety; a destination that only supports 3 solid facts
-should return 3, not pad to 4 with something weak or invented.
 
 "travel_tips" — 3-5 short, practical, destination-specific tips a
 first-time visitor genuinely needs to know before they go — the kind of
@@ -468,96 +509,78 @@ def analyse_frames(frame_paths: list[str], comments: list[dict] | None = None) -
             + usage.output_tokens * _SONNET_OUTPUT_PER_MTOK
         ) / 1_000_000
 
-    data["fun_fact"] = str(data.get("fun_fact") or "").strip()
-    data["fun_facts"] = [str(f).strip() for f in (data.get("fun_facts") or []) if str(f).strip()]
     data["travel_tips"] = [str(t).strip() for t in (data.get("travel_tips") or []) if str(t).strip()]
 
     return Itinerary(**data), price_category, tags, cost_usd
 
 
-_FUN_FACT_SYSTEM = """You write one short, genuinely true, surprising fun fact about a travel destination for a travel app's homepage — the kind that makes someone think "huh, no way" or "okay, now I actually want to go there."
+_GROUNDED_DESCRIPTION_SYSTEM = """You write ONE short description (1-2 sentences, max ~30 words) for each travel-itinerary stop you're given, for a travel app's route page.
 
-Rules:
-- Must be a REAL, verifiable fact — never invent or guess. If you are not confident a surprising fact is true, write a more general but still definitely-true fact instead.
-- About the destination itself (the city/region/country) — not about any specific hotel, restaurant, or attraction.
-- Favor quirky, little-known, or counter-intuitive angles: an unusual law or custom, a record the place quietly holds, a strange bit of history, an oddly specific number, a "most people don't know this" detail.
-- Avoid flat, generic filler — sentences like "has beautiful beaches", "is known for its rich culture", or "is a popular tourist destination" say nothing and should never be the output.
-- One sentence, max ~20 words.
-- No markdown, no surrounding quotes — just the sentence itself.
+You will receive a JSON list of stops. For EACH stop you get:
+- "name": the place's name
+- "video_notes": raw, unpolished observations from a travel video showing this stop — may be empty string if there's no video (e.g. the traveler built this trip themselves rather than pasting a video link)
+- "place_type", "address", "area_label", "rating", "user_rating_count", "price_level", "opening_hours_weekly": verified facts about the place from Google Places — any of these may be empty/zero if Google doesn't have that data for this place
 
-Reply with ONLY the fact sentence, nothing else."""
-
-
-def generate_fun_fact(destination: str) -> tuple[str, float]:
-    """
-    Cheap, standalone Haiku call that returns one real, general-knowledge
-    fun fact about `destination` (e.g. "Rome, Italy") — used to backfill
-    `fun_fact` on routes that were generated before that field existed,
-    without re-running the full (much more expensive) Sonnet video
-    analysis. Brand-new routes get their fun_fact for free as part of the
-    same analyse_frames() call above — this function exists only for that
-    backfill path (see main.py's startup backfill + /admin/backfill-fun-facts).
-
-    Returns (fact, cost_usd). Never raises — returns ("", 0.0) on any
-    failure (rate limit, bad response, network error) so a backfill run
-    over many routes can skip this one and keep going rather than aborting
-    the whole batch.
-    """
-    try:
-        response = _client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=120,
-            system=_FUN_FACT_SYSTEM,
-            messages=[{"role": "user", "content": f"Destination: {destination}"}],
-        )
-        usage = getattr(response, "usage", None)
-        cost_usd = 0.0
-        if usage:
-            cost_usd = (
-                usage.input_tokens * _HAIKU_INPUT_PER_MTOK
-                + usage.output_tokens * _HAIKU_OUTPUT_PER_MTOK
-            ) / 1_000_000
-        fact = response.content[0].text.strip().strip('"').strip()
-        return fact, cost_usd
-    except Exception as e:
-        print(f"[FunFact] generate_fun_fact failed for '{destination}': {e}")
-        return "", 0.0
-
-
-_FUN_FACTS_SYSTEM = """You write 3-4 short, genuinely true, surprising facts about a travel destination for a travel app's "getting to know [destination]" intro section on its route page — a richer version of the single homepage fun fact, same bar, more of them.
-
-Rules:
-- Every fact must be REAL and verifiable — never invent or guess. If you aren't confident a surprising fact is true, use a more general but definitely-true fact instead of risking a wrong specific detail.
-- About the destination itself (the city/region/country) — not about any specific hotel, restaurant, or attraction.
-- Favor quirky, little-known, or counter-intuitive angles: an unusual law or custom, a record the place quietly holds, a strange bit of history, an oddly specific number, a "most people don't know this" detail.
-- Avoid flat, generic filler — "has beautiful beaches", "is known for its rich culture", "is a popular tourist destination" say nothing and should never appear.
-- Vary the angle across the 3-4 facts where the destination genuinely supports it (e.g. one historical, one a local custom, one a surprising number) — never repeat the same fact twice, and never pad with something weak just to hit 4; return fewer if that's all you're confident in.
-- Each fact is one sentence, max ~20 words.
+HARD RULES — these are the whole point of this task, never break them:
+1. Base the description ONLY on video_notes and the Places facts given for THAT stop. Never add anything else.
+2. NO history, no years, no founding dates, no "built in", no "since".
+3. NO invented numbers — don't state a size, distance, count, or age that wasn't given to you. (rating/user_rating_count/price_level ARE given to you, but don't restate them as prose — the app displays those separately; use them only to calibrate tone, e.g. a high rating can justify "popular" but never a specific invented number.)
+4. NO superlative claims ("the best", "the most", "the only", "the biggest", "iconic", "legendary", "world-famous") unless that exact claim is explicitly present in video_notes — a verified Places rating is NOT license to call something "the best."
+5. NO comparisons to other places, other cities, or "unlike anywhere else" framing, unless explicitly present in video_notes.
+6. If video_notes is empty or unhelpful and the Places facts are also thin, write the plainest possible factual sentence from what little you do have (e.g. just the place_type + area_label) rather than inventing color. A short, plain sentence is always correct; a vivid but unsupported one is not.
+7. Never mention that you were given "data", "facts", or "video" — write a normal, natural sentence a traveler would read, just one that happens to be fully grounded.
 
 Reply with ONLY valid JSON, no markdown fences:
-{"facts": ["fact one", "fact two", "fact three"]}"""
+{"descriptions": {"<exact stop name as given>": "description text", ...}}
+Every stop name you were given must appear as a key, even if its description ends up being short and plain."""
 
 
-def generate_fun_facts(destination: str) -> tuple[list[str], float]:
+def generate_grounded_descriptions(stops: list[dict]) -> tuple[dict[str, str], float]:
     """
-    Cheap, standalone Haiku call that returns 3-4 real, surprising facts
-    about `destination` — the richer, multi-fact version of
-    generate_fun_fact, for the route page's "getting to know [destination]"
-    intro section. Used by Build Your Own Trip (no video to get facts from
-    for free) and to backfill routes generated before this field existed,
-    same role generate_fun_fact/generate_travel_tips play for their own
-    fields. New video-extracted routes get fun_facts for free as part of
-    the same analyse_frames() call instead (see SYSTEM_PROMPT above).
+    Task 8: ONE batched Haiku call per route (not per stop, for cost
+    efficiency — same batching pattern the old generate_fun_facts used)
+    that rewrites every stop's user-facing description so it's grounded
+    ONLY in Google Places facts + the AI's own raw video observations —
+    never history/years/invented numbers/superlatives/comparisons. Called
+    AFTER places.enrich_itinerary_with_photos() has populated each stop's
+    Places facts, for both video-extracted routes (video_notes = that
+    stop's original AI-written `description`, i.e. what analyse_frames'
+    SYSTEM_PROMPT calls "raw internal material") and Build Your Own Trip
+    (no video at all, so video_notes="" for every stop — descriptions come
+    purely from Places facts there).
 
-    Returns (facts, cost_usd). Never raises — returns ([], 0.0) on any
-    failure, same non-fatal contract as generate_fun_fact.
+    Each item in `stops` is shaped like:
+      {"name", "video_notes", "place_type", "address", "area_label",
+       "rating", "user_rating_count", "price_level", "opening_hours_weekly"}
+
+    Returns ({stop_name: grounded_description}, cost_usd). Never raises —
+    returns ({}, 0.0) on any failure (rate limit, bad response, network
+    error); callers should leave stop.description unchanged (keep
+    whatever it already was) for any stop missing from the result dict,
+    rather than blanking it out.
     """
+    if not stops:
+        return {}, 0.0
     try:
+        payload = [
+            {
+                "name": s.get("name", ""),
+                "video_notes": s.get("video_notes", "") or "",
+                "place_type": s.get("place_type", "") or "",
+                "address": s.get("address", "") or "",
+                "area_label": s.get("area_label", "") or "",
+                "rating": s.get("rating", 0) or 0,
+                "user_rating_count": s.get("user_rating_count", 0) or 0,
+                "price_level": s.get("price_level", "") or "",
+                "opening_hours_weekly": s.get("opening_hours_weekly", []) or [],
+            }
+            for s in stops
+        ]
         response = _client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=350,
-            system=_FUN_FACTS_SYSTEM,
-            messages=[{"role": "user", "content": f"Destination: {destination}"}],
+            max_tokens=4000,
+            system=_GROUNDED_DESCRIPTION_SYSTEM,
+            messages=[{"role": "user", "content": json.dumps({"stops": payload})}],
         )
         usage = getattr(response, "usage", None)
         cost_usd = 0.0
@@ -570,11 +593,15 @@ def generate_fun_facts(destination: str) -> tuple[list[str], float]:
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
         result = json.loads(raw)
-        facts = [str(f).strip() for f in (result.get("facts") or []) if str(f).strip()]
-        return facts, cost_usd
+        descriptions = {
+            str(name): str(desc).strip()
+            for name, desc in (result.get("descriptions") or {}).items()
+            if str(desc).strip()
+        }
+        return descriptions, cost_usd
     except Exception as e:
-        print(f"[FunFacts] generate_fun_facts failed for '{destination}': {e}")
-        return [], 0.0
+        print(f"[GroundedDescriptions] generate_grounded_descriptions failed: {e}")
+        return {}, 0.0
 
 
 _TRIP_SUMMARY_SYSTEM = """You write a short intro for a travel app's route page — the same "summary" a video-extracted route gets (see SYSTEM_PROMPT's "summary" rule in ai_analyzer.py — keep this in sync with that one), just for a traveler who built their own trip instead of pasting a video link.
@@ -597,10 +624,10 @@ def generate_trip_summary(destination: str, stop_names: list[str]) -> tuple[str,
     destination + route summary a video-extracted route gets for free from
     the main Sonnet call (see SYSTEM_PROMPT's "summary" field) — Build Your
     Own Trip has no video to extract that from, so this fills the same gap
-    generate_fun_fact/generate_travel_tips fill for their own fields.
+    generate_grounded_descriptions/generate_travel_tips fill for their own fields.
 
     Returns (summary, cost_usd). Never raises — returns ("", 0.0) on any
-    failure, same non-fatal contract as generate_fun_fact.
+    failure, same non-fatal contract as generate_grounded_descriptions.
     """
     try:
         response = _client.messages.create(
@@ -646,12 +673,12 @@ def generate_travel_tips(destination: str) -> tuple[list[str], float]:
     destination-specific travel tips for `destination` — used by Build
     Your Own Trip (which has no Sonnet video-analysis call to get tips for
     free from) and to backfill routes generated before this field existed,
-    same role generate_fun_fact plays for fun_fact. New video-extracted
+    same role generate_grounded_descriptions plays for stop descriptions. New video-extracted
     routes get travel_tips for free as part of the same analyse_frames()
     call instead (see SYSTEM_PROMPT above).
 
     Returns (tips, cost_usd). Never raises — returns ([], 0.0) on any
-    failure, same non-fatal contract as generate_fun_fact.
+    failure, same non-fatal contract as generate_grounded_descriptions.
     """
     try:
         response = _client.messages.create(
@@ -946,8 +973,8 @@ def generate_vibe_match(answers: list[dict]) -> tuple[dict, float]:
     `answers` is a list of {"question": ..., "answer": ...} dicts, in quiz
     order. Returns ({"destination": ..., "blurb": ...}, cost_usd), or
     ({}, 0.0) on any failure — never raises, same non-fatal philosophy as
-    generate_fun_fact, so the frontend can fall back to its own static-list
-    matching rather than breaking the quiz.
+    generate_grounded_descriptions, so the frontend can fall back to its
+    own static-list matching rather than breaking the quiz.
     """
     try:
         response = _client.messages.create(

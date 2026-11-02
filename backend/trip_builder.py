@@ -58,7 +58,7 @@ import re
 import statistics
 
 import anthropic
-from places import photo_url_from_places_photos, best_fresh_unsplash_photo
+from places import photo_url_from_places_photos, best_fresh_unsplash_photo, _facts_from_place
 from ai_analyzer import _booking_affiliate_url, _expedia_affiliate_url
 
 _client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
@@ -211,14 +211,24 @@ def _place_to_candidate_dict(place: dict, description: str = "", category: str =
     loc = place.get("location") or {}
     photo_url = photo_url_from_places_photos(place.get("photos", []))
     name = place.get("displayName", {}).get("text", "")
+    # Task 8: place_type/address/area_label/opening_hours_weekly (plus
+    # rating/user_rating_count/price_level, which this dict already had)
+    # come from the SAME raw Places result, via the one shared helper
+    # places._facts_from_place — keeps Build Your Own Trip candidates on
+    # the exact same Places-only-facts rule as video-extracted stops.
+    facts = _facts_from_place(place)
     return {
         "name": name,
         "description": description or name,
         "category": category,
         "photo_url": photo_url,
-        "rating": place.get("rating", 0) or 0,
-        "user_rating_count": place.get("userRatingCount", 0) or 0,
-        "price_level": place.get("priceLevel", "") or "",
+        "rating": facts["rating"],
+        "user_rating_count": facts["user_rating_count"],
+        "price_level": facts["price_level"],
+        "place_type": facts["place_type"],
+        "address": facts["address"],
+        "area_label": facts["area_label"],
+        "opening_hours_weekly": facts["opening_hours_weekly"],
         "is_free": _is_free_by_type(place) if is_free is None else is_free,
         "lat": loc.get("latitude"),
         "lng": loc.get("longitude"),
@@ -236,14 +246,15 @@ You will receive a destination and a JSON array of raw candidates, each with an 
 Your job for EACH candidate:
 1. Decide whether it's a genuine, tourist-worthy attraction, activity, or place to eat — DROP anything that clearly isn't (parking garages, generic ATMs/banks, gas stations, residential buildings, chain pharmacies, anything that isn't actually a place a traveler would choose to visit).
 2. DROP near-duplicates of another candidate in the same list (e.g. two listings for the same landmark under slightly different names) — keep only the better-named one.
-3. For everything you keep, write ONE short, engaging sentence description (max ~15 words) in GetWay's tone — like a travel writer's pick, not a dry Google Maps category label. Never invent specific facts you can't reasonably infer from the name/type.
-4. Assign one category: sight | food | activity | beach | village. Never "hotel" — this list never includes accommodation. Base this ONLY on what the place actually IS, never on which search found it: use "sight" for a place primarily visited/viewed — a museum, landmark, church, historical site, viewpoint, or park — even if it was found via an activity-type search, if that's genuinely what it is. Use "activity" for a bookable experience or thing you DO rather than a place you visit to look at — a guided tour, cooking class, boat trip, theme park ride, adventure/adrenaline activity, art workshop.
-5. "estimated_price" — a short realistic ballpark price string (e.g. "€16", "€10-15", "€25-30") ONLY for a paid attraction/activity/tour you have reasonably confident general knowledge of — well-known museums, monuments, landmarks, popular tours. Leave it as "" (empty string) whenever the place is free, OR whenever you are not confident enough in a specific number to avoid a misleading guess. Never invent a precise-sounding price for a place you don't actually have real knowledge of — a missing estimate is far better than a wrong one.
-6. "is_free" — true if this SPECIFIC place is free to enter/visit with no admission charge, false if it normally requires paying an entry fee or is a paid activity/experience/tour/class. Use your real knowledge of the specific place — don't default to true. When genuinely unsure, false is the safer default (a rough price estimate is better than wrongly claiming something is free).
-7. "is_full_day" — true if visiting this properly typically takes most or all of a full day (a theme park, a day-trip island, a large safari/wildlife park, a major hiking trail, a full-day fjord or boat cruise, a distant day excursion). false for anything shorter (most museums, landmarks, quick tours, restaurants, viewpoints) — false is the default for the vast majority of places, so only mark true when you're genuinely confident it eats an entire day.
+3. Assign one category: sight | food | activity | beach | village. Never "hotel" — this list never includes accommodation. Base this ONLY on what the place actually IS, never on which search found it: use "sight" for a place primarily visited/viewed — a museum, landmark, church, historical site, viewpoint, or park — even if it was found via an activity-type search, if that's genuinely what it is. Use "activity" for a bookable experience or thing you DO rather than a place you visit to look at — a guided tour, cooking class, boat trip, theme park ride, adventure/adrenaline activity, art workshop.
+4. "estimated_price" — a short realistic ballpark price string (e.g. "€16", "€10-15", "€25-30") ONLY for a paid attraction/activity/tour you have reasonably confident general knowledge of — well-known museums, monuments, landmarks, popular tours. Leave it as "" (empty string) whenever the place is free, OR whenever you are not confident enough in a specific number to avoid a misleading guess. Never invent a precise-sounding price for a place you don't actually have real knowledge of — a missing estimate is far better than a wrong one.
+5. "is_free" — true if this SPECIFIC place is free to enter/visit with no admission charge, false if it normally requires paying an entry fee or is a paid activity/experience/tour/class. Use your real knowledge of the specific place — don't default to true. When genuinely unsure, false is the safer default (a rough price estimate is better than wrongly claiming something is free).
+6. "is_full_day" — true if visiting this properly typically takes most or all of a full day (a theme park, a day-trip island, a large safari/wildlife park, a major hiking trail, a full-day fjord or boat cruise, a distant day excursion). false for anything shorter (most museums, landmarks, quick tours, restaurants, viewpoints) — false is the default for the vast majority of places, so only mark true when you're genuinely confident it eats an entire day.
+
+Note: you are NOT asked for a description here anymore — descriptions are now written in a separate pass, strictly grounded in verified Google Places facts (see ai_analyzer.generate_grounded_descriptions), to avoid this curation pass inventing unverifiable color.
 
 Reply with ONLY valid JSON, no markdown fences:
-{"candidates": [{"index": 0, "description": "...", "category": "sight", "is_free": false, "estimated_price": "€16", "is_full_day": false}]}
+{"candidates": [{"index": 0, "category": "sight", "is_free": false, "estimated_price": "€16", "is_full_day": false}]}
 
 Only include entries you decided to KEEP — dropped candidates simply don't appear in the array. "index" must exactly match an index from the input. "estimated_price" must be present on every kept entry, as "" when not applicable/not confident. "is_free" and "is_full_day" must be present on every kept entry as booleans."""
 
@@ -346,7 +357,6 @@ def curate_candidates(destination: str, raw_places: list[dict]) -> tuple[list[di
             estimated_price = item.get("estimated_price", "") or ""
             candidate = _place_to_candidate_dict(
                 raw_places[idx],
-                description=item.get("description", ""),
                 category=item.get("category", "sight"),
                 section=raw_places[idx].get("_section", "attraction"),
                 estimated_price=estimated_price,
@@ -560,15 +570,23 @@ def hotel_to_recommendation_dict(hotel: dict, city: str) -> dict:
         photo_url, _ = best_fresh_unsplash_photo(query)
         if not photo_url:
             photo_url, _ = best_fresh_unsplash_photo(f"{city} hotel room interior")
+    # Task 8: same shared Places-facts helper _place_to_candidate_dict uses
+    # above — area_label now comes from Places' real addressComponents
+    # instead of always being left empty, and place_type/address/
+    # opening_hours_weekly are new.
+    facts = _facts_from_place(hotel)
     return {
         "name": name,
         "description": "",
         "photo_url": photo_url,
-        "rating": hotel.get("rating", 0) or 0,
-        "user_rating_count": hotel.get("userRatingCount", 0) or 0,
-        "price_level": hotel.get("priceLevel", "") or "",
+        "rating": facts["rating"],
+        "user_rating_count": facts["user_rating_count"],
+        "price_level": facts["price_level"],
         "property_type": "",
-        "area_label": "",
+        "area_label": facts["area_label"],
+        "place_type": facts["place_type"],
+        "address": facts["address"],
+        "opening_hours_weekly": facts["opening_hours_weekly"],
         "lat": loc.get("latitude"),
         "lng": loc.get("longitude"),
         "booking_url": _booking_affiliate_url(query),
@@ -737,6 +755,16 @@ def _candidate_dict_to_stop(candidate: dict) -> dict:
         "is_free": candidate.get("is_free", False),
         "estimated_price": candidate.get("estimated_price", ""),
         "is_full_day": candidate.get("is_full_day", False),
+        # Task 8 facts — carried through from _place_to_candidate_dict
+        # (places._facts_from_place), same fields a video-extracted Stop
+        # gets from places.enrich_itinerary_with_photos.
+        "rating": candidate.get("rating", 0.0) or 0.0,
+        "user_rating_count": candidate.get("user_rating_count", 0) or 0,
+        "price_level": candidate.get("price_level", "") or "",
+        "place_type": candidate.get("place_type", "") or "",
+        "address": candidate.get("address", "") or "",
+        "area_label": candidate.get("area_label", "") or "",
+        "opening_hours_weekly": candidate.get("opening_hours_weekly") or [],
     }
 
 
@@ -754,6 +782,13 @@ def _hotel_dict_to_stop(hotel: dict) -> dict:
         "expedia_url": hotel.get("expedia_url", ""),
         "lat": hotel.get("lat"),
         "lng": hotel.get("lng"),
+        # Task 8 facts — see _candidate_dict_to_stop above.
+        "rating": hotel.get("rating", 0.0) or 0.0,
+        "user_rating_count": hotel.get("user_rating_count", 0) or 0,
+        "price_level": hotel.get("price_level", "") or "",
+        "place_type": hotel.get("place_type", "") or "",
+        "address": hotel.get("address", "") or "",
+        "opening_hours_weekly": hotel.get("opening_hours_weekly") or [],
     }
 
 

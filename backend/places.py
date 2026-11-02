@@ -9,7 +9,11 @@ photos for a bare city/region query are often low-quality or blurry
 (user-submitted snapshots), whereas Unsplash returns curated, high-res
 travel photography — exactly what a hero banner needs.
 
-Free tier: Places $200/month credit (~5000 lookups). Unsplash: 50 req/hour
+Free tier (confirmed on Google's own pricing page, Oct 2026 — the old
+$200/month credit this comment used to cite expired Feb 2025 and no
+longer applies): Text Search Pro gets 5,000 free calls/month, Text Search
+Enterprise only 1,000/month — see _FACT_FIELDS_MASK_SUFFIX_PRO/_ENTERPRISE
+below for which call sites use which tier and why. Unsplash: 50 req/hour
 on the free Demo tier — plenty for this use case.
 """
 
@@ -21,13 +25,49 @@ import requests
 
 import database
 from models import UnsplashAttribution
-from ai_analyzer import _booking_affiliate_url, _expedia_affiliate_url
+from ai_analyzer import _booking_affiliate_url, _expedia_affiliate_url, _hotel_checkin_checkout
 
 PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")
 UNSPLASH_ACCESS_KEY = os.getenv("UNSPLASH_ACCESS_KEY", "")
 
 SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
 UNSPLASH_SEARCH_URL = "https://api.unsplash.com/search/photos"
+
+# Oct 2026 task 8 (revised after Gerry's cost review): the real-Google-facts
+# fields that get appended to a call's own base field mask, split into two
+# tiers because each one has a DIFFERENT free monthly quota, confirmed on
+# Google's own pricing page (developers.google.com/maps/billing-and-pricing/
+# pricing) — this was missed in the first pass, which lumped everything
+# into one shared suffix and silently moved every video-route stop lookup
+# onto the pricier tier:
+#   Text Search Pro:        5,000 free calls/month, then $32/1000
+#   Text Search Enterprise: 1,000 free calls/month, then $35/1000
+#   (Enterprise+Atmosphere: 1,000 free/month, $40/1000 — still never used
+#   here; neither suffix below requests editorialSummary)
+# primaryTypeDisplayName/addressComponents/formattedAddress are Text Search
+# PRO fields (confirmed against Google's Place Data Fields (New) docs,
+# Text Search column) — adding them to a call that's already Pro-tier
+# (photos/displayName/location/types) costs no SKU upgrade.
+# rating/userRatingCount/priceLevel/regularOpeningHours are Text Search
+# ENTERPRISE fields — requesting ANY one of them moves the WHOLE call to
+# the Enterprise SKU (and its 5x-smaller free quota).
+_FACT_FIELDS_MASK_SUFFIX_PRO = (
+    ",places.primaryTypeDisplayName,places.addressComponents,places.formattedAddress"
+)
+# Adds the Enterprise-tier fields on top of the Pro ones above — Build Your
+# Own Trip's attraction/hotel search (_ATTRACTION_SEARCH_FIELD_MASK,
+# _HOTEL_SEARCH_FIELD_MASK below) already needed priceLevel/rating/
+# userRatingCount for budget classification and curation BEFORE task 8
+# existed, so those two calls were already on the Enterprise SKU — this
+# suffix just keeps that unchanged while adding addressComponents/
+# regularOpeningHours/formattedAddress to the same already-Enterprise call
+# for free (no further SKU to move up to). Video-route stop lookups
+# (_search_places, used by enrich_itinerary_with_photos) must NOT use this
+# one — see _FACT_FIELDS_MASK_SUFFIX_PRO above for those.
+_FACT_FIELDS_MASK_SUFFIX_ENTERPRISE = (
+    _FACT_FIELDS_MASK_SUFFIX_PRO
+    + ",places.rating,places.userRatingCount,places.priceLevel,places.regularOpeningHours"
+)
 
 # Same persistent Volume main.py's /admin/upload-image writes to (see
 # IMAGES_DIR there) — reused here so a Places photo, once downloaded, is
@@ -131,7 +171,23 @@ def _search_places(query: str, max_results: int = 1, _retries: int = 2) -> list[
                 headers={
                     "Content-Type": "application/json",
                     "X-Goog-Api-Key": PLACES_API_KEY,
-                    "X-Goog-FieldMask": "places.photos,places.displayName,places.location",
+                    # Oct 2026 task 8, revised after Gerry's cost review:
+                    # expanded from photos/displayName/location only, so a
+                    # confirmed VIDEO-ROUTE stop also carries real Google
+                    # facts (type, neighbourhood, address) instead of
+                    # nothing — see _FACT_FIELDS_MASK_SUFFIX_PRO above.
+                    # Deliberately the PRO-only suffix, not the Enterprise
+                    # one: this call already runs on EVERY stop of EVERY
+                    # video route, and Enterprise's free quota (1,000/mo)
+                    # is 5x smaller than Pro's (5,000/mo) — at current
+                    # traffic that would start costing money after ~55 new
+                    # routes/month, for rating/priceLevel/opening-hours data
+                    # this function doesn't even return yet (deferred to a
+                    # later task). Staying on Pro keeps video routes inside
+                    # the free quota. No rating/userRatingCount/priceLevel/
+                    # regularOpeningHours fields here — see _facts_from_place,
+                    # which already defaults them to 0/""/[] when absent.
+                    "X-Goog-FieldMask": "places.photos,places.displayName,places.location" + _FACT_FIELDS_MASK_SUFFIX_PRO,
                 },
                 timeout=6,
             )
@@ -166,9 +222,16 @@ def _search_places(query: str, max_results: int = 1, _retries: int = 2) -> list[
 # different searches — e.g. the attraction search and an activity-type
 # search both surfacing the same famous landmark — reliably, instead of
 # only via a fuzzy displayName match).
+# Oct 2026 task 8: + _FACT_FIELDS_MASK_SUFFIX_ENTERPRISE for type/address/
+# area/hours (priceLevel/rating/userRatingCount were already being
+# requested below, on their own, before task 8 existed — this call was
+# already on the Enterprise SKU because of them, so adding
+# addressComponents/regularOpeningHours/formattedAddress alongside costs no
+# additional SKU tier; see _FACT_FIELDS_MASK_SUFFIX_ENTERPRISE's comment).
 _ATTRACTION_SEARCH_FIELD_MASK = (
-    "places.id,places.displayName,places.location,places.photos,places.priceLevel,"
-    "places.rating,places.userRatingCount,places.types,places.businessStatus"
+    "places.id,places.displayName,places.location,places.photos,"
+    "places.types,places.businessStatus"
+    + _FACT_FIELDS_MASK_SUFFIX_ENTERPRISE
 )
 
 
@@ -277,12 +340,15 @@ def search_places_freetext(city: str, query: str, max_results: int = 10, _retrie
 
 # Field mask for the "Build Your Own Trip" hotel search (search_hotels_near)
 # — same signal fields as the attraction search above (priceLevel, rating,
-# userRatingCount, businessStatus) plus formattedAddress, which the plain
-# attraction search doesn't need but a hotel recommendation benefits from
-# for a rough area description.
+# userRatingCount, businessStatus), now via the shared
+# _FACT_FIELDS_MASK_SUFFIX_ENTERPRISE (task 8), which also brings
+# addressComponents/primaryTypeDisplayName/regularOpeningHours a hotel
+# recommendation can use the same as any stop. This call was already
+# Enterprise-tier before task 8 (same reasoning as _ATTRACTION_SEARCH_
+# FIELD_MASK above), so this adds no new SKU cost.
 _HOTEL_SEARCH_FIELD_MASK = (
-    "places.displayName,places.location,places.photos,places.priceLevel,"
-    "places.rating,places.userRatingCount,places.businessStatus,places.formattedAddress"
+    "places.displayName,places.location,places.photos,places.businessStatus"
+    + _FACT_FIELDS_MASK_SUFFIX_ENTERPRISE
 )
 
 
@@ -388,20 +454,83 @@ def _location_from_place(place: dict) -> tuple[float, float] | None:
     return (lat, lng)
 
 
-def _get_place_photo_and_location(query: str, max_width: int = 800) -> tuple[str, tuple[float, float] | None]:
+def _empty_facts() -> dict:
+    """A fresh all-empty facts dict — task 8's "Places has nothing to say
+    about this place" answer. Always a new dict (never a shared/mutated
+    default) since callers may fill it in piecemeal."""
+    return {
+        "place_type": "", "address": "", "area_label": "",
+        "opening_hours_weekly": [], "rating": 0.0, "user_rating_count": 0,
+        "price_level": "",
+    }
+
+
+def _place_type_display(place: dict) -> str:
+    """Google's own human-readable category for a place, e.g. "Art museum"
+    (Places' primaryTypeDisplayName) — never our own guess at a category."""
+    return ((place.get("primaryTypeDisplayName") or {}).get("text") or "").strip()
+
+
+def _area_label_from_components(place: dict) -> str:
+    """
+    Pulls a neighbourhood/area name out of Places' addressComponents —
+    task 8: this used to be an AI guess (hotel stops only); now it's
+    Google's own geocoded component, for every stop. Prefers a true
+    "neighborhood" component; falls back to the broader "sublocality"
+    level when a place has no finer neighbourhood data (both read as "the
+    area" to a traveler, unlike "locality", which is the whole city).
+    Returns "" when Places has neither.
+    """
+    components = place.get("addressComponents") or []
+    for wanted in ("neighborhood", "sublocality", "sublocality_level_1"):
+        for comp in components:
+            if wanted in (comp.get("types") or []):
+                return (comp.get("longText") or comp.get("shortText") or "").strip()
+    return ""
+
+
+def _opening_hours_weekly(place: dict) -> list[str]:
+    """
+    Google's own 7-line weekly schedule text (e.g. "Monday: 9:00 AM – 6:00
+    PM"), verbatim — task 8. Deliberately NOT "open now" or "today's
+    hours": those are only correct at the moment they're fetched and go
+    stale the instant this gets cached/reused for a later visitor, so
+    "open now"/"today" is computed by the frontend from this weekly
+    schedule at render time instead, never stored.
+    """
+    hours = (place.get("regularOpeningHours") or {}).get("weekdayDescriptions") or []
+    return [str(h).strip() for h in hours if str(h).strip()]
+
+
+def _facts_from_place(place: dict) -> dict:
+    """Bundles every task-8 Google-sourced fact for one matched place —
+    see _empty_facts for the shape when nothing is known."""
+    return {
+        "place_type": _place_type_display(place),
+        "address": (place.get("formattedAddress") or "").strip(),
+        "area_label": _area_label_from_components(place),
+        "opening_hours_weekly": _opening_hours_weekly(place),
+        "rating": place.get("rating", 0) or 0.0,
+        "user_rating_count": place.get("userRatingCount", 0) or 0,
+        "price_level": place.get("priceLevel", "") or "",
+    }
+
+
+def _get_place_photo_location_and_facts(query: str, max_width: int = 800) -> tuple[str, tuple[float, float] | None, dict]:
     """
     Same name-matching logic as _get_place_photo_url, but also returns the
     matched place's (lat, lng) — used to populate Stop.lat/Stop.lng for the
-    route Map view (index.html). Costs no extra API call: the coordinates
-    ride along on the same Text Search response we already fetch for the
-    photo. Returns ("", None) when nothing confidently matches; returns
-    ("", location) when a confident name match has coordinates but no
-    usable photo — a stop can still get a map pin without a photo.
+    route Map view (index.html) — AND its task-8 facts dict (see
+    _facts_from_place), all for free: everything rides along on the same
+    Text Search response already fetched for the photo. Returns ("", None,
+    _empty_facts()) when nothing confidently matches; returns ("", location,
+    facts) when a confident name match has coordinates/facts but no usable
+    photo — a stop can still get a map pin and real facts without a photo.
     """
     places = _search_places(query, max_results=3)
     if not places:
         print(f"[Places] No places found for '{query}'")
-        return "", None
+        return "", None, _empty_facts()
 
     query_core = query.split(",")[0]  # drop the appended city for the name comparison
     for place in places:
@@ -409,16 +538,27 @@ def _get_place_photo_and_location(query: str, max_width: int = 800) -> tuple[str
         if not _names_plausibly_match(query_core, name):
             continue
         location = _location_from_place(place)
+        facts = _facts_from_place(place)
         photos = place.get("photos", [])
         if not photos:
-            return "", location
+            return "", location, facts
         candidates = photos[:5]
         landscape = [p for p in candidates if p.get("widthPx", 0) > p.get("heightPx", 0)]
         best = max(landscape or candidates, key=lambda p: p.get("widthPx", 0))
-        return _build_photo_url(best.get("name", ""), max_width), location
+        return _build_photo_url(best.get("name", ""), max_width), location, facts
 
     print(f"[Places] No confident name match for '{query}' — skipping photo rather than risk a wrong one")
-    return "", None
+    return "", None, _empty_facts()
+
+
+def _get_place_photo_and_location(query: str, max_width: int = 800) -> tuple[str, tuple[float, float] | None]:
+    """
+    Thin wrapper around _get_place_photo_location_and_facts for call sites
+    that only need the photo+location (kept so nothing else has to
+    change) — see that function for the real logic.
+    """
+    url, location, _facts = _get_place_photo_location_and_facts(query, max_width)
+    return url, location
 
 
 def _get_place_photo_url(query: str, max_width: int = 800) -> str:
@@ -788,22 +928,32 @@ def enrich_itinerary_with_photos(itinerary) -> None:
             is_specific = getattr(stop, "is_specific_name", True)
             name_query = stop.name if city.lower() in stop.name.lower() else f"{stop.name}, {city}"
 
-            # Reuse a photo/address already saved from a PREVIOUS route for
-            # this exact city+stop name (e.g. the Colosseum showing up
-            # again in a second Rome route) — skips the Places/Unsplash
-            # lookup entirely, which both saves the API call and means
-            # Gerry's earlier manual fix for this stop carries over
-            # automatically instead of needing to be redone every time.
+            # Reuse a photo/address/facts already saved from a PREVIOUS
+            # route for this exact city+stop name (e.g. the Colosseum
+            # showing up again in a second Rome route) — skips the
+            # Places/Unsplash lookup entirely, which both saves the API
+            # call and means Gerry's earlier manual fix for this stop
+            # carries over automatically instead of needing to be redone
+            # every time.
             cached = database.get_cached_stop(city, stop.name)
             if cached:
                 stop.photo_url = cached["photo_url"]
                 if cached.get("maps_url_override"):
                     stop.maps_url_override = cached["maps_url_override"]
-                # Only present once database.py's get_cached_stop is updated
-                # to also select/return lat/lng — safe no-op until then.
                 if cached.get("lat") is not None and cached.get("lng") is not None:
                     stop.lat = cached["lat"]
                     stop.lng = cached["lng"]
+                # Task 8 facts (place_type/address/area_label/opening hours/
+                # rating/price_level) — empty strings/lists/zeros on rows
+                # saved before this existed, which is fine: the frontend
+                # already treats an empty fact as "don't show this field".
+                stop.place_type = cached.get("place_type", "") or ""
+                stop.address = cached.get("address", "") or ""
+                stop.area_label = cached.get("area_label", "") or ""
+                stop.opening_hours_weekly = cached.get("opening_hours_weekly") or []
+                stop.rating = cached.get("rating", 0.0) or 0.0
+                stop.user_rating_count = cached.get("user_rating_count", 0) or 0
+                stop.price_level = cached.get("price_level", "") or ""
                 print(f"[Cache] Reused saved photo for '{stop.name}' in {city}")
                 continue
 
@@ -829,21 +979,44 @@ def enrich_itinerary_with_photos(itinerary) -> None:
                         print(f"[Places] Upgraded unconfirmed hotel '{stop.name}' → real match '{real_name}'")
                         stop.name = real_name
                         stop.similar_hotel_is_real = True
-                        stop.photo_url, location = _get_place_photo_and_location(f"{real_name}, {city}")
+                        stop.photo_url, location, facts = _get_place_photo_location_and_facts(f"{real_name}, {city}")
                         if location:
                             stop.lat, stop.lng = location
+                        stop.place_type = facts["place_type"]
+                        stop.address = facts["address"]
+                        stop.area_label = facts["area_label"]
+                        stop.opening_hours_weekly = facts["opening_hours_weekly"]
+                        stop.rating = facts["rating"]
+                        stop.user_rating_count = facts["user_rating_count"]
+                        stop.price_level = facts["price_level"]
                         booking_query = f"{real_name}, {city}"
-                        stop.booking_url = _booking_affiliate_url(booking_query)
-                        stop.expedia_url = _expedia_affiliate_url(booking_query)
+                        # Task 7: same dated-search rule as every other
+                        # Booking/Expedia link in the app — see
+                        # ai_analyzer._hotel_checkin_checkout.
+                        checkin, checkout = _hotel_checkin_checkout(getattr(itinerary, "duration", ""))
+                        stop.booking_url = _booking_affiliate_url(booking_query, checkin, checkout)
+                        stop.expedia_url = _expedia_affiliate_url(booking_query, checkin, checkout)
 
             if is_specific and PLACES_API_KEY:
                 # Don't double up the city if the AI already wrote it into
                 # the name (e.g. "Nile Corniche, Cairo") — searching
                 # "Nile Corniche, Cairo, Cairo & Luxor" is redundant and
                 # doesn't help Places match the right place.
-                stop.photo_url, location = _get_place_photo_and_location(name_query)  # Places photo — no Unsplash attribution needed
+                stop.photo_url, location, facts = _get_place_photo_location_and_facts(name_query)  # Places photo — no Unsplash attribution needed
                 if location:
                     stop.lat, stop.lng = location
+                # Task 8: facts (place_type/address/area_label/opening
+                # hours/rating/price_level) come ONLY from Places, never
+                # from the AI — see _facts_from_place. Left at their
+                # Stop-default empty values when Places had no confident
+                # match (facts is _empty_facts() in that case).
+                stop.place_type = facts["place_type"]
+                stop.address = facts["address"]
+                stop.area_label = facts["area_label"]
+                stop.opening_hours_weekly = facts["opening_hours_weekly"]
+                stop.rating = facts["rating"]
+                stop.user_rating_count = facts["user_rating_count"]
+                stop.price_level = facts["price_level"]
                 print(f"[Places] Stop: {name_query} → photo={bool(stop.photo_url)} coords={bool(location)}")
 
             if not stop.photo_url and is_specific:

@@ -924,21 +924,24 @@
   <!-- ── Destination intro ("getting to know X") — editorial, not a spec
        sheet: photo carousel (same gallery data that used to power a small
        thumbnail-swap-hero strip here — now the strip itself, bigger and
-       swipeable, see renderAiRoute) + 3-4 surprising facts. No "know
-       before you go" prose here anymore — that duplicated the Tips &
+       swipeable, see renderAiRoute). "Curious facts" that used to sit in
+       this same section were removed site-wide (task 8, Oct 2026) — an
+       AI-written fact that happens to be wrong isn't made true by an "AI"
+       label; if facts are reintroduced later they'll need a cited source
+       and a link, as their own thing, not spliced back in here. No "know
+       before you go" prose here either — that duplicated the Tips &
        Tricks section below almost word for word, per feedback. Collapsed
        behind a toggle by default, same reasoning and visual treatment as
        the Map toggle right below it (see ai-route-map-toggle-wrap) — a
-       gallery + facts section this size was adding real page weight
-       up front for someone who just wants the itinerary. Hidden entirely
-       when there's nothing to show (older routes not yet backfilled with
-       fun_facts, and gallery came up empty) — see renderAiRoute. -->
+       gallery section this size was adding real page weight up front for
+       someone who just wants the itinerary. Hidden entirely when there's
+       no gallery to show — see renderAiRoute. -->
   <div id="ai-route-intro-toggle-wrap" class="hidden px-5 md:px-14 lg:px-24 max-w-4xl mx-auto mt-6 md:mt-8 mb-4">
     <button id="ai-route-intro-toggle-btn" onclick="toggleAiRouteIntro()" class="btn-interactive bento-card bg-white w-full flex items-center gap-4 rounded-[22px] p-4 md:p-5 text-left">
       <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#8B5CF6] to-[#6D28D9] shadow-[0_4px_10px_-4px_rgba(124,58,237,0.5)] flex items-center justify-center flex-shrink-0 text-2xl">📖</div>
       <div class="flex-1 min-w-0">
         <div id="ai-route-intro-toggle-label" class="text-sm md:text-base font-semibold text-gray-900 mb-0.5">Getting to know this place</div>
-        <div class="text-xs text-gray-500">Photos and surprising facts about the destination</div>
+        <div class="text-xs text-gray-500">Photos of the destination</div>
       </div>
       <i data-lucide="chevron-down" id="ai-route-intro-toggle-chevron" class="w-5 h-5 text-gray-400 flex-shrink-0 transition-transform duration-300"></i>
     </button>
@@ -948,14 +951,13 @@
       <div class="mb-4">
         <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase">Getting to know</div>
       </div>
-      <div id="ai-route-intro-gallery" class="flex gap-3 overflow-x-auto pb-1 mb-6 -mx-1 px-1"></div>
-      <div id="ai-route-intro-gallery-hint" class="hidden text-[10px] md:text-xs text-gray-400 -mt-4 mb-6">Tap a photo to preview</div>
-      <div id="ai-route-intro-facts" class="grid sm:grid-cols-2 gap-3"></div>
+      <div id="ai-route-intro-gallery" class="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1"></div>
+      <div id="ai-route-intro-gallery-hint" class="hidden text-[10px] md:text-xs text-gray-400 mt-2">Tap a photo to preview</div>
     </div>
   </div>
   <!-- ── Tips & Tricks — destination-specific practical advice (payment
-       norms, transit gotchas, common scams, etc.), AI-generated same as
-       fun_fact. Moved up here, right under "Getting to know" (used to sit
+       norms, transit gotchas, common scams, etc.), AI-generated. Sits
+       right under "Getting to know" (used to sit
        after the entire day-by-day plan) and made collapsible, same
        reasoning and treatment as the two toggles around it. Hidden
        entirely when travel_tips is empty (older routes not yet
@@ -1307,10 +1309,9 @@
         <span id="build-trip-loading-globe" class="text-2xl">🌍</span>
       </div>
       <div class="text-sm font-medium">Finding great places…</div>
-      <!-- Fun fact fetched in parallel via a separate, much faster
-           POST /trip/fun-fact call — rendered here as soon as IT resolves,
-           independent of whether /trip/candidates is still in flight. See
-           fetchBuildTripFunFact(). -->
+      <!-- Generic rotating "did you know" country trivia (see
+           COUNTRY_FACTS/startBuildTripFactRotation) — not destination- or
+           AI-specific, just something light to read during the wait. -->
       <div id="build-trip-loading-fun-fact" class="hidden max-w-xs mx-auto mt-4 flex items-start gap-1.5 bg-[#FAF8F3] rounded-xl px-3 py-2.5 text-left">
         <i data-lucide="lightbulb" class="w-3.5 h-3.5 text-[#8B5CF6] flex-shrink-0 mt-0.5"></i>
         <span id="build-trip-loading-fun-fact-text" class="text-[11px] text-gray-600 italic leading-snug transition-opacity duration-500"></span>
@@ -1324,10 +1325,6 @@
       </div>
     </div>
     <div id="build-trip-attractions-list" class="hidden">
-      <div id="build-trip-checklist-fun-fact" class="hidden flex items-start gap-1.5 bg-[#FAF8F3] rounded-xl px-3 py-2.5 mb-4">
-        <i data-lucide="lightbulb" class="w-3.5 h-3.5 text-[#8B5CF6] flex-shrink-0 mt-0.5"></i>
-        <span id="build-trip-checklist-fun-fact-text" class="text-[11px] text-gray-600 italic leading-snug"></span>
-      </div>
       <div class="text-[10px] text-gray-400 mb-3">Prices shown are rough estimates, not live rates.</div>
       <div id="build-trip-attractions-items" class="space-y-2.5 max-h-[50vh] overflow-y-auto mb-4 pr-1"></div>
       <!-- Manual search-and-add — for something the curated list missed
@@ -1625,20 +1622,23 @@
   // match the real hotel stop cards (photo, label, dropdown booking button)
   // rather than a plain bar, and reuses one of the already-fetched
   // destination gallery photos so it doesn't need its own API call.
-  function renderHotelsBanner(destination, galleryPhotos, videoId, bannerPhotoOverride) {
+  function renderHotelsBanner(destination, galleryPhotos, videoId, bannerPhotoOverride, nights) {
     const container = document.getElementById('ai-route-hotels-banner');
     if (!container) return;
-    container.innerHTML = buildHotelsBannerHtml(destination, galleryPhotos, videoId, bannerPhotoOverride);
+    container.innerHTML = buildHotelsBannerHtml(destination, galleryPhotos, videoId, bannerPhotoOverride, nights);
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
   // Builds the generic "find hotels in [city]" card markup — used both for
   // the trip-start banner (renderHotelsBanner) and for inline banners
   // inserted between days when the trip moves to a new city that has no
   // hotel stop of its own (see renderAiRoute's day-rendering loop).
-  function buildHotelsBannerHtml(destination, galleryPhotos, videoId, bannerPhotoOverride) {
+  // `nights` (task 7): the route's own trip length, from nightsFromDuration
+  // (itinerary.duration) — threaded through so this generic search also
+  // carries real dates, not just the destination.
+  function buildHotelsBannerHtml(destination, galleryPhotos, videoId, bannerPhotoOverride, nights) {
     const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim() || destination || '';
-    const bookingHref = bookingAffiliateSearchUrl(city);
-    const expediaHref = expediaAffiliateSearchUrl(city);
+    const bookingHref = bookingAffiliateSearchUrl(city, nights);
+    const expediaHref = expediaAffiliateSearchUrl(city, nights);
     const photo = bannerPhotoOverride || ((galleryPhotos && galleryPhotos.length) ? galleryPhotos[galleryPhotos.length - 1] : '');
     const seed = 'hotels-banner-' + slugify(city);
     return `
@@ -2301,7 +2301,6 @@
             return `<span class="text-[9px] font-bold tracking-[0.1em] uppercase px-1.5 py-0.5 rounded-md" style="color:${cfg.color};background:${cfg.color}1A;">${cfg.label}</span>`;
           }).join('')}</div>`
         : '';
-      const funFactHtml = r.funFact ? `<div class="mt-3 flex items-start gap-1.5 bg-[#FAF8F3] rounded-xl px-3 py-2.5"><i data-lucide="lightbulb" class="w-3.5 h-3.5 text-[#8B5CF6] flex-shrink-0 mt-0.5"></i><span class="text-[11px] text-gray-600 italic leading-snug">${escapeHtml(r.funFact)}</span></div>` : '';
       return `
       <a href="#" data-slug="${r.slug}" data-search="${(r.destination + ' ' + r.creatorHandle).toLowerCase()}" data-days="${r.dayCount}" data-tags="${r.tags.join(',')}" data-aos="fade-up" data-aos-delay="${i * 80}" class="route-card group block bg-white rounded-[28px] overflow-hidden bento-card">
         <div class="h-52 md:h-60 relative overflow-hidden rounded-t-[28px]" style="background:${r.fallbackColor}">
@@ -2315,7 +2314,6 @@
             <span class="text-[10px] font-medium text-[#6D28D9] bg-[#F1EEFF] px-2.5 py-1 rounded-full">${r.duration}</span>
           </div>
           <div class="text-[11px] md:text-xs text-gray-500">via ${r.creatorHandle} · ${r.stopCount} stops</div>
-          ${funFactHtml}
         </div>
       </a>`;
     }).join('');
@@ -2328,10 +2326,9 @@
         openRouteCard(card.dataset.slug);
       });
     });
-    // The fact-chip lightbulb icon above is only in the DOM after this
-    // innerHTML write, and renderRoutes() can re-run later (loadRealRoutes,
-    // filters) after the page-load lucide.createIcons() pass already ran —
-    // so it needs its own call here too, not just at DOMContentLoaded.
+    // renderRoutes() can re-run later (loadRealRoutes, filters) after the
+    // page-load lucide.createIcons() pass already ran, so any icon inside
+    // the freshly-written grid markup needs its own call here too.
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
   // ── Real browser history for the ai-route screen ──────────────────────
@@ -2447,11 +2444,6 @@
           stopCount: r.stop_count,
           fallbackColor: gradientFor(r.video_id),
           tags: r.tags || [],
-          // Optional — populate `fun_fact` on the backend's /routes response
-          // to have it show up as the fact chip on each card. Cards render
-          // fine without it (see funFactHtml above), so this is safe to add
-          // to the backend at any time with no frontend changes needed.
-          funFact: r.fun_fact || "",
         });
         MEDIA.routes[r.video_id] = { cardPhoto: r.hero_photo_url || "" };
       });
@@ -3109,8 +3101,43 @@
   // and for the destination-wide "Similar hotels" search which isn't tied
   // to a single stop.
   const CJ_AFFILIATE_BASE = "https://www.anrdoezrs.net/click-101819605-17293132";
-  function bookingAffiliateSearchUrl(query) {
-    const target = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(query)}`;
+  // Task 7: real dates + occupancy, not just the destination — confirmed
+  // live (2026-10-29) against both booking.com/searchresults.html
+  // (checkin/checkout=YYYY-MM-DD, group_adults, no_rooms, group_children)
+  // and expedia.com/Hotel-Search (startDate/endDate=YYYY-MM-DD, adults,
+  // rooms); mirrors backend/ai_analyzer.py's _hotel_checkin_checkout_for_nights
+  // exactly, for the client-side fallback paths that build these links
+  // when a stop has no server-generated booking_url/expedia_url (e.g. an
+  // older cached route). Gerry approved 30 days from today + the route's
+  // own duration, 2 adults / 1 room fixed occupancy.
+  const HOTEL_SEARCH_LEAD_DAYS = 30;
+  function hotelCheckinCheckout(nights) {
+    const n = Math.max(1, Math.round(nights) || 3);
+    const checkin = new Date();
+    checkin.setDate(checkin.getDate() + HOTEL_SEARCH_LEAD_DAYS);
+    const checkout = new Date(checkin);
+    checkout.setDate(checkout.getDate() + n);
+    const iso = (d) => d.toISOString().slice(0, 10);
+    return { checkin: iso(checkin), checkout: iso(checkout) };
+  }
+  // Parses the leading integer out of an itinerary.duration string (e.g.
+  // "5 days") — same best-effort parse as the backend's own
+  // _hotel_checkin_checkout, same 3-night fallback when it can't.
+  function nightsFromDuration(duration) {
+    const m = /\d+/.exec(duration || '');
+    return m ? parseInt(m[0], 10) : 3;
+  }
+  function bookingAffiliateSearchUrl(query, nights) {
+    const params = new URLSearchParams({ ss: query });
+    if (nights) {
+      const { checkin, checkout } = hotelCheckinCheckout(nights);
+      params.set('checkin', checkin);
+      params.set('checkout', checkout);
+      params.set('group_adults', '2');
+      params.set('no_rooms', '1');
+      params.set('group_children', '0');
+    }
+    const target = `https://www.booking.com/searchresults.html?${params.toString()}`;
     return `${CJ_AFFILIATE_BASE}?url=${encodeURIComponent(target)}`;
   }
   // Expedia Group Travel Creator Program — approved July 2026. camref/
@@ -3120,8 +3147,16 @@
   const EXPEDIA_CAMREF = '1110lK3nQ';
   const EXPEDIA_CREATIVEREF = '1100l68075';
   const EXPEDIA_ADREF = 'PZTaSwOiKr';
-  function expediaAffiliateSearchUrl(query) {
-    const target = `https://www.expedia.com/Hotel-Search?destination=${encodeURIComponent(query)}`;
+  function expediaAffiliateSearchUrl(query, nights) {
+    const targetParams = new URLSearchParams({ destination: query });
+    if (nights) {
+      const { checkin, checkout } = hotelCheckinCheckout(nights);
+      targetParams.set('startDate', checkin);
+      targetParams.set('endDate', checkout);
+      targetParams.set('adults', '2');
+      targetParams.set('rooms', '1');
+    }
+    const target = `https://www.expedia.com/Hotel-Search?${targetParams.toString()}`;
     const params = new URLSearchParams({
       siteid: '1',
       landingPage: target,
@@ -3195,19 +3230,22 @@
     const cfg = (SITE_SETTINGS && SITE_SETTINGS.affiliate_sections_enabled) || {};
     return cfg[key] !== false;
   }
-  // Flights — Skyscanner's own URL scheme (transport/flights/{origin}/{destination}/)
-  // needs both legs filled in to resolve a real search; GetWay only knows
-  // the trip's destination, not each visitor's home airport, so the origin
-  // comes from an admin-set "home base" city (site_settings.flights_origin).
-  // Left empty, this links to Skyscanner's homepage instead of a guessed
-  // (and possibly empty/invalid) path.
+  // Flights — Skyscanner "flights-to" destination-only search
+  // (flights-to/{slug}/cheap-flights-to-{slug}.html), confirmed live —
+  // no origin airport needed, unlike the old transport/flights/{origin}/
+  // {destination}/ scheme this replaces. Gerry isn't approved by
+  // Travelpayouts yet, so NO partner code is appended here (per her
+  // explicit instruction, 2026-10). SKYSCANNER_PARTNER_MARKER below is the
+  // one place to add it once she's approved — paste the real marker/subid
+  // string Travelpayouts' link-builder gives you (e.g. "associateid=...")
+  // and every Skyscanner link on the site picks it up automatically, no
+  // other code changes needed.
+  const SKYSCANNER_PARTNER_MARKER = ''; // ← fill in once Travelpayouts approves Gerry
   function skyscannerFlightsUrl(destination) {
-    const destSlug = slugify(destination);
-    const origin = (SITE_SETTINGS && SITE_SETTINGS.flights_origin || '').trim();
-    const base = origin
-      ? `https://www.skyscanner.net/transport/flights/${slugify(origin)}/${destSlug}/`
-      : `https://www.skyscanner.net/`;
-    return withAffiliateMarker(base, 'skyscanner');
+    const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim() || destination || '';
+    const destSlug = slugify(city);
+    const base = `https://www.skyscanner.net/flights-to/${destSlug}/cheap-flights-to-${destSlug}.html`;
+    return SKYSCANNER_PARTNER_MARKER ? `${base}?${SKYSCANNER_PARTNER_MARKER}` : base;
   }
   // Kiwi.com's real deep-search link (kiwi.com/deep?from=IATA&to=IATA)
   // needs airport codes, which a free-text destination string can't
@@ -3449,7 +3487,96 @@
     if (!videoId) return;
     fetch(`${BACKEND_URL}/track/affiliate-click/${encodeURIComponent(videoId)}?partner=${encodeURIComponent(partner || 'unknown')}`, { method: 'POST' }).catch(() => {});
   }
-  function renderAiStopCard(stop, destination, creatorHandle, videoId, showHotelReplaceLink) {
+  // Task 8: facts (place_type, address, area_label, opening hours,
+  // rating, price_level) come ONLY from Google Places (see
+  // backend/places.py's _facts_from_place) — nothing here is AI-written.
+  // "Open now" / today's hours are deliberately NOT sent pre-computed by
+  // the backend (they'd go stale between generation and viewing) — only
+  // the WEEKLY schedule is stored (Stop.opening_hours_weekly, Google's own
+  // weekdayDescriptions strings), and this computes today's line + open
+  // status from the viewer's own local clock, right now, every render.
+  const BUILD_TRIP_PRICE_LEVEL_LABEL_STOP_FALLBACK = { PRICE_LEVEL_FREE: 'Free', PRICE_LEVEL_INEXPENSIVE: '€', PRICE_LEVEL_MODERATE: '€€', PRICE_LEVEL_EXPENSIVE: '€€€', PRICE_LEVEL_VERY_EXPENSIVE: '€€€€' };
+  function todaysHoursAndOpenNow(weeklyHours) {
+    if (!weeklyHours || !weeklyHours.length) return null;
+    const now = new Date();
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const todayName = dayNames[now.getDay()];
+    const line = weeklyHours.find(l => (l || '').trim().toLowerCase().startsWith(todayName.toLowerCase() + ':'));
+    if (!line) return null;
+    const hoursText = line.split(':').slice(1).join(':').trim(); // text after "Monday:"
+    if (!hoursText) return null;
+    if (/closed/i.test(hoursText)) return { todayLine: hoursText, isOpenNow: false };
+    if (/open 24 hours/i.test(hoursText)) return { todayLine: hoursText, isOpenNow: true };
+    // One or more comma-separated ranges, e.g. "9:00 AM – 1:00 PM, 2:00 PM – 6:00 PM".
+    const ranges = hoursText.split(',').map(r => r.trim());
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    let isOpenNow = false;
+    let parsedAny = false;
+    const toMinutes = (h, mins, ap) => {
+      let hour = parseInt(h, 10) % 12;
+      if (/pm/i.test(ap)) hour += 12;
+      return hour * 60 + parseInt(mins, 10);
+    };
+    for (const range of ranges) {
+      const m = range.match(/(\d{1,2}):(\d{2})\s*([AP]M)\s*[–—-]\s*(\d{1,2}):(\d{2})\s*([AP]M)/i);
+      if (!m) continue;
+      parsedAny = true;
+      const start = toMinutes(m[1], m[2], m[3]);
+      let end = toMinutes(m[4], m[5], m[6]);
+      if (end <= start) end += 24 * 60; // wraps past midnight (e.g. a bar open to 2:00 AM)
+      if (nowMinutes >= start && nowMinutes < end) { isOpenNow = true; break; }
+      if (nowMinutes + 24 * 60 >= start && nowMinutes + 24 * 60 < end) { isOpenNow = true; break; } // just-past-midnight case
+    }
+    if (!parsedAny) return { todayLine: hoursText, isOpenNow: null };
+    return { todayLine: hoursText, isOpenNow };
+  }
+  // Small facts line shown on both the generic stop card and the hotel
+  // card — everything in it comes straight from stop.place_type/address/
+  // area_label/rating/user_rating_count/price_level/opening_hours_weekly,
+  // i.e. Google Places, never the AI. Returns '' when the stop has no
+  // facts at all (e.g. an older cached route generated before task 8, or
+  // a stop Places couldn't confidently match) — same "just don't render"
+  // contract as everywhere else a possibly-missing field is shown.
+  function renderStopFactsHtml(stop) {
+    const typeAreaBits = [stop.place_type, stop.area_label].filter(Boolean).map(escapeHtml);
+    const typeAreaLine = typeAreaBits.length ? `<div class="text-[11px] text-gray-500">${typeAreaBits.join(' · ')}</div>` : '';
+
+    const metaBits = [];
+    if (stop.rating) {
+      metaBits.push(`<span class="inline-flex items-center gap-0.5">★ ${Number(stop.rating).toFixed(1)}${stop.user_rating_count ? ` <span class="text-gray-400">(${Number(stop.user_rating_count).toLocaleString()})</span>` : ''}</span>`);
+    }
+    // Price — task 8's exact rule: an attraction/activity/sight NEVER
+    // shows a price unless Places itself says PRICE_LEVEL_FREE ("Free");
+    // a food/cafe stop shows priceLevel as €/€€/€€€ symbols, never a
+    // number (reuses the same labels Build Your Own Trip's candidate
+    // cards already use for this).
+    let priceLabel = '';
+    if (stop.price_level === 'PRICE_LEVEL_FREE') {
+      priceLabel = 'Free';
+    } else if (stop.category === 'food') {
+      priceLabel = (typeof BUILD_TRIP_PRICE_LEVEL_LABEL !== 'undefined' ? BUILD_TRIP_PRICE_LEVEL_LABEL : BUILD_TRIP_PRICE_LEVEL_LABEL_STOP_FALLBACK)[stop.price_level] || '';
+    }
+    if (priceLabel) metaBits.push(`<span>${escapeHtml(priceLabel)}</span>`);
+    const metaLine = metaBits.length ? `<div class="text-[11px] text-gray-500 flex items-center gap-2 mt-0.5">${metaBits.join('')}</div>` : '';
+
+    const hours = todaysHoursAndOpenNow(stop.opening_hours_weekly);
+    let hoursLine = '';
+    if (hours) {
+      const statusHtml = hours.isOpenNow === true ? `<span class="text-emerald-600 font-medium">Open now</span>`
+        : hours.isOpenNow === false ? `<span class="text-red-500 font-medium">Closed now</span>` : '';
+      hoursLine = `<div class="text-[11px] text-gray-500 mt-0.5">${statusHtml}${statusHtml ? ' · ' : ''}Today: ${escapeHtml(hours.todayLine)}</div>`;
+    }
+
+    if (!typeAreaLine && !metaLine && !hoursLine) return '';
+    return `<div class="stop-facts mb-1.5">${typeAreaLine}${metaLine}${hoursLine}</div>`;
+  }
+  // "X km to next stop" — see where itinerary.days[].stops get
+  // _distanceToNextKm/_nextStopName attached, in renderAiRoute's days map.
+  function renderNextStopDistanceHtml(stop) {
+    if (typeof stop._distanceToNextKm !== 'number') return '';
+    return `<div class="inline-flex items-center gap-1 text-[11px] text-gray-500 bg-gray-50 rounded-full px-2.5 py-1"><i data-lucide="move-right" class="w-3 h-3"></i>${travelLabel(stop._distanceToNextKm)} to ${escapeHtml(stop._nextStopName || 'next stop')}</div>`;
+  }
+  function renderAiStopCard(stop, destination, creatorHandle, videoId, showHotelReplaceLink, nights) {
     const cfg = CAT_CONFIG[stop.category] || { icon: 'map-pin', color: '#8B5CF6', label: stop.category };
     const seed = slugify(stop.name);
     // Multi-city destinations (e.g. "Cairo & Luxor") need to be split down
@@ -3548,8 +3675,8 @@
       // two different searches both vaguely labeled "similar", confusing.
       // For confirmed hotels, nothing changes (searchQuery = the real name).
       const primaryQuery = isDescriptionNotName ? similarQuery : searchQuery;
-      const bookingHref = stop.booking_url || bookingAffiliateSearchUrl(primaryQuery);
-      const expediaHref = stop.expedia_url || expediaAffiliateSearchUrl(primaryQuery);
+      const bookingHref = stop.booking_url || bookingAffiliateSearchUrl(primaryQuery, nights);
+      const expediaHref = stop.expedia_url || expediaAffiliateSearchUrl(primaryQuery, nights);
       // Same dropdown UI either way — Booking.com and Expedia are both
       // legitimate options and the person should get to pick, whether we
       // have a specific hotel name or just the area to search in.
@@ -3591,8 +3718,13 @@
           </div>
           <div class="text-sm font-medium mb-1">${stop.name}</div>
           ${stop.property_type || stop.area_label ? `<div class="text-xs text-gray-500 mb-1">${[stop.property_type, stop.area_label].filter(Boolean).map(escapeHtml).join(' · ')}</div>` : ''}
-          <div class="text-xs text-gray-500 mb-3">${stop.description}</div>
-          ${stop.transfer_note ? `<div class="inline-flex items-center gap-1 text-[11px] text-gray-500 bg-gray-50 rounded-full px-2.5 py-1 mb-3"><i data-lucide="navigation" class="w-3 h-3"></i>${escapeHtml(stop.transfer_note)}</div>` : ''}
+          <div class="text-xs text-gray-500 mb-1.5">${stop.description}</div>
+          ${renderStopFactsHtml(stop)}
+          ${stop.address ? `<div class="text-[11px] text-gray-400 mb-1.5">${escapeHtml(stop.address)}</div>` : ''}
+          <div class="flex items-center gap-1.5 flex-wrap mb-3">
+            ${stop.transfer_note ? `<div class="inline-flex items-center gap-1 text-[11px] text-gray-500 bg-gray-50 rounded-full px-2.5 py-1"><i data-lucide="navigation" class="w-3 h-3"></i>${escapeHtml(stop.transfer_note)}</div>` : ''}
+            ${renderNextStopDistanceHtml(stop)}
+          </div>
           ${stop.tip ? `<div class="text-xs text-[#8B5CF6] mb-3">💡 ${stop.tip}</div>` : ''}
           ${bookingBlock}
         </div>
@@ -3617,7 +3749,12 @@
           ${creatorHandle ? `<span class="inline-flex items-center gap-1 text-[#085041] normal-case"><i data-lucide="star" class="w-3 h-3"></i>${escapeHtml(creatorHandle)}'s pick</span>` : ''}
         </div>
         <div class="pl-6 md:pl-0 text-xs text-gray-500 mt-1.5 leading-relaxed">${stop.description}</div>
-        ${stop.transfer_note ? `<div class="pl-6 md:pl-0 mt-1.5"><span class="inline-flex items-center gap-1 text-[11px] text-gray-500 bg-gray-50 rounded-full px-2.5 py-1"><i data-lucide="navigation" class="w-3 h-3"></i>${escapeHtml(stop.transfer_note)}</span></div>` : ''}
+        <div class="pl-6 md:pl-0 mt-1">${renderStopFactsHtml(stop)}</div>
+        ${stop.address ? `<div class="pl-6 md:pl-0 text-[11px] text-gray-400 mt-0.5">${escapeHtml(stop.address)}</div>` : ''}
+        <div class="pl-6 md:pl-0 mt-1.5 flex items-center gap-1.5 flex-wrap">
+          ${stop.transfer_note ? `<span class="inline-flex items-center gap-1 text-[11px] text-gray-500 bg-gray-50 rounded-full px-2.5 py-1"><i data-lucide="navigation" class="w-3 h-3"></i>${escapeHtml(stop.transfer_note)}</span>` : ''}
+          ${renderNextStopDistanceHtml(stop)}
+        </div>
         ${stop.tip ? `<div class="pl-6 md:pl-0 text-xs text-[#8B5CF6] mt-1.5">💡 ${stop.tip}</div>` : ''}
         ${stop.category === 'food' ? `<a href="${stop.booking_url || `https://www.google.com/maps/search/${encodeURIComponent(mapsQuery)}`}" onclick="trackAffiliateClick('${videoId}', 'reserve_table')" target="_blank" rel="noopener sponsored" class="btn-interactive inline-flex items-center gap-1.5 mt-2.5 ml-6 md:ml-0 h-[36px] px-4 bg-[#8B5CF6] text-white text-xs font-medium rounded-lg"><i data-lucide="calendar" class="w-3.5 h-3.5"></i>Reserve a table</a>` : ''}
         ${((stop.category === 'activity' || stop.category === 'sight') && !stop.is_free) ? `<div class="mt-2.5 ml-6 md:ml-0 flex items-center gap-2 flex-wrap"><a href="${stop.booking_url || gygFallbackUrl}" onclick="trackAffiliateClick('${videoId}', 'getyourguide')" target="_blank" rel="noopener sponsored" class="btn-interactive inline-flex items-center gap-1.5 h-[36px] px-4 bg-[#8B5CF6] text-white text-xs font-medium rounded-lg"><i data-lucide="ticket" class="w-3.5 h-3.5"></i>${stop.category === 'sight' ? 'Get tickets via GetYourGuide' : 'Book via GetYourGuide'}</a>${stop.estimated_price ? `<span class="text-[11px] text-gray-500">~${escapeHtml(stop.estimated_price)}</span>` : ''}</div>` : ''}
@@ -4040,19 +4177,13 @@
     window._aiRouteDestination = itinerary.destination || 'trip';
     // Store for sharing
     window._aiRouteVideoId = videoId;
-    // Fun facts — 3-4 surprising facts, part of the same intro section.
-    const introFacts = (itinerary.fun_facts || []).filter(f => f && f.trim());
-    const factsEl = document.getElementById('ai-route-intro-facts');
-    factsEl.innerHTML = introFacts.map(fact => `
-      <div class="bg-white/70 rounded-2xl p-3.5 flex items-start gap-2.5">
-        <span class="text-base flex-shrink-0">✨</span>
-        <span class="text-xs md:text-sm text-gray-700 leading-relaxed">${escapeHtml(fact)}</span>
-      </div>`).join('');
     // Collapsed behind a toggle by default on every fresh render, same as
     // the Map toggle — only the WRAP's visibility depends on whether
-    // there's anything to show; the content section itself always starts
-    // closed, even if a previous route on this same screen had it open.
-    document.getElementById('ai-route-intro-toggle-wrap').classList.toggle('hidden', gallery.length <= 1 && !introFacts.length);
+    // there's anything to show (just the gallery now — see task 8's
+    // removal of "curious facts" above); the content section itself
+    // always starts closed, even if a previous route on this same screen
+    // had it open.
+    document.getElementById('ai-route-intro-toggle-wrap').classList.toggle('hidden', gallery.length <= 1);
     document.getElementById('ai-route-intro-section').classList.add('hidden');
     const introChevron = document.getElementById('ai-route-intro-toggle-chevron');
     if (introChevron) introChevron.classList.remove('rotate-180');
@@ -4072,7 +4203,7 @@
     if (day1HasHotel) {
       if (hotelsBannerEl) hotelsBannerEl.innerHTML = '';
     } else {
-      renderHotelsBanner(itinerary.destination, gallery, videoId, itinerary.hotel_banner_photo_url);
+      renderHotelsBanner(itinerary.destination, gallery, videoId, itinerary.hotel_banner_photo_url, nightsFromDuration(itinerary.duration));
     }
     // Car rental banner goes right under the hotel banner/card, in the
     // same slot — shown only when the AI (or admin override) flagged this
@@ -4107,6 +4238,26 @@
     // Days
     const container = document.getElementById('ai-route-days');
     container.innerHTML = itinerary.days.map((day, dayIndex) => {
+      // Task 8: distance to the NEXT stop in the day's actual order,
+      // shown directly on the stop card (not just inside the Map view's
+      // popups, which already used the same haversineKm/estimateTravel
+      // for this) — computed purely from each stop's own lat/lng,
+      // attached here before the hotel/others split below so "next stop"
+      // still means the true next item in the day, not just the next
+      // card in whichever grid column it lands in. Stays undefined (no
+      // line rendered) whenever either stop is missing coordinates — see
+      // renderAiStopCard.
+      day.stops.forEach((s, idx) => {
+        const next = day.stops[idx + 1];
+        if (next && typeof s.lat === 'number' && typeof s.lng === 'number' &&
+            typeof next.lat === 'number' && typeof next.lng === 'number') {
+          s._distanceToNextKm = haversineKm(s.lat, s.lng, next.lat, next.lng);
+          s._nextStopName = next.name;
+        } else {
+          s._distanceToNextKm = undefined;
+          s._nextStopName = undefined;
+        }
+      });
       const hotels = day.stops.filter(s => s.category === 'hotel');
       const others = day.stops.filter(s => s.category !== 'hotel');
       // Airport transfer banner — arrival day only (the first day of the
@@ -4159,10 +4310,10 @@
           <div class="font-serif-display text-[26px] md:text-4xl leading-tight mb-1">Day ${day.day}</div>
           <div class="text-xs md:text-sm text-gray-500 mb-6 md:mb-8">${day.label} · ${day.stops.length} stop${day.stops.length !== 1 ? 's' : ''}</div>
           ${transferBanner}
-          ${hotels.map(h => renderAiStopCard(h, itinerary.destination, itinerary.creator_handle, videoId, false /* showHotelReplaceLink forced off — see hotelReplaceBlock comment below, task 11 */)).join('')}
+          ${hotels.map(h => renderAiStopCard(h, itinerary.destination, itinerary.creator_handle, videoId, false /* showHotelReplaceLink forced off — see hotelReplaceBlock comment below, task 11 */, nightsFromDuration(itinerary.duration))).join('')}
           ${hotelReplaceBlock}
           <div class="grid md:grid-cols-2 gap-4 md:gap-6">
-            ${others.map(s => renderAiStopCard(s, itinerary.destination, itinerary.creator_handle, videoId)).join('')}
+            ${others.map(s => renderAiStopCard(s, itinerary.destination, itinerary.creator_handle, videoId, undefined, nightsFromDuration(itinerary.duration))).join('')}
           </div>
         </div>`;
     }).join('');
@@ -4173,8 +4324,8 @@
     // you go" copy, so the content here is just the tip cards. Collapsed
     // by default on every fresh render, same as the Map and intro
     // toggles. Hidden entirely for older routes not yet backfilled, same
-    // "just don't render" contract as summaryWrap above for fun_fact/
-    // summary on legacy cached itineraries.
+    // "just don't render" contract as summaryWrap above for summary on
+    // legacy cached itineraries.
     const tipsToggleWrap = document.getElementById('ai-route-tips-toggle-wrap');
     const tipsSection = document.getElementById('ai-route-tips-section');
     const tips = (itinerary.travel_tips || []).filter(t => t && t.trim());
@@ -4556,16 +4707,15 @@
   // above, generalized for Build Your Own Trip's two loading states (the
   // candidates spinner and the final build/preview screen) — reused
   // rather than duplicated so both keep cycling instead of showing one
-  // static line. `destinationFact` (when known — the real per-destination
-  // fact from POST /trip/fun-fact), when given, is spliced in as the
-  // FIRST fact shown, ahead of the generic COUNTRY_FACTS pool, so the
-  // traveler sees something relevant to THEIR trip before it cycles into
-  // general trivia. Returns the interval id so the caller can clear it
-  // once that loading state ends.
-  function startBuildTripFactRotation(elId, destinationFact) {
+  // static line. Returns the interval id so the caller can clear it once
+  // that loading state ends. (Used to splice a per-destination AI fact in
+  // ahead of this generic pool — removed site-wide, task 8, Oct 2026; this
+  // generic country-trivia rotation is hardcoded, not AI-generated, so it
+  // wasn't part of that removal.)
+  function startBuildTripFactRotation(elId) {
     const factEl = document.getElementById(elId);
     if (!factEl) return null;
-    const pool = destinationFact ? [destinationFact, ..._shuffled(COUNTRY_FACTS)] : _shuffled(COUNTRY_FACTS);
+    const pool = _shuffled(COUNTRY_FACTS);
     let factIndex = 0;
     function showFact(idx) {
       factEl.style.opacity = '0';
@@ -4769,10 +4919,6 @@
                                 // never a hard filter or a re-fetch from the backend.
     candidates: [],           // raw TripCandidate objects from /trip/candidates
     selected: new Set(),      // indices into `candidates` currently checked
-    funFact: '',              // destination fun fact from the separate,
-                                // faster POST /trip/fun-fact call (fired in
-                                // parallel with /trip/candidates so it can
-                                // render during the loading spinner)
     selectedAttractions: [],  // the TripCandidate objects actually sent to /trip/build
     previewItinerary: null,   // itinerary returned by /trip/build
     slug: null,                // set once saved — reused for the edit-and-resave flow
@@ -4788,7 +4934,7 @@
     _buildTripState = {
       destination: prefillDestination || '', days: 3, people: 2, budget: '',
       activityTypeSelection: new Set(), activityTypes: [], vibePrefs: {},
-      candidates: [], selected: new Set(), funFact: '',
+      candidates: [], selected: new Set(),
       selectedAttractions: [],
       previewItinerary: null, slug: null,
     };
@@ -4979,68 +5125,19 @@
     PRICE_LEVEL_EXPENSIVE: '€€€',
     PRICE_LEVEL_VERY_EXPENSIVE: '€€€€',
   };
-  // Renders the fun-fact note into one of the three spots it can appear
-  // (the loading spinner, the attractions checklist, or the final
-  // build/preview loading screen) — shared since the fun fact fetch
-  // (fetchBuildTripFunFact) and the candidates fetch resolve independently
-  // and in either order, so each spot needs to reflect whatever
-  // _buildTripState.funFact currently holds whenever it's shown/re-rendered.
-  function renderBuildTripFunFactNote(prefix) {
-    const el = document.getElementById(`build-trip-${prefix}-fun-fact`);
-    const textEl = document.getElementById(`build-trip-${prefix}-fun-fact-text`);
-    if (!el || !textEl) return;
-    if (_buildTripState.funFact) {
-      textEl.textContent = _buildTripState.funFact;
-      el.classList.remove('hidden');
-    } else {
-      el.classList.add('hidden');
-    }
-  }
-  // Fired in parallel with /trip/candidates (not awaited by it) — a much
-  // faster, separate call (one cheap Haiku call, no Places search), so the
-  // fun fact can render during the "Finding great places…" spinner instead
-  // of only after candidates finish loading. Non-fatal: a failure just
-  // means no note appears, matching generate_fun_fact's own contract.
-  async function fetchBuildTripFunFact() {
-    try {
-      const res = await fetch(`${BACKEND_URL}/trip/fun-fact`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ destination: _buildTripState.destination })
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      _buildTripState.funFact = data.fun_fact || '';
-      if (_buildTripState.funFact) {
-        // Restart the loading spinner's rotation so the real destination
-        // fact gets spliced in as the first thing shown, instead of only
-        // ever cycling generic trivia.
-        if (window._buildTripLoadingFactInterval) clearInterval(window._buildTripLoadingFactInterval);
-        window._buildTripLoadingFactInterval = startBuildTripFactRotation('build-trip-loading-fun-fact-text', _buildTripState.funFact);
-      }
-      renderBuildTripFunFactNote('checklist');
-    } catch (err) {
-      // Non-fatal — no note shown, candidates loading is unaffected.
-    }
-  }
   async function loadBuildTripCandidates() {
     document.getElementById('build-trip-candidates-loading').classList.remove('hidden');
     document.getElementById('build-trip-attractions-list').classList.add('hidden');
     document.getElementById('build-trip-attractions-empty').classList.add('hidden');
-    // Reset so a stale fact from a previous budget/activity-type attempt
-    // never briefly flashes before the fresh one arrives.
-    _buildTripState.funFact = '';
-    // Facts start rotating immediately (generic trivia first — see
-    // COUNTRY_FACTS) rather than waiting for the destination-specific one
-    // to arrive, so something is always visibly changing during the wait,
-    // never one static line sitting there.
+    // Generic "did you know" trivia (see COUNTRY_FACTS) rotates the whole
+    // time the spinner is up, so something is always visibly changing
+    // during the wait rather than one static line sitting there.
     if (window._buildTripLoadingFactInterval) clearInterval(window._buildTripLoadingFactInterval);
     const loadingFactWrap = document.getElementById('build-trip-loading-fun-fact');
     if (loadingFactWrap) loadingFactWrap.classList.remove('hidden');
-    window._buildTripLoadingFactInterval = startBuildTripFactRotation('build-trip-loading-fun-fact-text', '');
+    window._buildTripLoadingFactInterval = startBuildTripFactRotation('build-trip-loading-fun-fact-text');
     if (window._buildTripLoadingGlobeInterval) clearInterval(window._buildTripLoadingGlobeInterval);
     window._buildTripLoadingGlobeInterval = startGlobeSpin('build-trip-loading-globe');
-    fetchBuildTripFunFact();  // fire-and-forget — independent of the candidates fetch below
     try {
       const res = await fetch(`${BACKEND_URL}/trip/candidates`, {
         method: 'POST',
@@ -5088,11 +5185,14 @@
     //      it replaces rather than joins that badge. Styled with a dashed
     //      border + "~" prefix specifically so it reads as an estimate,
     //      not a confirmed price.
-    //   3. Otherwise the price_level bucket (€/€€/€€€/€€€€), styled like
-    //      the existing route-card price pill (see renderRoutes'
-    //      priceCategory badge) — same small rounded-full chip, just on a
-    //      light row instead of a photo overlay.
-    const priceLabel = BUILD_TRIP_PRICE_LEVEL_LABEL[c.price_level] || '';
+    //   3. Otherwise, ONLY for food/cafe candidates (task 8's exact
+    //      rule — an attraction never shows a price without a reliable
+    //      source; a restaurant/café's Places priceLevel bucket IS that
+    //      reliable source), the price_level bucket (€/€€/€€€/€€€€),
+    //      styled like the existing route-card price pill (see
+    //      renderRoutes' priceCategory badge) — same small rounded-full
+    //      chip, just on a light row instead of a photo overlay.
+    const priceLabel = (c.category === 'food') ? (BUILD_TRIP_PRICE_LEVEL_LABEL[c.price_level] || '') : '';
     const priceBadge = c.is_free
       ? `<span class="text-[10px] font-medium text-[#16A34A] bg-[#EFFCF3] px-2 py-0.5 rounded-full">Free</span>`
       : c.estimated_price
@@ -5108,6 +5208,7 @@
         </div>
         <div class="flex-1 min-w-0">
           <div class="text-sm font-medium truncate">${escapeHtml(c.name || '')}</div>
+          ${(c.place_type || c.area_label) ? `<div class="text-[11px] text-gray-400">${[c.place_type, c.area_label].filter(Boolean).map(escapeHtml).join(' · ')}</div>` : ''}
           <div class="text-xs text-gray-500 leading-snug">${escapeHtml(c.description || '')}</div>
           <div class="flex items-center gap-2 mt-1 text-[11px] text-gray-400 flex-wrap">
             ${ratingLabel ? `<span class="inline-flex items-center gap-0.5"><i data-lucide="star" class="w-3 h-3 text-amber-500"></i>${ratingLabel}</span>` : ''}
@@ -5154,12 +5255,6 @@
     const count = renderBuildTripCandidateGroup('attraction', 'build-trip-attractions-items');
     document.getElementById('build-trip-attractions-empty').classList.toggle('hidden', count > 0);
     document.getElementById('build-trip-attractions-list').classList.toggle('hidden', count === 0);
-    // "Did you know?" note about the destination — same visual language as
-    // the existing route-card fun fact chip (see renderRoutes' funFactHtml)
-    // rather than a new style. Re-checked here (not just from
-    // fetchBuildTripFunFact) in case candidates finish loading before the
-    // faster fun-fact call resolves.
-    renderBuildTripFunFactNote('checklist');
     updateBuildTripSelectionUI();
   }
   function renderBuildTripActivitiesStep() {
@@ -5297,7 +5392,7 @@
     if (window._buildTripStep6FactInterval) clearInterval(window._buildTripStep6FactInterval);
     const step6FactWrap = document.getElementById('build-trip-step6-fun-fact');
     if (step6FactWrap) step6FactWrap.classList.remove('hidden');
-    window._buildTripStep6FactInterval = startBuildTripFactRotation('build-trip-step6-fun-fact-text', _buildTripState.funFact);
+    window._buildTripStep6FactInterval = startBuildTripFactRotation('build-trip-step6-fun-fact-text');
     if (window._buildTripStep6GlobeInterval) clearInterval(window._buildTripStep6GlobeInterval);
     window._buildTripStep6GlobeInterval = startGlobeSpin('build-trip-step6-globe');
     showBuildTripStep(6);

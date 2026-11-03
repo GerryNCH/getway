@@ -1465,10 +1465,21 @@
     <button id="trip-error-modal-retry-btn" class="btn-interactive w-full h-[46px] bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">Try again</button>
   </div>
 </div>
-<button onclick="toggleSupportChat()" class="btn-interactive fixed bottom-6 right-6 z-[150] w-14 h-14 rounded-full bg-[#8B5CF6] shadow-xl flex items-center justify-center">
+<!-- Task 19 fix (Nov 2026): this button is fixed-position and stays pinned
+     to the bottom-right corner across every screen, which on a 375px-wide
+     phone used to land directly on top of the homepage hero's Magic Box
+     "Paste" button on first paint, and on top of the "Add to Home Screen"
+     banner (#install-banner, also fixed-bottom) whenever that was showing.
+     Fix: (1) smaller on mobile with a bit more breathing room from the
+     corner, (2) starts invisible/non-interactive and fades in after a
+     short delay so it's never the first thing painted over the hero CTA,
+     (3) repositionSupportChatFab() (below) lifts it — and the panel —
+     above the install banner whenever that banner is visible. Desktop
+     (md:) sizing/position is unchanged. -->
+<button id="support-chat-fab" onclick="toggleSupportChat()" class="btn-interactive fixed bottom-4 right-4 md:bottom-6 md:right-6 z-[150] w-12 h-12 md:w-14 md:h-14 rounded-full bg-[#8B5CF6] shadow-xl flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-300">
   <i data-lucide="message-circle" class="w-6 h-6 text-white"></i>
 </button>
-<div id="support-chat-panel" class="hidden fixed bottom-24 right-6 z-[150] w-[320px] max-w-[calc(100vw-48px)] bg-white rounded-[22px] bento-card overflow-hidden">
+<div id="support-chat-panel" class="hidden fixed bottom-20 right-4 md:bottom-24 md:right-6 z-[150] w-[320px] max-w-[calc(100vw-48px)] bg-white rounded-[22px] bento-card overflow-hidden">
   <div class="bg-[#8B5CF6] px-5 py-4 flex items-center justify-between">
     <div class="flex items-center gap-2.5">
       <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center"><i data-lucide="mail" class="w-4 h-4 text-white"></i></div>
@@ -2898,6 +2909,20 @@
   function toggleSupportChat() {
     document.getElementById('support-chat-panel').classList.toggle('hidden');
   }
+  // Task 19 fix (Nov 2026): keeps the floating support button (and its
+  // panel) clear of #install-banner, which is also fixed to the bottom of
+  // the viewport and otherwise overlaps it on mobile. Called whenever the
+  // banner's visibility changes (maybeShowInstallBanner / dismissInstallBanner
+  // below) — inline style wins over the Tailwind bottom-4/bottom-20 classes
+  // while set, and clearing it (empty string) hands control back to them.
+  function repositionSupportChatFab() {
+    const btn = document.getElementById('support-chat-fab');
+    const panel = document.getElementById('support-chat-panel');
+    const bannerEl = document.getElementById('install-banner');
+    const bannerVisible = !!bannerEl && !bannerEl.classList.contains('hidden');
+    if (btn) btn.style.bottom = bannerVisible ? '112px' : '';
+    if (panel) panel.style.bottom = bannerVisible ? '172px' : '';
+  }
   const BACKEND_URL = "https://getway-production.up.railway.app";
   // ── Rankings: Most visited destinations worldwide (real data) ────────
   // Sourced from Euromonitor International's Top 100 City Destinations
@@ -3730,34 +3755,42 @@
         </div>
       </div>`;
     }
+    // Task 19 fix (Nov 2026): this card used to be mobile-first a cramped
+    // horizontal row with a 56x56px thumbnail (flex + w-14/h-14), only
+    // switching to the nice full-width top photo at md: and up — backwards,
+    // since ~100% of traffic is phones. Now it always uses the same
+    // full-width-photo/vertical layout the hotel card (above) already used
+    // correctly at every size; the pl-6/ml-6 indent hacks that used to
+    // align text past the old thumbnail are gone since there's no longer a
+    // left-hand photo to align past.
     return `
-    <div data-category="${stop.category}" class="ai-stop-card bento-card bg-white rounded-[22px] overflow-hidden relative flex items-center gap-3 p-4 md:flex-col md:items-stretch md:p-0">
+    <div data-category="${stop.category}" class="ai-stop-card bento-card bg-white rounded-[22px] overflow-hidden relative">
       <button data-maps-url="${mapsUrl}" onclick="window.open(this.dataset.mapsUrl,'_blank')" class="btn-interactive absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-white shadow flex items-center justify-center">
         <i data-lucide="map-pin" class="w-4 h-4 text-[#6D28D9]"></i>
       </button>
-      <div class="relative w-14 h-14 md:w-full md:h-44 rounded-xl md:rounded-none flex-shrink-0 overflow-hidden" style="background:${gradientFor(seed)}">
+      <div class="relative w-full h-44 overflow-hidden" style="background:${gradientFor(seed)}">
         <img src="${stop.photo_url || ''}" alt="" class="absolute inset-0 w-full h-full object-cover" onerror="imgFallback(this,'${cfg.icon}','${seed}')">
       </div>
-      <div class="flex-1 min-w-0 md:p-5">
+      <div class="p-5">
         <div class="flex items-start gap-2 mb-1">
           <i data-lucide="${cfg.icon}" class="w-4 h-4 flex-shrink-0 mt-0.5" style="color:${cfg.color}"></i>
           <div class="text-sm font-medium leading-snug">${stop.name}</div>
         </div>
-        <div class="text-[10px] text-gray-400 mb-1 pl-6 md:pl-0">Tap to open in Maps</div>
-        <div class="pl-6 md:pl-0 text-[10px] uppercase tracking-wide font-medium flex items-center gap-1.5 flex-wrap" style="color:${cfg.color}">
+        <div class="text-[10px] text-gray-400 mb-1">Tap to open in Maps</div>
+        <div class="text-[10px] uppercase tracking-wide font-medium flex items-center gap-1.5 flex-wrap" style="color:${cfg.color}">
           <span>${cfg.label}</span>
           ${creatorHandle ? `<span class="inline-flex items-center gap-1 text-[#085041] normal-case"><i data-lucide="star" class="w-3 h-3"></i>${escapeHtml(creatorHandle)}'s pick</span>` : ''}
         </div>
-        <div class="pl-6 md:pl-0 text-xs text-gray-500 mt-1.5 leading-relaxed">${stop.description}</div>
-        <div class="pl-6 md:pl-0 mt-1">${renderStopFactsHtml(stop)}</div>
-        ${stop.address ? `<div class="pl-6 md:pl-0 text-[11px] text-gray-400 mt-0.5">${escapeHtml(stop.address)}</div>` : ''}
-        <div class="pl-6 md:pl-0 mt-1.5 flex items-center gap-1.5 flex-wrap">
+        <div class="text-xs text-gray-500 mt-1.5 leading-relaxed">${stop.description}</div>
+        <div class="mt-1">${renderStopFactsHtml(stop)}</div>
+        ${stop.address ? `<div class="text-[11px] text-gray-400 mt-0.5">${escapeHtml(stop.address)}</div>` : ''}
+        <div class="mt-1.5 flex items-center gap-1.5 flex-wrap">
           ${stop.transfer_note ? `<span class="inline-flex items-center gap-1 text-[11px] text-gray-500 bg-gray-50 rounded-full px-2.5 py-1"><i data-lucide="navigation" class="w-3 h-3"></i>${escapeHtml(stop.transfer_note)}</span>` : ''}
           ${renderNextStopDistanceHtml(stop)}
         </div>
-        ${stop.tip ? `<div class="pl-6 md:pl-0 text-xs text-[#8B5CF6] mt-1.5">💡 ${stop.tip}</div>` : ''}
-        ${stop.category === 'food' ? `<a href="${stop.booking_url || `https://www.google.com/maps/search/${encodeURIComponent(mapsQuery)}`}" onclick="trackAffiliateClick('${videoId}', 'reserve_table')" target="_blank" rel="noopener sponsored" class="btn-interactive inline-flex items-center gap-1.5 mt-2.5 ml-6 md:ml-0 h-[36px] px-4 bg-[#8B5CF6] text-white text-xs font-medium rounded-lg"><i data-lucide="calendar" class="w-3.5 h-3.5"></i>Reserve a table</a>` : ''}
-        ${((stop.category === 'activity' || stop.category === 'sight') && !stop.is_free) ? `<div class="mt-2.5 ml-6 md:ml-0 flex items-center gap-2 flex-wrap"><a href="${stop.booking_url || gygFallbackUrl}" onclick="trackAffiliateClick('${videoId}', 'getyourguide')" target="_blank" rel="noopener sponsored" class="btn-interactive inline-flex items-center gap-1.5 h-[36px] px-4 bg-[#8B5CF6] text-white text-xs font-medium rounded-lg"><i data-lucide="ticket" class="w-3.5 h-3.5"></i>${stop.category === 'sight' ? 'Get tickets via GetYourGuide' : 'Book via GetYourGuide'}</a>${stop.estimated_price ? `<span class="text-[11px] text-gray-500">~${escapeHtml(stop.estimated_price)}</span>` : ''}</div>` : ''}
+        ${stop.tip ? `<div class="text-xs text-[#8B5CF6] mt-1.5">💡 ${stop.tip}</div>` : ''}
+        ${stop.category === 'food' ? `<a href="${stop.booking_url || `https://www.google.com/maps/search/${encodeURIComponent(mapsQuery)}`}" onclick="trackAffiliateClick('${videoId}', 'reserve_table')" target="_blank" rel="noopener sponsored" class="btn-interactive inline-flex items-center gap-1.5 mt-2.5 h-[36px] px-4 bg-[#8B5CF6] text-white text-xs font-medium rounded-lg"><i data-lucide="calendar" class="w-3.5 h-3.5"></i>Reserve a table</a>` : ''}
+        ${((stop.category === 'activity' || stop.category === 'sight') && !stop.is_free) ? `<div class="mt-2.5 flex items-center gap-2 flex-wrap"><a href="${stop.booking_url || gygFallbackUrl}" onclick="trackAffiliateClick('${videoId}', 'getyourguide')" target="_blank" rel="noopener sponsored" class="btn-interactive inline-flex items-center gap-1.5 h-[36px] px-4 bg-[#8B5CF6] text-white text-xs font-medium rounded-lg"><i data-lucide="ticket" class="w-3.5 h-3.5"></i>${stop.category === 'sight' ? 'Get tickets via GetYourGuide' : 'Book via GetYourGuide'}</a>${stop.estimated_price ? `<span class="text-[11px] text-gray-500">~${escapeHtml(stop.estimated_price)}</span>` : ''}</div>` : ''}
       </div>
     </div>`;
   }
@@ -5736,6 +5769,7 @@
         }
         el.classList.remove('hidden');
         if (typeof lucide !== 'undefined') lucide.createIcons();
+        repositionSupportChatFab();
       }, 3500);
     }
   }
@@ -5807,6 +5841,7 @@
     const el = document.getElementById('install-banner');
     if (el) el.classList.add('hidden');
     if (startCooldown !== false) localStorage.setItem(DISMISS_KEY, String(Date.now()));
+    repositionSupportChatFab();
   }
   document.addEventListener('DOMContentLoaded', function () {
     // Establishes 'home' as the base history entry BEFORE any deep-link
@@ -5819,6 +5854,16 @@
       history.replaceState({ screen: 'home' }, '', location.href);
     });
     if (isIOS()) maybeShowInstallBanner(); // Android waits for beforeinstallprompt instead
+    // Task 19 fix: the floating support button starts hidden (see
+    // #support-chat-fab) and fades in after a beat so it's never the very
+    // first thing painted on top of the homepage hero's Paste button on a
+    // phone-width first load.
+    safeRun('revealSupportChatFab', function () {
+      setTimeout(function () {
+        const btn = document.getElementById('support-chat-fab');
+        if (btn) { btn.classList.remove('opacity-0', 'pointer-events-none'); }
+      }, 1500);
+    });
     safeRun('renderRoutes', renderRoutes);
     safeRun('applyRouteFilters', applyRouteFilters);
     safeRun('renderMallorcaHero', renderMallorcaHero);

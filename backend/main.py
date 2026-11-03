@@ -68,6 +68,7 @@ from places import (
     _trigger_unsplash_download, _get_place_photo_and_location, search_attractions_broad,
     search_hotels_near, _get_destination_gallery_unsplash, search_activities_by_type,
     _ACTIVITY_TYPE_QUERY_TERMS, search_places_freetext, get_car_rental_photo_unsplash,
+    backfill_stop_facts,
 )
 from trip_builder import (
     is_open as trip_place_is_open, fits_budget, curate_candidates,
@@ -1598,6 +1599,104 @@ def admin_backfill_stop_photos(force: bool = False):
         "stops_unmatched": len(unmatched),
         "unmatched_stop_names": unmatched,
         "approx_cost_usd": round(0.032 * (stops_fixed + len(unmatched)), 4),
+    }
+
+
+@app.post("/admin/backfill-places-facts", dependencies=[Depends(verify_admin_secret)])
+def admin_backfill_places_facts(video_ids: str = "", dry_run: bool = True):
+    """
+    Task 8 backfill (Nov 2026) for routes generated BEFORE Google-Places
+    facts + fact-grounded descriptions existed. For each targeted route:
+      1. places.backfill_stop_facts(itinerary) — force-refreshes every
+         stop's place_type/address/area_label/opening_hours_weekly/rating/
+         price_level from a fresh Places lookup (see that function's
+         docstring for why it can't just reuse enrich_itinerary_with_photos'
+         normal stop_cache path here).
+      2. generate_grounded_descriptions() — rewrites every stop's
+         user-facing description, grounded ONLY in those facts + the
+         stop's CURRENT description as video_notes (same contract the live
+         video-extraction pipeline uses in main.py's extraction endpoint).
+
+    video_ids: optional comma-separated list of specific video_ids to
+    target (e.g. Gerry's homepage preview set) — leave empty to target
+    EVERY approved route. Always pass specific video_ids for a first,
+    small preview before running it with no filter.
+
+    dry_run=True (the default — this endpoint NEVER writes by accident):
+    does the real Places + Haiku work and returns a before/after preview
+    per route, but does not call database.save_days, so nothing changes
+    on the live site. Pass dry_run=false once Gerry has reviewed the
+    preview and wants it actually saved.
+
+    Cost: ~$0.032/stop (Places Text Search Pro) + ~$0.0003/route (one
+    batched Haiku call per route) — charged the same whether dry_run is
+    true or false, since the Places/AI calls happen either way; only the
+    final database write is skipped under dry_run.
+    """
+    ids = [v.strip() for v in video_ids.split(",") if v.strip()]
+    rows = [{"video_id": v} for v in ids] if ids else database.list_by_status("approved")
+
+    results = []
+    total_cost = 0.0
+    for row in rows:
+        video_id = row["video_id"]
+        itinerary = database.get_itinerary(video_id)
+        if not itinerary:
+            results.append({"video_id": video_id, "error": "not found"})
+            continue
+
+        before = [
+            {
+                "name": s.name, "description": s.description, "place_type": s.place_type,
+                "address": s.address, "area_label": s.area_label,
+            }
+            for day in itinerary.days for s in day.stops
+        ]
+
+        stops_filled = backfill_stop_facts(itinerary)
+
+        stop_inputs = [
+            {
+                "name": s.name, "video_notes": s.description, "place_type": s.place_type,
+                "address": s.address, "area_label": s.area_label, "rating": s.rating,
+                "user_rating_count": s.user_rating_count, "price_level": s.price_level,
+                "opening_hours_weekly": s.opening_hours_weekly,
+            }
+            for day in itinerary.days for s in day.stops
+        ]
+        grounded, cost = generate_grounded_descriptions(stop_inputs)
+        total_cost += cost
+        for day in itinerary.days:
+            for s in day.stops:
+                if s.name in grounded:
+                    s.description = grounded[s.name]
+
+        after = [
+            {
+                "name": s.name, "description": s.description, "place_type": s.place_type,
+                "address": s.address, "area_label": s.area_label,
+            }
+            for day in itinerary.days for s in day.stops
+        ]
+
+        if not dry_run:
+            database.save_days(video_id, itinerary.days)
+
+        results.append({
+            "video_id": video_id,
+            "destination": itinerary.destination,
+            "stops_filled": stops_filled,
+            "saved": not dry_run,
+            "before": before,
+            "after": after,
+        })
+
+    return {
+        "status": "ok",
+        "dry_run": dry_run,
+        "routes_checked": len(rows),
+        "approx_cost_usd": round(total_cost, 4),
+        "routes": results,
     }
 
 

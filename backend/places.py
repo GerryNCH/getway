@@ -1049,3 +1049,57 @@ def enrich_itinerary_with_photos(itinerary) -> None:
                 term = _CATEGORY_PHOTO_TERMS.get(stop.category, "travel")
                 stop.photo_url, stop.photo_attribution = _best_fresh_unsplash(f"{city} {term}".strip())
             print(f"[Photos] Fallback for '{stop.name}' → {bool(stop.photo_url)}")
+
+
+def backfill_stop_facts(itinerary) -> int:
+    """
+    Task 8 backfill (Nov 2026): force-refreshes every stop's Places facts
+    (place_type/address/area_label/opening_hours_weekly/rating/price_level)
+    on a route that was generated BEFORE task 8 existed.
+
+    Deliberately does NOT go through enrich_itinerary_with_photos' normal
+    database.get_cached_stop() short-circuit. That cache is keyed by
+    (city, stop name) and almost every stop on an old route already has a
+    row there from its ORIGINAL generation — but that row was written
+    before facts existed, so its place_type/address/etc. are all empty.
+    Trusting the cache here would hit that empty row on every single stop
+    and silently leave the backfill a no-op. So this always does a fresh
+    Places Text Search per stop (same Pro-tier mask as _search_places —
+    see _FACT_FIELDS_MASK_SUFFIX_PRO) and then writes the result back into
+    the cache (upsert_stop_cache) so every OTHER route sharing this exact
+    stop (e.g. the Colosseum across several Rome routes) picks up the same
+    facts for free the next time IT loads, without its own Places call.
+
+    Only touches facts, and lat/lng when the stop didn't already have
+    coordinates — never touches photo_url or maps_url_override, so a
+    photo Gerry already manually fixed for this stop is left alone.
+
+    Returns how many stops got at least one new fact (Places had no
+    confident match for the rest, which is fine — they just keep their
+    empty defaults, same as any other stop Places can't resolve).
+    """
+    filled = 0
+    city = re.split(r"\s*(?:,|&|\band\b)\s*", itinerary.destination, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+    for day in itinerary.days:
+        for stop in day.stops:
+            name_query = stop.name if city.lower() in stop.name.lower() else f"{stop.name}, {city}"
+            photo_url, location, facts = _get_place_photo_location_and_facts(name_query)
+            if not any(facts.values()):
+                print(f"[Backfill] No Places match for '{stop.name}' in {city}")
+                continue
+            stop.place_type = facts["place_type"]
+            stop.address = facts["address"]
+            stop.area_label = facts["area_label"]
+            stop.opening_hours_weekly = facts["opening_hours_weekly"]
+            stop.rating = facts["rating"]
+            stop.user_rating_count = facts["user_rating_count"]
+            stop.price_level = facts["price_level"]
+            if location and (stop.lat is None or stop.lng is None):
+                stop.lat, stop.lng = location
+            database.upsert_stop_cache(
+                city, stop.name, stop.photo_url or photo_url,
+                maps_url_override=stop.maps_url_override or "",
+                lat=stop.lat, lng=stop.lng, facts=facts,
+            )
+            filled += 1
+    return filled

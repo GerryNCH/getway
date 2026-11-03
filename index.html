@@ -297,11 +297,16 @@
       <button type="button" onclick="startBuildTrip()" class="w-full text-center text-xs text-gray-400 hover:text-gray-600 mt-3">Or build your own trip →</button>
     </div>
   </div>
-  <div class="h-16 md:h-20"></div>
+  <!-- Task 19 fix (Nov 2026): this spacer plus every section's own py-14
+       below used the same value on mobile as on desktop (h-20/py-20 only
+       kicked in at md:) — on a 375px-tall-viewport phone that reads as a
+       lot of dead air between sections relative to how little fits on
+       screen at once. Tightened on mobile only; md: is unchanged. -->
+  <div class="h-8 md:h-20"></div>
   <!-- ── How it works — placed directly under the AI Magic Box since it
        explains that specific feature (paste a video link -> AI reads it ->
        get a route), not the quiz or Build Your Own Trip paths below. ──── -->
-  <div id="how-it-works-section" class="max-w-6xl mx-auto px-6 md:px-14 py-14 md:py-20">
+  <div id="how-it-works-section" class="max-w-6xl mx-auto px-6 md:px-14 py-9 md:py-20">
     <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
       <div data-aos="fade-up">
         <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">How it works</div>
@@ -409,7 +414,7 @@
        Euromonitor (or another cited source) publishes a new edition.
        Placed BEFORE the routes grid — real-world tourism popularity, not
        just what's already on GetWay, is the more credible opening claim. -->
-  <div id="rankings-section" class="max-w-6xl mx-auto px-6 md:px-14 py-14 md:py-20">
+  <div id="rankings-section" class="max-w-6xl mx-auto px-6 md:px-14 py-9 md:py-20">
     <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
       <div data-aos="fade-up">
         <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">Rankings</div>
@@ -433,7 +438,7 @@
        don't blow up the section's height. Placed right after Rankings —
        both are "help me pick a destination" sections, just from different
        angles (real-world popularity vs. seasonal timing). ───────────── -->
-  <div id="month-destinations-section" class="max-w-6xl mx-auto px-6 md:px-14 py-14 md:py-20">
+  <div id="month-destinations-section" class="max-w-6xl mx-auto px-6 md:px-14 py-9 md:py-20">
     <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
       <div data-aos="fade-up">
         <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">Best time to go</div>
@@ -515,8 +520,8 @@
     <div id="route-pagination" class="hidden items-center justify-center gap-1.5 pb-16"></div>
   </div>
   <!-- ── Final CTA ─────────────────────────────────────────────────── -->
-  <div class="max-w-6xl mx-auto px-6 md:px-14 pb-14 md:pb-20">
-    <div data-aos="fade-up" class="rounded-[32px] px-6 md:px-16 py-14 md:py-20 text-center" style="background: linear-gradient(135deg, #1c2128 0%, #15171A 55%, #0c0d10 100%);">
+  <div class="max-w-6xl mx-auto px-6 md:px-14 pb-9 md:pb-20">
+    <div data-aos="fade-up" class="rounded-[32px] px-6 md:px-16 py-10 md:py-20 text-center" style="background: linear-gradient(135deg, #1c2128 0%, #15171A 55%, #0c0d10 100%);">
       <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#C4B5FD] uppercase mb-4">Free to try</div>
       <div class="font-serif-display text-white text-3xl md:text-5xl leading-[1.1] mb-4">Stop screenshotting.<br>Start booking.</div>
       <div class="text-white/70 text-sm md:text-base max-w-md mx-auto mb-8">Your next trip is already saved somewhere in your likes. Let GetWay find it and build the route.</div>
@@ -1466,17 +1471,19 @@
   </div>
 </div>
 <!-- Task 19 fix (Nov 2026): this button is fixed-position and stays pinned
-     to the bottom-right corner across every screen, which on a 375px-wide
-     phone used to land directly on top of the homepage hero's Magic Box
-     "Paste" button on first paint, and on top of the "Add to Home Screen"
-     banner (#install-banner, also fixed-bottom) whenever that was showing.
-     Fix: (1) smaller on mobile with a bit more breathing room from the
-     corner, (2) starts invisible/non-interactive and fades in after a
-     short delay so it's never the first thing painted over the hero CTA,
-     (3) repositionSupportChatFab() (below) lifts it — and the panel —
-     above the install banner whenever that banner is visible. Desktop
-     (md:) sizing/position is unchanged. -->
-<button id="support-chat-fab" onclick="toggleSupportChat()" class="btn-interactive fixed bottom-4 right-4 md:bottom-6 md:right-6 z-[150] w-12 h-12 md:w-14 md:h-14 rounded-full bg-[#8B5CF6] shadow-xl flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-300">
+     to the bottom-right corner across every screen. On a 375px-wide phone
+     that corner is also where the Magic Box's "Paste" button sits (both
+     the homepage hero's and the standalone Magic Box screen's) and where
+     the "Add to Home Screen" banner (#install-banner, also fixed-bottom)
+     shows — so instead of trying to dodge those with a fixed offset or a
+     one-off delay (neither actually clears a STATIC overlap), this button
+     starts hidden and updateSupportFabVisibility() (below) shows/hides it
+     live: hidden whenever a Magic Box paste row is in view, whenever its
+     input is focused (person is actively typing/pasting), or whenever the
+     install banner is showing — visible otherwise. Desktop (md:) sizing is
+     unchanged; this whole show/hide behavior is mobile-only since nothing
+     collides with it at md: and up. -->
+<button id="support-chat-fab" onclick="toggleSupportChat()" class="btn-interactive fixed bottom-4 right-4 md:bottom-6 md:right-6 z-[150] w-12 h-12 md:w-14 md:h-14 rounded-full bg-[#8B5CF6] shadow-xl flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-200 md:opacity-100 md:pointer-events-auto">
   <i data-lucide="message-circle" class="w-6 h-6 text-white"></i>
 </button>
 <div id="support-chat-panel" class="hidden fixed bottom-20 right-4 md:bottom-24 md:right-6 z-[150] w-[320px] max-w-[calc(100vw-48px)] bg-white rounded-[22px] bento-card overflow-hidden">
@@ -2909,19 +2916,54 @@
   function toggleSupportChat() {
     document.getElementById('support-chat-panel').classList.toggle('hidden');
   }
-  // Task 19 fix (Nov 2026): keeps the floating support button (and its
-  // panel) clear of #install-banner, which is also fixed to the bottom of
-  // the viewport and otherwise overlaps it on mobile. Called whenever the
-  // banner's visibility changes (maybeShowInstallBanner / dismissInstallBanner
-  // below) — inline style wins over the Tailwind bottom-4/bottom-20 classes
-  // while set, and clearing it (empty string) hands control back to them.
-  function repositionSupportChatFab() {
+  // Task 19 fix (Nov 2026): keeps the floating support button from ever
+  // sitting on top of a Magic Box "Paste" button or the install banner on
+  // mobile — see the comment on #support-chat-fab above for why a fixed
+  // offset or a one-off reveal delay can't fix this (it's a static layout
+  // collision, not a timing issue). Three independent signals feed one
+  // visibility decision, each set by its own listener set up in
+  // initSupportFabVisibility() below: a Magic Box paste row is on screen
+  // (IntersectionObserver), its input has focus (person is actively
+  // typing/pasting), or the install banner is showing. The button stays
+  // hidden while ANY of the three is true, visible otherwise.
+  const _supportFabHideFlags = { magicBoxVisible: false, inputFocused: false, installBanner: false };
+  function updateSupportFabVisibility() {
     const btn = document.getElementById('support-chat-fab');
-    const panel = document.getElementById('support-chat-panel');
-    const bannerEl = document.getElementById('install-banner');
-    const bannerVisible = !!bannerEl && !bannerEl.classList.contains('hidden');
-    if (btn) btn.style.bottom = bannerVisible ? '112px' : '';
-    if (panel) panel.style.bottom = bannerVisible ? '172px' : '';
+    if (!btn) return;
+    const hide = _supportFabHideFlags.magicBoxVisible || _supportFabHideFlags.inputFocused || _supportFabHideFlags.installBanner;
+    btn.classList.toggle('opacity-0', hide);
+    btn.classList.toggle('pointer-events-none', hide);
+  }
+  function _setSupportFabHideFlag(flag, value) {
+    _supportFabHideFlags[flag] = value;
+    updateSupportFabVisibility();
+  }
+  function initSupportFabVisibility() {
+    // Any part of either Magic Box's paste row on screen → hide. Covers
+    // the homepage hero card and the standalone Magic Box screen; both
+    // hold the only two pasteFromClipboard() buttons on the site.
+    const watchIds = ['home-magicbox-card', 'magicbox-form'];
+    if ('IntersectionObserver' in window) {
+      // Tracks each watched card's own in-view state separately, so one
+      // leaving the viewport doesn't clear the flag while the other is
+      // still on screen.
+      const seen = new Map();
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach(e => seen.set(e.target, e.isIntersecting));
+        const stillAny = Array.from(seen.values()).some(Boolean);
+        _setSupportFabHideFlag('magicBoxVisible', stillAny);
+      }, { threshold: 0 });
+      watchIds.forEach(id => { const el = document.getElementById(id); if (el) io.observe(el); });
+    }
+    // Belt-and-braces: hide for as long as the person is actually focused
+    // in a paste field, even in a browser without IntersectionObserver or
+    // if the card's own scroll position is ambiguous mid-transition.
+    ['home-tiktok-url', 'tiktok-url'].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('focus', () => _setSupportFabHideFlag('inputFocused', true));
+      el.addEventListener('blur', () => _setSupportFabHideFlag('inputFocused', false));
+    });
   }
   const BACKEND_URL = "https://getway-production.up.railway.app";
   // ── Rankings: Most visited destinations worldwide (real data) ────────
@@ -5769,7 +5811,7 @@
         }
         el.classList.remove('hidden');
         if (typeof lucide !== 'undefined') lucide.createIcons();
-        repositionSupportChatFab();
+        _setSupportFabHideFlag('installBanner', true);
       }, 3500);
     }
   }
@@ -5841,7 +5883,7 @@
     const el = document.getElementById('install-banner');
     if (el) el.classList.add('hidden');
     if (startCooldown !== false) localStorage.setItem(DISMISS_KEY, String(Date.now()));
-    repositionSupportChatFab();
+    _setSupportFabHideFlag('installBanner', false);
   }
   document.addEventListener('DOMContentLoaded', function () {
     // Establishes 'home' as the base history entry BEFORE any deep-link
@@ -5854,16 +5896,13 @@
       history.replaceState({ screen: 'home' }, '', location.href);
     });
     if (isIOS()) maybeShowInstallBanner(); // Android waits for beforeinstallprompt instead
-    // Task 19 fix: the floating support button starts hidden (see
-    // #support-chat-fab) and fades in after a beat so it's never the very
-    // first thing painted on top of the homepage hero's Paste button on a
-    // phone-width first load.
-    safeRun('revealSupportChatFab', function () {
-      setTimeout(function () {
-        const btn = document.getElementById('support-chat-fab');
-        if (btn) { btn.classList.remove('opacity-0', 'pointer-events-none'); }
-      }, 1500);
-    });
+    // Task 19 fix: wires up the floating support button's show/hide
+    // watchers (Magic Box in view, its input focused, install banner
+    // showing) — see initSupportFabVisibility() above. It starts hidden
+    // (see #support-chat-fab) and this decides, live, when it's actually
+    // safe to show.
+    safeRun('initSupportFabVisibility', initSupportFabVisibility);
+    safeRun('updateSupportFabVisibility', updateSupportFabVisibility);
     safeRun('renderRoutes', renderRoutes);
     safeRun('applyRouteFilters', applyRouteFilters);
     safeRun('renderMallorcaHero', renderMallorcaHero);

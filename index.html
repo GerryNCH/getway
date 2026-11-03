@@ -8,30 +8,31 @@
      through Impact.com) — proves Gerry controls this domain. -->
 <meta name="impact-site-verification" value="5e4e629a-78c9-4ec5-a632-1b4b7b9a1295">
 <title>GetWay — Turn TikTok trips into real itineraries</title>
-<!-- Social-share meta tags (Oct 23 bug sprint, task 12) — the site had none
-     at all before this, so any link shared to Facebook/WhatsApp/iMessage/
-     X/etc. showed a bare URL with no preview card. This is a single static
-     SPA page (no server-side rendering per route), and share-preview
-     crawlers don't execute JS, so these are intentionally site-wide/generic
-     rather than per-route — a shared ?route=/?trip= link still shows the
-     GetWay brand card below, not that specific destination's photo. A true
-     per-route preview (dynamic og:image per itinerary) would need
-     server-rendered meta tags and is a separate, bigger piece of work if
-     wanted later. og:image reuses the first homepage hero photo, cropped to
-     the standard 1200x630 share size. -->
+<!-- Social-share meta tags (Oct 23 bug sprint, task 12; updated Nov 2026,
+     Phase 3 item 2). These are the DEFAULT/fallback tags — for a plain
+     homepage visit, or anywhere middleware.js's per-route rewrite doesn't
+     apply (route not found, backend timeout, bots that bypass the
+     middleware). og:image is now the branded og-image.png (this project's
+     own dark/purple card) instead of a generic stock photo — see that
+     file's own generation source if it ever needs regenerating.
+     middleware.js (Vercel Routing Middleware, new to this project — see
+     package.json) rewrites these same tags per-route when a request to "/"
+     carries a real ?route=<id> — real destination photo + title, so a
+     shared itinerary link shows ITS OWN preview instead of this generic
+     one. See middleware.js's own header comment for exactly how/why. -->
 <meta name="description" content="Turn any TikTok or Instagram travel video into a real, bookable itinerary — or build your own trip from scratch. Free AI trip planner.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="GetWay">
 <meta property="og:url" content="https://www.gogetway.com/">
 <meta property="og:title" content="GetWay — Turn TikTok trips into real itineraries">
 <meta property="og:description" content="Turn any TikTok or Instagram travel video into a real, bookable itinerary — or build your own trip from scratch. Free AI trip planner.">
-<meta property="og:image" content="https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=1200&h=630&fit=crop&auto=format">
+<meta property="og:image" content="https://www.gogetway.com/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="GetWay — Turn TikTok trips into real itineraries">
 <meta name="twitter:description" content="Turn any TikTok or Instagram travel video into a real, bookable itinerary — or build your own trip from scratch. Free AI trip planner.">
-<meta name="twitter:image" content="https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=1200&h=630&fit=crop&auto=format">
+<meta name="twitter:image" content="https://www.gogetway.com/og-image.png">
 <!-- PWA / "Add to Home Screen" support -->
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#8B5CF6">

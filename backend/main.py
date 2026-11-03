@@ -1613,9 +1613,27 @@ def admin_backfill_places_facts(video_ids: str = "", dry_run: bool = True):
          docstring for why it can't just reuse enrich_itinerary_with_photos'
          normal stop_cache path here).
       2. generate_grounded_descriptions() — rewrites every stop's
-         user-facing description, grounded ONLY in those facts + the
-         stop's CURRENT description as video_notes (same contract the live
-         video-extraction pipeline uses in main.py's extraction endpoint).
+         user-facing description, grounded ONLY in those facts. Pass
+         video_notes="" for every stop — NOT the stop's current
+         description (see the dry-run finding below for why).
+
+    IMPORTANT — found via a real dry-run on 3 homepage routes (Nov 2026):
+    passing the stop's EXISTING description as video_notes, like the live
+    video-extraction pipeline does, is wrong here. That existing
+    description is pre-task-8 AI prose that itself still contains exactly
+    the history/numbers/superlatives task 8 exists to remove ("Vienna's
+    most legendary Konditorei, founded in 1786...", "One of Malta's most
+    magnificent baroque interiors..."). _GROUNDED_DESCRIPTION_SYSTEM's
+    rule 4 explicitly allows keeping a superlative claim when it's
+    "present in video_notes" — which is the right call for a REAL video's
+    raw observations, but means an old route's own old fabricated prose,
+    fed back in as "video_notes", can sail straight through untouched.
+    Confirmed live: Wiener Christkindlmarkt kept "one of Europe's largest"
+    and St. John's Co-Cathedral's description didn't change AT ALL. So for
+    backfill specifically this treats every stop like Build Your Own Trip
+    (no video at all, video_notes="") — grounded purely in verified Places
+    facts, nothing carried over from the old write-up, guaranteeing none
+    of the old fabricated claims can survive.
 
     video_ids: optional comma-separated list of specific video_ids to
     target (e.g. Gerry's homepage preview set) — leave empty to target
@@ -1631,13 +1649,16 @@ def admin_backfill_places_facts(video_ids: str = "", dry_run: bool = True):
     Cost: ~$0.032/stop (Places Text Search Pro) + ~$0.0003/route (one
     batched Haiku call per route) — charged the same whether dry_run is
     true or false, since the Places/AI calls happen either way; only the
-    final database write is skipped under dry_run.
+    final database write is skipped under dry_run. approx_cost_usd below
+    includes BOTH (the Places portion is an estimate — Places doesn't
+    return per-call cost, so it's stop count x $0.032).
     """
     ids = [v.strip() for v in video_ids.split(",") if v.strip()]
     rows = [{"video_id": v} for v in ids] if ids else database.list_by_status("approved")
 
     results = []
     total_cost = 0.0
+    stops_checked_total = 0
     for row in rows:
         video_id = row["video_id"]
         itinerary = database.get_itinerary(video_id)
@@ -1652,12 +1673,13 @@ def admin_backfill_places_facts(video_ids: str = "", dry_run: bool = True):
             }
             for day in itinerary.days for s in day.stops
         ]
+        stops_checked_total += len(before)
 
         stops_filled = backfill_stop_facts(itinerary)
 
         stop_inputs = [
             {
-                "name": s.name, "video_notes": s.description, "place_type": s.place_type,
+                "name": s.name, "video_notes": "", "place_type": s.place_type,
                 "address": s.address, "area_label": s.area_label, "rating": s.rating,
                 "user_rating_count": s.user_rating_count, "price_level": s.price_level,
                 "opening_hours_weekly": s.opening_hours_weekly,
@@ -1691,11 +1713,14 @@ def admin_backfill_places_facts(video_ids: str = "", dry_run: bool = True):
             "after": after,
         })
 
+    places_cost_estimate = round(0.032 * stops_checked_total, 4)
     return {
         "status": "ok",
         "dry_run": dry_run,
         "routes_checked": len(rows),
-        "approx_cost_usd": round(total_cost, 4),
+        "approx_cost_usd": round(total_cost + places_cost_estimate, 4),
+        "haiku_cost_usd": round(total_cost, 4),
+        "places_cost_estimate_usd": places_cost_estimate,
         "routes": results,
     }
 

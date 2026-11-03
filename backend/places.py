@@ -1103,3 +1103,38 @@ def backfill_stop_facts(itinerary) -> int:
             )
             filled += 1
     return filled
+
+
+def apply_cached_stop_facts(itinerary) -> int:
+    """
+    Nov 2026: reads each stop's Places facts back out of stop_cache instead
+    of calling the Places API — for when backfill_stop_facts() already ran
+    on this route (so stop_cache is already fresh, since that function
+    always writes its results there even on a dry run) and only the AI
+    description needs regenerating. Costs nothing: no network call, just a
+    local DB read per stop. Returns NO row (or a row with no photo_url —
+    see database.get_cached_stop) for a stop stop_cache never backfilled,
+    which just leaves that stop's facts as they already were — same
+    behavior as backfill_stop_facts() skipping a stop Places had no match
+    for, so callers can treat the two functions interchangeably.
+
+    Does NOT touch lat/lng (those only matter for the map/distance view,
+    already handled by backfill_stop_facts the first time) and does not
+    write anything back — purely a read.
+    """
+    filled = 0
+    city = re.split(r"\s*(?:,|&|\band\b)\s*", itinerary.destination, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+    for day in itinerary.days:
+        for stop in day.stops:
+            cached = database.get_cached_stop(city, stop.name)
+            if not cached or not any([cached["place_type"], cached["address"], cached["area_label"]]):
+                continue
+            stop.place_type = cached["place_type"]
+            stop.address = cached["address"]
+            stop.area_label = cached["area_label"]
+            stop.opening_hours_weekly = cached["opening_hours_weekly"]
+            stop.rating = cached["rating"]
+            stop.user_rating_count = cached["user_rating_count"]
+            stop.price_level = cached["price_level"]
+            filled += 1
+    return filled

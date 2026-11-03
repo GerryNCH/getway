@@ -68,7 +68,7 @@ from places import (
     _trigger_unsplash_download, _get_place_photo_and_location, search_attractions_broad,
     search_hotels_near, _get_destination_gallery_unsplash, search_activities_by_type,
     _ACTIVITY_TYPE_QUERY_TERMS, search_places_freetext, get_car_rental_photo_unsplash,
-    backfill_stop_facts,
+    backfill_stop_facts, apply_cached_stop_facts,
 )
 from trip_builder import (
     is_open as trip_place_is_open, fits_budget, curate_candidates,
@@ -1603,7 +1603,7 @@ def admin_backfill_stop_photos(force: bool = False):
 
 
 @app.post("/admin/backfill-places-facts", dependencies=[Depends(verify_admin_secret)])
-def admin_backfill_places_facts(video_ids: str = "", dry_run: bool = True):
+def admin_backfill_places_facts(video_ids: str = "", dry_run: bool = True, refresh_places: bool = True):
     """
     Task 8 backfill (Nov 2026) for routes generated BEFORE Google-Places
     facts + fact-grounded descriptions existed. For each targeted route:
@@ -1646,12 +1646,25 @@ def admin_backfill_places_facts(video_ids: str = "", dry_run: bool = True):
     on the live site. Pass dry_run=false once Gerry has reviewed the
     preview and wants it actually saved.
 
-    Cost: ~$0.032/stop (Places Text Search Pro) + ~$0.0003/route (one
-    batched Haiku call per route) — charged the same whether dry_run is
-    true or false, since the Places/AI calls happen either way; only the
-    final database write is skipped under dry_run. approx_cost_usd below
-    includes BOTH (the Places portion is an estimate — Places doesn't
-    return per-call cost, so it's stop count x $0.032).
+    refresh_places=True (default): calls places.backfill_stop_facts(), a
+    real (paid) Places lookup per stop. Set to False to skip Places
+    entirely and read each stop's facts back out of stop_cache instead
+    (places.apply_cached_stop_facts) — free, but only finds anything for a
+    stop that was ALREADY backfilled at least once before (backfill_stop_facts
+    writes its results into stop_cache even under dry_run=true, so a
+    previous preview run already seeded it). Use this when only the
+    description prompt changed and the facts from a prior run are still
+    good — e.g. iterating on _GROUNDED_DESCRIPTION_SYSTEM's wording without
+    paying for Places again on every retry.
+
+    Cost: ~$0.032/stop (Places Text Search Pro, only when refresh_places is
+    true) + ~$0.0003/route (one batched Haiku call per route, always
+    charged — regenerating descriptions is the point of every call to this
+    endpoint). Charged the same whether dry_run is true or false, since the
+    Places/AI calls happen either way; only the final database write is
+    skipped under dry_run. approx_cost_usd below includes both (the Places
+    portion is an estimate — Places doesn't return per-call cost, so it's
+    stop count x $0.032).
     """
     ids = [v.strip() for v in video_ids.split(",") if v.strip()]
     rows = [{"video_id": v} for v in ids] if ids else database.list_by_status("approved")
@@ -1659,6 +1672,7 @@ def admin_backfill_places_facts(video_ids: str = "", dry_run: bool = True):
     results = []
     total_cost = 0.0
     stops_checked_total = 0
+    places_stops_attempted = 0
     for row in rows:
         video_id = row["video_id"]
         itinerary = database.get_itinerary(video_id)
@@ -1675,7 +1689,16 @@ def admin_backfill_places_facts(video_ids: str = "", dry_run: bool = True):
         ]
         stops_checked_total += len(before)
 
-        stops_filled = backfill_stop_facts(itinerary)
+        if refresh_places:
+            # backfill_stop_facts() makes one billed Places Text Search
+            # call per stop regardless of whether it finds a confident
+            # match — so the attempted count (= every stop in this route),
+            # not its own return value (stops with at least one new fact),
+            # is what actually tracks cost. See places_cost_estimate below.
+            stops_filled = backfill_stop_facts(itinerary)
+            places_stops_attempted += len(before)
+        else:
+            stops_filled = apply_cached_stop_facts(itinerary)
 
         stop_inputs = [
             {
@@ -1713,10 +1736,17 @@ def admin_backfill_places_facts(video_ids: str = "", dry_run: bool = True):
             "after": after,
         })
 
-    places_cost_estimate = round(0.032 * stops_checked_total, 4)
+    # Only stops that actually triggered a fresh (billed) Places call cost
+    # anything here — when refresh_places=False this is 0 regardless of
+    # stops_checked_total, since apply_cached_stop_facts never calls Places.
+    # When refresh_places=True, every stop in the targeted routes triggers
+    # one, matched or not (places_stops_attempted), not just the subset
+    # backfill_stop_facts found a confident match for.
+    places_cost_estimate = round(0.032 * places_stops_attempted, 4)
     return {
         "status": "ok",
         "dry_run": dry_run,
+        "refresh_places": refresh_places,
         "routes_checked": len(rows),
         "approx_cost_usd": round(total_cost + places_cost_estimate, 4),
         "haiku_cost_usd": round(total_cost, 4),

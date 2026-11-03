@@ -514,20 +514,27 @@ def analyse_frames(frame_paths: list[str], comments: list[dict] | None = None) -
     return Itinerary(**data), price_category, tags, cost_usd
 
 
-_GROUNDED_DESCRIPTION_SYSTEM = """You write ONE short description (1-2 sentences, max ~30 words) for each travel-itinerary stop you're given, for a travel app's route page.
+_GROUNDED_DESCRIPTION_SYSTEM = """You write ONE short, USEFUL description (1-2 sentences, max ~30 words) for each travel-itinerary stop you're given, for a travel app's route page. The description should tell a traveler something they can actually use — what to do there, what it feels like, when to go, a quick practical tip — not just restate the address or category they can already see printed on the card next to it.
 
 You will receive a JSON list of stops. For EACH stop you get:
 - "name": the place's name
 - "video_notes": raw, unpolished observations from a travel video showing this stop — may be empty string if there's no video (e.g. the traveler built this trip themselves rather than pasting a video link)
 - "place_type", "address", "area_label", "rating", "user_rating_count", "price_level", "opening_hours_weekly": verified facts about the place from Google Places — any of these may be empty/zero if Google doesn't have that data for this place
 
-HARD RULES — these are the whole point of this task, never break them:
-1. Base the description ONLY on video_notes and the Places facts given for THAT stop. Never add anything else.
+ALLOWED — lean on this, it's what makes the description worth reading:
+- What a traveler can actually do there (browse, stroll, eat, photograph, relax, people-watch)
+- Atmosphere, in general terms (lively, quiet, scenic, cozy, romantic)
+- General advice on when it's good to go (evening, sunset, a weekday morning) — ordinary travel-guide framing, not a specific claimed fact about this place that you weren't given
+- A short, practical tip (what to pair it with, how to approach it, what to bring)
+- Anything actually shown or said in video_notes
+
+FORBIDDEN — these are the whole point of this task, never break them:
+1. Never invent a checkable fact you weren't given — about THIS place's history, size, age, records, or anything else specific and verifiable. Generic travel-guide advice (see ALLOWED) is fine precisely because it isn't a checkable claim about this particular place — it reads the same whether or not Google gave you much to go on.
 2. NO history, no years, no founding dates, no "built in", no "since".
 3. NO invented numbers — don't state a size, distance, count, or age that wasn't given to you. (rating/user_rating_count/price_level ARE given to you, but don't restate them as prose — the app displays those separately; use them only to calibrate tone, e.g. a high rating can justify "popular" but never a specific invented number.)
 4. NO superlative claims ("the best", "the most", "the only", "the biggest", "iconic", "legendary", "world-famous") unless that exact claim is explicitly present in video_notes — a verified Places rating is NOT license to call something "the best."
 5. NO comparisons to other places, other cities, or "unlike anywhere else" framing, unless explicitly present in video_notes.
-6. If video_notes is empty or unhelpful and the Places facts are also thin, write the plainest possible factual sentence from what little you do have (e.g. just the place_type + area_label) rather than inventing color. A short, plain sentence is always correct; a vivid but unsupported one is not.
+6. Only when you genuinely have nothing to hang advice on (no useful place_type, no video_notes, nothing) fall back to the plainest possible factual sentence from what little you do have — that should be the rare exception, not the default. A flat "A main street in central Bari" when you had "place_type: Street" to work with is a worse answer than reaching for ordinary travel-guide framing instead — e.g. "Bari's main shopping street, good for an evening stroll after dinner."
 7. Never mention that you were given "data", "facts", or "video" — write a normal, natural sentence a traveler would read, just one that happens to be fully grounded.
 
 Reply with ONLY valid JSON, no markdown fences:

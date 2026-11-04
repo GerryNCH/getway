@@ -120,7 +120,10 @@ export default async function middleware(request) {
     const description = itinerary.summary
       ? truncate(itinerary.summary, 160)
       : `An AI-built${itinerary.duration ? ` ${itinerary.duration}-day` : ''} route for ${itinerary.destination}, free on GetWay.`;
-    const image = itinerary.hero_photo_url || DEFAULT_OG_IMAGE;
+    // Priority: destination hero photo first, hotel banner only as a
+    // fallback when a route has no hero of its own, generic branded image
+    // as the last resort (Gerry's instruction, Nov 2026).
+    const image = itinerary.hero_photo_url || itinerary.hotel_banner_photo_url || DEFAULT_OG_IMAGE;
     const canonicalUrl = `https://www.gogetway.com/?route=${encodeURIComponent(routeId)}`;
 
     const rewritten = injectRouteMeta(html, { title, description, image, url: canonicalUrl });

@@ -555,176 +555,6 @@
     <div class="border-t border-white/10 py-5 text-center text-[11px] text-white/40">© 2026 GetWay. All rights reserved.</div>
   </footer>
 </div>
-<!-- ====================================================================== -->
-<!-- SCREEN 2: STANDALONE ROUTE PAGE (Mallorca)                             -->
-<!-- ====================================================================== -->
-<div id="screen-route" class="screen">
-<div class="min-h-screen">
-<div class="w-full max-w-[390px] md:max-w-none mx-auto">
-  <div class="relative h-[320px] md:h-[64vh] md:min-h-[480px] w-full overflow-hidden" style="background: linear-gradient(135deg, #1c2128 0%, #15171A 55%, #0c0d10 100%);">
-    <div id="mallorca-hero-media" class="absolute inset-0"></div>
-    <div class="absolute inset-0 hero-top-overlay h-32 md:h-40"></div>
-    <div class="absolute top-[22px] left-[18px] right-[18px] md:top-8 md:left-14 md:right-14 flex items-center justify-between z-10">
-      <div class="flex items-center gap-2.5 md:gap-4">
-        <button onclick="showScreen('home')" aria-label="Back" class="btn-interactive flex items-center gap-1 text-[11px] md:text-xs font-medium text-white/90 hover:text-white bg-black/20 hover:bg-black/30 backdrop-blur-sm rounded-full pl-2 pr-3 py-1.5" style="text-shadow: 0 1px 4px rgba(0,0,0,0.3);">
-          <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Back
-        </button>
-        <button onclick="showScreen('home')" class="text-base md:text-3xl lg:text-4xl font-medium font-serif-display text-white" style="text-shadow: 0 1px 8px rgba(0,0,0,0.4);">GetWay<span class="text-[#C4B5FD]">.</span></button>
-      </div>
-    </div>
-    <div class="absolute left-0 right-0 bottom-0 h-[180px] md:h-[230px] hero-bottom-overlay">
-      <div class="absolute bottom-16 md:bottom-24 left-6 right-6 md:left-14 md:right-14 flex items-end gap-3 flex-wrap">
-        <div class="font-serif-display text-[36px] sm:text-[44px] md:text-[100px] text-white leading-[0.95] tracking-tight">MALLORCA</div>
-        <div class="mb-1.5 md:mb-5 inline-flex items-center text-xs md:text-sm font-medium text-white bg-white/15 border border-white/25 rounded-full px-3.5 py-1.5">€€</div>
-      </div>
-      <a id="mallorca-tiktok-link" href="#" target="_blank" rel="noopener" class="absolute left-6 md:left-14 right-16 md:right-auto bottom-[28px] md:bottom-7 flex items-center gap-1.5 text-xs md:text-sm text-white/85 truncate">
-        <i data-lucide="music-2" class="w-3 h-3 flex-shrink-0"></i><span id="mallorca-tiktok-handle" class="truncate"></span>
-      </a>
-      <div id="mallorca-gallery-counter" class="absolute right-5 md:right-14 bottom-[28px] md:bottom-7 text-[11px] md:text-xs text-white">1 / 5</div>
-      <div id="mallorca-hero-credit" class="absolute right-5 md:right-14 bottom-[8px] md:bottom-[10px] text-[9px] md:text-[10px] text-white/60"></div>
-    </div>
-  </div>
-  <div class="flex items-center justify-center py-6 md:py-8 border-b border-gray-100">
-    <div class="flex items-center gap-1.5 px-5 md:px-10"><i data-lucide="map-pin" class="w-3.5 h-3.5 md:w-4 md:h-4 text-gray-400"></i><div><span class="text-base md:text-xl font-bold">14</span> <span class="text-[10px] md:text-xs text-gray-500">stops</span></div></div>
-    <div class="w-px h-7 md:h-9 bg-gray-200"></div>
-    <div class="flex items-center gap-1.5 px-5 md:px-10"><i data-lucide="bed" class="w-3.5 h-3.5 md:w-4 md:h-4 text-gray-400"></i><div><span class="text-base md:text-xl font-bold">2</span> <span class="text-[10px] md:text-xs text-gray-500">hotels</span></div></div>
-    <div class="w-px h-7 md:h-9 bg-gray-200"></div>
-    <div class="flex items-center gap-1.5 px-5 md:px-10"><i data-lucide="calendar-days" class="w-3.5 h-3.5 md:w-4 md:h-4 text-gray-400"></i><div><span class="text-base md:text-xl font-bold">5</span> <span class="text-[10px] md:text-xs text-gray-500">days</span></div></div>
-  </div>
-  <div id="mallorca-thumbnails" class="flex justify-center gap-1.5 md:gap-3 px-4 pt-6 pb-2 md:pt-8"></div>
-  <div class="text-center px-4 pb-8 md:pb-10 text-[10px] md:text-xs text-gray-400">Tap a thumbnail to preview · tap the video tile to resume the loop</div>
-  <!-- In-route filters: premium centered pill toolbar -->
-  <div class="px-5 md:px-14 lg:px-24 pb-10 md:pb-14">
-    <div class="max-w-fit md:mx-auto bg-white/70 backdrop-blur-md border border-gray-200/80 rounded-full p-1.5 shadow-sm overflow-x-auto">
-      <div class="peek-scroll flex gap-1.5 md:justify-center">
-        <button onclick="filterStops('all', this)" class="route-filter-chip is-active flex-shrink-0 h-[36px] px-4 flex items-center gap-1.5 text-xs font-medium rounded-full bg-[#8B5CF6] text-white whitespace-nowrap">All Stops</button>
-        <button onclick="filterStops('hotel', this)" class="route-filter-chip flex-shrink-0 h-[36px] px-4 flex items-center gap-1.5 text-xs font-medium rounded-full text-gray-600 whitespace-nowrap"><i data-lucide="bed" class="w-3.5 h-3.5"></i>Hotels</button>
-        <button onclick="filterStops('food', this)" class="route-filter-chip flex-shrink-0 h-[36px] px-4 flex items-center gap-1.5 text-xs font-medium rounded-full text-gray-600 whitespace-nowrap"><i data-lucide="utensils" class="w-3.5 h-3.5"></i>Food & Drinks</button>
-        <button onclick="filterStops('sight', this)" class="route-filter-chip flex-shrink-0 h-[36px] px-4 flex items-center gap-1.5 text-xs font-medium rounded-full text-gray-600 whitespace-nowrap"><i data-lucide="landmark" class="w-3.5 h-3.5"></i>Sights</button>
-        <button onclick="filterStops('activity', this)" class="route-filter-chip flex-shrink-0 h-[36px] px-4 flex items-center gap-1.5 text-xs font-medium rounded-full text-gray-600 whitespace-nowrap"><i data-lucide="waves" class="w-3.5 h-3.5"></i>Activities</button>
-      </div>
-    </div>
-  </div>
-  <!-- Chronological, day-by-day itinerary. mt-6 guarantees breathing room
-       below the filter bar on mobile, independent of the filter bar's own
-       bottom padding. -->
-  <div class="px-5 md:px-14 lg:px-24 pb-12 md:pb-20 max-w-4xl mx-auto mt-6 md:mt-0">
-    <div class="day-group" data-day="1">
-    <div data-aos="fade-up" class="font-serif-display text-[26px] md:text-4xl leading-tight mb-1.5">Day 1</div>
-    <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 mb-7 md:mb-9">Arrival & Palma old town · 3 stops</div>
-    <div data-category="hotel" data-aos="fade-up" class="mb-7 md:mb-10 md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
-      <div class="md:w-2/5 md:flex-shrink-0">
-        <div id="mallorca-hotel1-photo" class="relative h-[140px] md:h-56 mb-3 md:mb-0 rounded-2xl overflow-hidden media-placeholder" style="background: linear-gradient(135deg, #8B5CF6, #6D28D9);">
-          <i data-lucide="bed" class="w-8 h-8 text-white/80"></i>
-        </div>
-      </div>
-      <div class="md:w-3/5 md:pt-2">
-        <div class="flex items-center gap-2 mb-2">
-          <span class="text-[11px] font-medium text-[#7C3AED] uppercase tracking-wide">Hotel</span><span class="text-[11px] text-gray-400">·</span>
-          <span class="inline-flex items-center gap-1 text-[11px] text-[#085041]"><i data-lucide="star" class="w-3 h-3"></i>Kelsey's pick</span>
-        </div>
-        <div class="text-sm font-medium mb-1">Ars Magna Bleisure Hotel</div>
-        <div class="text-xs text-gray-500 mb-1">Boutique Hotel · Old Town</div>
-        <div class="flex items-center gap-3 mb-4">
-          <span class="text-xs font-medium text-gray-700">€€</span>
-          <span class="inline-flex items-center gap-1 text-xs font-medium text-gray-700"><i data-lucide="star" class="w-3 h-3 text-amber-500 fill-amber-500"></i>8.9 Excellent</span>
-        </div>
-        <div class="relative mb-2.5">
-          <button onclick="toggleHotelDropdown('hotel1')" class="hotel-btn btn-interactive w-full h-[44px] flex items-center justify-center gap-1.5 bg-[#8B5CF6] text-white text-xs font-medium rounded-xl">
-            Book this hotel <i data-lucide="chevron-down" class="hotel-chevron w-3.5 h-3.5 transition-transform"></i>
-          </button>
-          <div id="hotel1-menu" class="hidden bg-white rounded-xl mt-1.5 overflow-hidden bento-card">
-            <a id="hotel1-booking-link" href="#" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 border-b border-gray-100 text-xs"><span>via Booking.com</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
-            <a id="hotel1-expedia-link" href="#" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 text-xs"><span>via Expedia</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
-          </div>
-        </div>
-        <div class="grid grid-cols-2 gap-2.5">
-          <a id="hotel1-similar-link" href="#" target="_blank" rel="noopener sponsored" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="shuffle" class="w-3.5 h-3.5"></i>Similar</a>
-          <a id="hotel1-airbnb-link" href="#" target="_blank" rel="noopener" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="home" class="w-3.5 h-3.5"></i>Airbnb</a>
-        </div>
-      </div>
-    </div>
-    <div id="day1-stops" class="grid md:grid-cols-2 gap-4 md:gap-6 mb-2"></div>
-    </div>
-    <div class="mt-12 md:mt-16"></div>
-    <div class="day-group" data-day="2">
-    <div data-aos="fade-up" class="font-serif-display text-[26px] md:text-4xl leading-tight mb-1.5">Day 2</div>
-    <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 mb-2">Valldemossa village · 1 stop</div>
-    <div data-aos="fade-up" class="flex items-center gap-1.5 text-[11px] md:text-xs text-gray-500 mb-5 md:mb-7"><i data-lucide="bed" class="w-3 h-3"></i>Staying at Ars Magna Bleisure (see Day 1)</div>
-    <div id="day2-stops" class="grid md:grid-cols-2 gap-4 md:gap-6"></div>
-    </div>
-    <div class="mt-12 md:mt-16"></div>
-    <div class="day-group" data-day="3-4">
-    <div data-aos="fade-up" class="font-serif-display text-[26px] md:text-4xl leading-tight mb-1.5">Days 3-4</div>
-    <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 mb-7 md:mb-9">Southeast beach hopping · 5 stops</div>
-    <div data-category="hotel" data-aos="fade-up" class="mb-6 md:mb-8 md:flex md:gap-8 md:items-start bento-card bg-white rounded-[26px] p-4 md:p-6">
-      <div class="md:w-2/5 md:flex-shrink-0">
-        <div id="mallorca-hotel2-photo" class="relative h-[140px] md:h-56 mb-3 md:mb-0 rounded-2xl overflow-hidden media-placeholder" style="background: linear-gradient(135deg, #0E7490, #155E75);">
-          <i data-lucide="bed" class="w-8 h-8 text-white/80"></i>
-        </div>
-      </div>
-      <div class="md:w-3/5 md:pt-2">
-        <div class="flex items-center gap-2 mb-2">
-          <span class="text-[11px] font-medium text-[#7C3AED] uppercase tracking-wide">Hotel</span><span class="text-[11px] text-gray-400">·</span>
-          <span class="inline-flex items-center gap-1 text-[11px] text-[#085041]"><i data-lucide="star" class="w-3 h-3"></i>Kelsey's pick</span>
-        </div>
-        <div class="text-sm font-medium mb-1">Hotel Santanyi Port</div>
-        <div class="text-xs text-gray-500 mb-1">Beachfront Resort · Santanyí</div>
-        <div class="flex items-center gap-3 mb-4">
-          <span class="text-xs font-medium text-gray-700">€€</span>
-          <span class="inline-flex items-center gap-1 text-xs font-medium text-gray-700"><i data-lucide="star" class="w-3 h-3 text-amber-500 fill-amber-500"></i>9.1 Superb</span>
-        </div>
-        <div class="relative mb-2.5">
-          <button onclick="toggleHotelDropdown('hotel2')" class="hotel-btn btn-interactive w-full h-[44px] flex items-center justify-center gap-1.5 bg-[#8B5CF6] text-white text-xs font-medium rounded-xl">
-            Book this hotel <i data-lucide="chevron-down" class="hotel-chevron w-3.5 h-3.5 transition-transform"></i>
-          </button>
-          <div id="hotel2-menu" class="hidden bg-white rounded-xl mt-1.5 overflow-hidden bento-card">
-            <a id="hotel2-booking-link" href="#" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 border-b border-gray-100 text-xs"><span>via Booking.com</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
-            <a id="hotel2-expedia-link" href="#" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex items-center justify-between h-11 px-3.5 text-xs"><span>via Expedia</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
-          </div>
-        </div>
-        <div class="grid grid-cols-2 gap-2.5">
-          <a id="hotel2-similar-link" href="#" target="_blank" rel="noopener sponsored" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="shuffle" class="w-3.5 h-3.5"></i>Similar</a>
-          <a id="hotel2-airbnb-link" href="#" target="_blank" rel="noopener" class="btn-outline-interactive h-[36px] flex items-center justify-center gap-1.5 bg-gray-50 text-[11px] font-medium text-gray-700 rounded-xl"><i data-lucide="home" class="w-3.5 h-3.5"></i>Airbnb</a>
-        </div>
-      </div>
-    </div>
-    <div id="beach-list" class="grid md:grid-cols-2 gap-4 md:gap-6"></div>
-    </div>
-    <div class="mt-12 md:mt-16"></div>
-    <div class="day-group" data-day="5">
-    <div data-aos="fade-up" class="font-serif-display text-[26px] md:text-4xl leading-tight mb-1.5">Day 5</div>
-    <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 mb-5 md:mb-7">West coast · 2 stops</div>
-    <div id="day5-stops" class="grid md:grid-cols-2 gap-4 md:gap-6"></div>
-    </div>
-  </div>
-  <!-- ================== Community Reviews (real — backend-driven) ================== -->
-  <div id="mallorca-reviews-section"></div>
-  <footer class="bg-[#15171A] text-white mt-4">
-    <div class="max-w-6xl mx-auto px-6 md:px-14 py-14 md:py-16 grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-8">
-      <div>
-        <div class="font-serif-display text-xl mb-4">GetWay<span class="text-[#C4B5FD]">.</span></div>
-        <div class="text-xs text-white/60 leading-relaxed mb-1">Support: <a href="mailto:getway.smart@gmail.com" class="text-white/85 hover:text-white">getway.smart@gmail.com</a></div>
-        <div class="text-xs text-white/60 leading-relaxed">Creators & partnerships: <a href="mailto:getway.smart@gmail.com" class="text-white/85 hover:text-white">getway.smart@gmail.com</a></div>
-      </div>
-      <div>
-        <div class="text-xs font-semibold uppercase tracking-wide text-white/50 mb-4">Legal</div>
-        <a href="#" onclick="showScreen('terms'); return false;" class="block text-xs text-white/70 hover:text-white mb-2.5">Terms of Service</a>
-        <a href="#" onclick="showScreen('privacy'); return false;" class="block text-xs text-white/70 hover:text-white">Privacy Policy</a>
-      </div>
-      <div>
-        <div class="text-xs font-semibold uppercase tracking-wide text-white/50 mb-4">Follow</div>
-        <div class="flex gap-3">
-          <a href="https://www.tiktok.com/@googetway" target="_blank" rel="noopener" aria-label="GetWay on TikTok" class="btn-interactive w-9 h-9 rounded-full bg-white/10 flex items-center justify-center"><i data-lucide="music-2" class="w-4 h-4 text-white"></i></a>
-          <a href="https://www.instagram.com/go.getway" target="_blank" rel="noopener" aria-label="GetWay on Instagram" class="btn-interactive w-9 h-9 rounded-full bg-white/10 flex items-center justify-center"><svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="white" stroke-width="1.8"><rect x="2.5" y="2.5" width="19" height="19" rx="5"/><circle cx="12" cy="12" r="4.3"/><circle cx="17.2" cy="6.8" r="1.1" fill="white" stroke="none"/></svg></a>
-        </div>
-      </div>
-    </div>
-    <div class="border-t border-white/10 py-5 text-center text-[11px] text-white/40">© 2026 GetWay. All rights reserved.</div>
-  </footer>
-</div>
-</div>
-</div>
 <div id="lightbox" class="hidden fixed inset-0 z-[200] bg-black/90 items-center justify-center p-6" onclick="closeLightbox()">
   <img id="lightbox-img" src="" alt="" class="max-w-full max-h-full rounded-2xl object-contain">
   <button onclick="closeLightbox()" class="absolute top-6 right-6 w-10 h-10 rounded-full bg-white/15 flex items-center justify-center">
@@ -1514,21 +1344,9 @@
       intervalMs: 5000
     },
     routes: {
-      "mallorca-5-days": { cardPhoto: "https://picsum.photos/seed/mallorca-card/900/700" },
       "santorini-4-days": { cardPhoto: "https://picsum.photos/seed/santorini-card/900/700" },
       "bali-6-days": { cardPhoto: "https://picsum.photos/seed/bali-card/900/700" }
     },
-    mallorca: {
-      tiktokVideoUrl: "https://www.tiktok.com/@kelseyinlondon",
-      tiktokHandle: "@kelseyinlondon ↗",
-      gallery: [
-        { type: "video", label: "Live" },
-        { type: "photo", url: "https://picsum.photos/seed/mallorca-g1/1600/1000" },
-        { type: "photo", url: "https://picsum.photos/seed/mallorca-g2/1600/1000" },
-        { type: "photo", url: "https://picsum.photos/seed/mallorca-g3/1600/1000" },
-        { type: "photo", url: "https://picsum.photos/seed/mallorca-g4/1600/1000" }
-      ]
-    }
   };
   const ROUTES = [];
   // Admin-controlled settings (hero slides, featured routes, and the Phase
@@ -1558,24 +1376,6 @@
     }
     return null;
   }
-  const DAY1_STOPS = [
-    { category: "sight", icon: "landmark", iconColor: "#57534E", name: "Palma cathedral & old town", typeLabel: "Sight", photo: "https://picsum.photos/seed/palma-cathedral/900/700", mapsUrl: "https://www.google.com/maps/search/?api=1&query=Palma+Cathedral", distance: "8 min walk from hotel", distanceType: "walk" },
-    { category: "food", icon: "utensils", iconColor: "#16A34A", name: "Restaurant Illeta", badge: { icon: "anchor", text: "Boat transfer needed", color: "#1E40AF" }, photo: "https://picsum.photos/seed/restaurant-illeta/900/700", mapsUrl: "https://maps.google.com", distance: "20 min, incl. boat transfer", distanceType: "boat", reserveUrl: "#" }
-  ];
-  const DAY2_STOPS = [
-    { category: "sight", icon: "trees", iconColor: "#4D6B2E", name: "Valldemossa", typeLabel: "Village", photo: "https://picsum.photos/seed/valldemossa/900/700", mapsUrl: "https://maps.google.com", distance: "25 min drive from hotel", distanceType: "drive" }
-  ];
-  const BEACH_STOPS = [
-    { name: "Calo del Moro", seed: "beach-0", distance: "10 min drive from hotel" },
-    { name: "S'Almunia", seed: "beach-1", distance: "12 min drive from hotel" },
-    { name: "Cala Llombards", seed: "beach-2", distance: "15 min drive from hotel" },
-    { name: "Platja de Santanyi", seed: "beach-3", distance: "5 min drive from hotel" }
-  ].map(b => ({ category: "activity", icon: "sun", iconColor: "#0E7490", name: b.name, typeLabel: "Beach", photo: `https://picsum.photos/seed/${b.seed}/900/700`, mapsUrl: "https://maps.google.com", distance: b.distance, distanceType: "drive" }));
-  const DAY5_STOPS = [
-    { category: "food", icon: "utensils", iconColor: "#16A34A", name: "Ca's Patro March", badge: { icon: "clock", text: "Book by 12:00 — fills fast", color: "#791F1F" }, forcePlaceholder: true, placeholderGradient: "linear-gradient(135deg, #C2603C, #92400E)", mapsUrl: "https://maps.google.com", distance: "30 min drive from hotel", distanceType: "drive", reserveUrl: "#" },
-    { category: "sight", icon: "trees", iconColor: "#4D6B2E", name: "Deia village", typeLabel: "Village", photo: "https://picsum.photos/seed/deia/900/700", mapsUrl: "https://maps.google.com", distance: "35 min drive from hotel", distanceType: "drive" }
-  ];
-  const DISTANCE_ICONS = { walk: "footprints", boat: "sailboat", drive: "car" };
   const PLACEHOLDER_GRADIENTS = [
     "linear-gradient(135deg, #8B5CF6, #6D28D9)", "linear-gradient(135deg, #0E7490, #155E75)",
     "linear-gradient(135deg, #C2603C, #92400E)", "linear-gradient(135deg, #4D6B2E, #3F5A24)",
@@ -1623,9 +1423,6 @@
     };
     probe.src = url;
   }
-  // Fixed video_id used to key reviews for the static Mallorca demo route
-  // (it has no real TikTok video behind it, so there's no natural video_id).
-  const MALLORCA_DEMO_VIDEO_ID = 'mallorca-demo-route';
   // ── Real TikTok comments (from itinerary.comments, fetched via Apify) ───
   function formatCount(n) {
     n = Number(n) || 0;
@@ -2486,42 +2283,11 @@
       console.error('loadRealRoutes failed (non-fatal, homepage keeps static routes):', err);
     }
   }
-  function renderMallorcaHero() {
-    const mediaLayer = document.getElementById('mallorca-hero-media');
-    mediaLayer.innerHTML = `<img id="mallorca-hero-photo" src="" class="absolute inset-0 w-full h-full object-cover" alt="" onerror="imgFallback(this,'image','mallorca-hero')">`;
-    document.getElementById('mallorca-hero-photo').src = MEDIA.mallorca.gallery.find(g => g.type === 'photo').url;
-    renderUnsplashCredit('mallorca-hero-credit', (window._mallorcaGalleryAttributions || [])[1]);
-    window._mallorcaActiveIndex = MEDIA.mallorca.gallery.findIndex(g => g.type === 'photo');
-    const thumbs = document.getElementById('mallorca-thumbnails');
-    thumbs.innerHTML = MEDIA.mallorca.gallery.map((item, i) => {
-      if (item.type === 'video') {
-        return `<button onclick="selectGalleryItem(${i})" class="gallery-thumb flex-shrink-0 w-[54px] h-[54px] md:w-20 md:h-20 rounded-2xl bg-[#15171A] border-2 border-[#8B5CF6] flex items-center justify-center"><i data-lucide="play" class="w-4 h-4 md:w-6 md:h-6 text-white"></i></button>`;
-      }
-      return `<button onclick="selectGalleryItem(${i})" class="gallery-thumb flex-shrink-0 w-[54px] h-[54px] md:w-20 md:h-20 rounded-2xl overflow-hidden border-2 border-transparent"><img src="${item.url}" alt="" class="w-full h-full object-cover" onerror="imgFallback(this,'image','gthumb-${i}')"></button>`;
-    }).join('');
-  }
-  function selectGalleryItem(index) {
-    window._mallorcaActiveIndex = index;
-    const item = MEDIA.mallorca.gallery[index];
-    const photo = document.getElementById('mallorca-hero-photo');
-    if (item.type === 'photo' && photo) {
-      photo.dataset.fallbackApplied = '';
-      photo.src = item.url;
-      photo.style.display = '';
-    }
-    renderUnsplashCredit('mallorca-hero-credit', item.type === 'photo' ? (window._mallorcaGalleryAttributions || [])[index] : null);
-    document.querySelectorAll('.gallery-thumb').forEach((el, i) => {
-      el.classList.toggle('border-[#8B5CF6]', i === index);
-      el.classList.toggle('border-transparent', i !== index);
-    });
-    const counter = document.getElementById('mallorca-gallery-counter');
-    if (counter) counter.textContent = (index + 1) + ' / ' + MEDIA.mallorca.gallery.length;
-  }
   // ── Swipe / drag gallery navigation ─────────────────────────────────
-  // Generic touch+mouse handler shared by both hero galleries (the static
-  // Mallorca demo route and the AI-generated route). Wraps around at the
-  // ends so a swipe from the last photo goes back to the first, matching
-  // how the thumbnail row already behaves when clicked in sequence.
+  // Generic touch+mouse handler for the AI-generated route's hero gallery.
+  // Wraps around at the ends so a swipe from the last photo goes back to
+  // the first, matching how the thumbnail row already behaves when
+  // clicked in sequence.
   function attachSwipeGallery(el, getIndex, getLength, onSelect) {
     if (!el || el.dataset.swipeAttached) return;
     el.dataset.swipeAttached = '1';
@@ -2574,13 +2340,6 @@
     // absolutely-positioned layers on top of the bg image — a touch on
     // those siblings never reaches the bg element directly, only their
     // shared parent, which is what actually receives the tap on mobile.
-    const mallorcaHero = document.getElementById('mallorca-hero-media');
-    attachSwipeGallery(
-      mallorcaHero ? mallorcaHero.parentElement : null,
-      () => window._mallorcaActiveIndex || 0,
-      () => MEDIA.mallorca.gallery.length,
-      selectGalleryItem
-    );
     const aiRouteHero = document.getElementById('ai-route-hero-bg');
     attachSwipeGallery(
       aiRouteHero ? aiRouteHero.parentElement : null,
@@ -2589,50 +2348,10 @@
       selectAiGalleryPhoto
     );
   }
-  function renderRouteMedia() {
-    document.getElementById('mallorca-tiktok-link').href = MEDIA.mallorca.tiktokVideoUrl;
-    document.getElementById('mallorca-tiktok-handle').textContent = MEDIA.mallorca.tiktokHandle;
-  }
-  function renderStopCard(stop) {
-    const badgeOrType = stop.badge
-      ? `<span class="inline-flex items-center gap-1 text-[10px]" style="color:${stop.badge.color}"><i data-lucide="${stop.badge.icon}" class="w-2.5 h-2.5"></i> ${stop.badge.text}</span>`
-      : `<span class="text-[10px] uppercase tracking-wide" style="color:${stop.iconColor}">${stop.typeLabel || ''}</span>`;
-    const actionBtn = stop.reserveUrl
-      ? `<a href="${stop.reserveUrl}" class="btn-interactive inline-flex items-center gap-1 h-[30px] px-3 bg-[#8B5CF6] text-white text-[11px] font-medium rounded-lg mt-2"><i data-lucide="calendar" class="w-3 h-3"></i>Reserve</a>`
-      : '';
-    const photoBlock = stop.forcePlaceholder
-      ? `<div onclick="event.stopPropagation();" class="w-14 h-14 md:w-full md:h-44 rounded-xl md:rounded-none flex-shrink-0 media-placeholder" style="background:${stop.placeholderGradient || gradientFor(stop.name)}"><i data-lucide="${stop.icon}" class="w-6 h-6 md:w-8 md:h-8 text-white/80"></i></div>`
-      : `<img src="${stop.photo}" alt="" data-photo-url="${stop.photo}" onclick="openLightbox(this.dataset.photoUrl)"
-             class="w-14 h-14 md:w-full md:h-44 rounded-xl md:rounded-none object-cover flex-shrink-0 cursor-pointer md:cursor-default"
-             data-icon="${stop.icon}" data-seed="${stop.name}" onerror="imgFallback(this, this.dataset.icon, this.dataset.seed)">`;
-    return `
-      <div data-category="${stop.category}" data-aos="fade-up" class="bento-card bg-white rounded-[22px] overflow-hidden relative flex items-center gap-3 p-4 md:flex-col md:items-stretch md:p-0">
-        <button data-maps-url="${stop.mapsUrl}" onclick="event.stopPropagation(); window.open(this.dataset.mapsUrl,'_blank')" class="btn-interactive absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-white shadow flex items-center justify-center">
-          <i data-lucide="map-pin" class="w-4 h-4 text-[#6D28D9]"></i>
-        </button>
-        ${photoBlock}
-        <div class="flex-1 min-w-0 md:p-5">
-          <div class="flex items-start gap-2 mb-1">
-            <i data-lucide="${stop.icon}" class="w-4 h-4 flex-shrink-0 mt-0.5" style="color:${stop.iconColor}"></i>
-            <div class="text-sm font-medium leading-snug">${stop.name}</div>
-          </div>
-          <div class="text-[10px] text-gray-400 mb-1.5 pl-6 md:pl-0">Tap to open in Maps</div>
-          <div class="pl-6 md:pl-0">${badgeOrType}</div>
-          <div class="flex items-center gap-1.5 text-[11px] text-gray-500 mt-2 pl-6 md:pl-0"><i data-lucide="${DISTANCE_ICONS[stop.distanceType] || 'car'}" class="w-3 h-3"></i>${stop.distance}</div>
-          <div class="pl-6 md:pl-0">${actionBtn}</div>
-        </div>
-      </div>`;
-  }
-  function renderAllStops() {
-    document.getElementById('day1-stops').innerHTML = DAY1_STOPS.map(renderStopCard).join('');
-    document.getElementById('day2-stops').innerHTML = DAY2_STOPS.map(renderStopCard).join('');
-    document.getElementById('beach-list').innerHTML = BEACH_STOPS.map(renderStopCard).join('');
-    document.getElementById('day5-stops').innerHTML = DAY5_STOPS.map(renderStopCard).join('');
-  }
   // ── Real reviews (backend-driven) ────────────────────────────────────────
-  // Used for both the Mallorca demo route and every AI-generated route.
-  // `prefix` namespaces DOM ids (e.g. "mallorca" / "ai-route") since both
-  // screens can be in the DOM at once; `videoId` is the backend review key.
+  // Used for every AI-generated route. `prefix` namespaces DOM ids (e.g.
+  // "ai-route") in case more than one review-bearing screen is ever in
+  // the DOM at once; `videoId` is the backend review key.
   function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str == null ? '' : String(str);
@@ -4926,7 +4645,8 @@
   }
   // Restores a shared route from the URL's ?route= param on page load.
   // Two cases:
-  //   1. A known static demo route slug (e.g. ?route=mallorca-5-days)
+  //   1. A known static demo route slug, via STATIC_ROUTE_SLUGS (none
+  //      currently defined — kept as a hook for a future static page)
   //   2. An AI-generated route's video_id (e.g. ?route=tt_123456), which
   //      gets re-fetched from the backend cache and rendered.
   // Pushes (not replaces) a history entry for it, on top of the 'home'
@@ -5674,95 +5394,6 @@
     window.addEventListener('scroll', update, { passive: true });
     update();
   }
-  // ── Wire real affiliate links into the static Mallorca demo hotel cards ──
-  // These two cards were built with href="#" placeholders that were never
-  // filled in — clicking "Book this hotel" just reloaded the page instead
-  // of going anywhere. No fetch needed here, just URL construction.
-  function wireMallorcaDemoHotelLinks() {
-    const hotels = [
-      { prefix: 'hotel1', name: 'Ars Magna Bleisure Hotel' },
-      { prefix: 'hotel2', name: 'Hotel Santanyi Port' },
-    ];
-    hotels.forEach(({ prefix, name }) => {
-      const query = `${name} Mallorca`;
-      const set = (id, href) => { const el = document.getElementById(id); if (el) el.href = href; };
-      set(`${prefix}-booking-link`, bookingAffiliateSearchUrl(query));
-      set(`${prefix}-expedia-link`, expediaAffiliateSearchUrl(query));
-      set(`${prefix}-similar-link`, bookingAffiliateSearchUrl('Mallorca'));
-      set(`${prefix}-airbnb-link`, `https://www.airbnb.com/s/${encodeURIComponent('Mallorca')}/homes`);
-    });
-  }
-  // ── Real photos for the static Mallorca demo (replaces Picsum placeholders) ──
-  // Fetched server-side (keeps the Unsplash key off the client) and swapped
-  // in after the initial render, so the page never blocks on this — cards
-  // show their gradient/icon placeholder until the real photos arrive.
-  async function loadMallorcaRealPhotos() {
-    try {
-      const res = await fetch(`${BACKEND_URL}/demo/mallorca-photos`);
-      if (!res.ok) throw new Error('Failed to load demo photos');
-      const p = await res.json();
-      const urlOf = (key) => (p[key] && p[key].url) || '';
-      const attrOf = (key) => (p[key] && p[key].attribution) || null;
-      // gallery[0] is the video placeholder; gallery[1..4] are the 4 photo
-      // slots, and gallery[1] doubles as the default hero (see
-      // renderMallorcaHero, which shows the first photo-type entry).
-      // window._mallorcaGalleryAttributions is index-aligned with
-      // MEDIA.mallorca.gallery so selectGalleryItem can update the credit.
-      window._mallorcaGalleryAttributions = window._mallorcaGalleryAttributions || [];
-      if (urlOf('hero')) {
-        MEDIA.mallorca.gallery[1].url = urlOf('hero');
-        window._mallorcaGalleryAttributions[1] = attrOf('hero');
-      }
-      if (urlOf('gallery1')) {
-        MEDIA.mallorca.gallery[2].url = urlOf('gallery1');
-        window._mallorcaGalleryAttributions[2] = attrOf('gallery1');
-      }
-      if (urlOf('gallery2')) {
-        MEDIA.mallorca.gallery[3].url = urlOf('gallery2');
-        window._mallorcaGalleryAttributions[3] = attrOf('gallery2');
-      }
-      if (urlOf('gallery3')) {
-        MEDIA.mallorca.gallery[4].url = urlOf('gallery3');
-        window._mallorcaGalleryAttributions[4] = attrOf('gallery3');
-      }
-      // The "Discover Routes" grid card also used a Picsum placeholder —
-      // reuse the hero shot so the card thumbnail actually shows Mallorca.
-      if (urlOf('hero') && MEDIA.routes['mallorca-5-days']) {
-        MEDIA.routes['mallorca-5-days'].cardPhoto = urlOf('hero');
-        renderRoutes();
-        applyRouteFilters(); // renderRoutes() rebuilds the grid from scratch — reapply the current filter/page state
-      }
-      if (urlOf('palma_cathedral')) DAY1_STOPS[0].photo = urlOf('palma_cathedral');
-      if (urlOf('restaurant_illeta')) DAY1_STOPS[1].photo = urlOf('restaurant_illeta');
-      if (urlOf('valldemossa')) DAY2_STOPS[0].photo = urlOf('valldemossa');
-      if (urlOf('deia')) DAY5_STOPS[1].photo = urlOf('deia');
-      const beachPhotoKeys = ['beach_calo_del_moro', 'beach_salmunia', 'beach_cala_llombards', 'beach_platja_santanyi'];
-      BEACH_STOPS.forEach((stop, i) => {
-        const key = beachPhotoKeys[i];
-        if (key && urlOf(key)) stop.photo = urlOf(key);
-      });
-      // The two demo hotel cards use static placeholder divs (not a JS
-      // array), so swap their backgrounds directly.
-      const hotel1El = document.getElementById('mallorca-hotel1-photo');
-      if (hotel1El && urlOf('hotel')) {
-        hotel1El.style.background = `url('${urlOf('hotel')}') center/cover`;
-        hotel1El.classList.remove('media-placeholder');
-        hotel1El.innerHTML = '';
-      }
-      const hotel2El = document.getElementById('mallorca-hotel2-photo');
-      if (hotel2El && urlOf('hotel2')) {
-        hotel2El.style.background = `url('${urlOf('hotel2')}') center/cover`;
-        hotel2El.classList.remove('media-placeholder');
-        hotel2El.innerHTML = '';
-      }
-      // Re-render with the now-populated photo URLs
-      renderMallorcaHero();
-      renderAllStops();
-      if (typeof lucide !== 'undefined') lucide.createIcons();
-    } catch (e) {
-      console.error('loadMallorcaRealPhotos failed (non-fatal, keeping placeholders):', e);
-    }
-  }
   // ── "Add to Home Screen" prompt ───────────────────────────────────────
   let deferredInstallPrompt = null;
   const DISMISS_KEY = 'getway_install_dismissed_at';
@@ -5906,10 +5537,6 @@
     safeRun('updateSupportFabVisibility', updateSupportFabVisibility);
     safeRun('renderRoutes', renderRoutes);
     safeRun('applyRouteFilters', applyRouteFilters);
-    safeRun('renderMallorcaHero', renderMallorcaHero);
-    safeRun('renderRouteMedia', renderRouteMedia);
-    safeRun('renderAllStops', renderAllStops);
-    safeRun('initReviewsSection (mallorca)', function () { initReviewsSection('mallorca', MALLORCA_DEMO_VIDEO_ID); });
     safeRun('initAdminPanel', initAdminPanel);
     safeRun('initNavScroll', initNavScroll);
     safeRun('renderRankings (initial)', function () { renderRankings(); });
@@ -5925,9 +5552,7 @@
     safeRun('handleSharedRouteParam', handleSharedRouteParam);
     safeRun('handleSharedBuildTripParam', handleSharedBuildTripParam);
     safeRun('handleBuildTripHash', handleBuildTripHash);
-    safeRun('wireMallorcaDemoHotelLinks', wireMallorcaDemoHotelLinks);
     safeRun('initSwipeGalleries', initSwipeGalleries);
-    loadMallorcaRealPhotos();
     loadRealRoutes();
     loadSiteSettings();
   });

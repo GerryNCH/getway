@@ -1872,81 +1872,6 @@ def health():
     return {"status": "ok", "version": "0.2.0"}
 
 
-# ── Static demo route photos ──────────────────────────────────────────────
-
-_MALLORCA_PHOTO_QUERIES = {
-    # Specific, vivid imagery terms rather than generic ones — this is a
-    # fixed demo for one destination, so unlike the general AI pipeline
-    # there's no need for queries that generalize across every city/island.
-    # These target the shots Mallorca is actually known for: turquoise
-    # coves, the cathedral's lake reflection, colorful old town streets.
-    "hero": "Mallorca turquoise coast aerial",
-    "gallery1": "Palma Cathedral reflection lake",
-    "gallery2": "Mallorca turquoise cove beach",
-    "gallery3": "Mallorca old town colorful street",
-    "gallery4": "Mallorca coastal cliffs sunset",
-    "palma_cathedral": "Palma Cathedral La Seu Mallorca",
-    "restaurant_illeta": "Mallorca seaside restaurant turquoise water",
-    "valldemossa": "Valldemossa Mallorca stone village",
-    "beach_calo_del_moro": "Cala del Moro Mallorca turquoise",
-    "beach_salmunia": "S'Almunia Mallorca beach turquoise",
-    "beach_cala_llombards": "Cala Llombards Mallorca turquoise",
-    "beach_platja_santanyi": "Platja de Santanyi Mallorca turquoise",
-    "deia": "Deia Mallorca village mountains",
-    "hotel": "luxury boutique hotel pool Mallorca",
-    "hotel2": "beachfront resort infinity pool Mallorca",
-}
-
-
-_mallorca_photos_cache: dict | None = None
-
-
-@app.get("/demo/mallorca-photos")
-def get_mallorca_demo_photos():
-    """
-    Real photos for the static homepage Mallorca demo route, fetched from
-    Unsplash server-side (keeps the API key off the client — this is a
-    plain GET the frontend can call directly). Replaces the old Lorem
-    Picsum placeholder images: Picsum's "seed" is just a random-photo seed,
-    not a content filter, so "mallorca-g1" never actually returned a photo
-    of Mallorca.
-
-    Cached in memory after the first call: this content is fixed (a demo
-    route, not a live search), so there's no reason to spend Unsplash's
-    50-requests/hour free-tier quota again for every single homepage visit
-    — that quota is needed for real AI-generated routes.
-    """
-    global _mallorca_photos_cache
-    if _mallorca_photos_cache is not None:
-        return _mallorca_photos_cache
-
-    result = {}
-    for key, query in _MALLORCA_PHOTO_QUERIES.items():
-        candidates = sorted(
-            _unsplash_candidates(query, per_page=10),
-            key=lambda r: r.get("likes", 0), reverse=True,
-        )
-        if candidates:
-            best = candidates[0]
-            _trigger_unsplash_download(best)
-            result[key] = {
-                "url": best.get("urls", {}).get("regular", ""),
-                "attribution": _attribution_from_candidate(best),
-            }
-        else:
-            result[key] = {"url": "", "attribution": None}
-
-    # Only cache a mostly-successful result. If Unsplash was rate-limited
-    # (or the key is unset) right after a restart, most/all entries come
-    # back "" — caching that would permanently serve blank photos until
-    # the next deploy. Leaving it uncached lets the next request retry.
-    found = sum(1 for v in result.values() if v.get("url"))
-    if found >= len(_MALLORCA_PHOTO_QUERIES) // 2:
-        _mallorca_photos_cache = result
-    else:
-        print(f"[Demo] Only found {found}/{len(_MALLORCA_PHOTO_QUERIES)} Mallorca photos — not caching, will retry next request")
-
-    return result
 
 
 # ── Rankings section photos (homepage "Most visited destinations") ────────
@@ -1971,10 +1896,9 @@ _ranking_photos_cache: dict | None = None
 def get_rankings_photos():
     """
     Real photos for the homepage Rankings section's fixed city list,
-    fetched from Unsplash server-side — same pattern as
-    /demo/mallorca-photos (keeps the API key off the client, cached in
-    memory after the first mostly-successful call since this is fixed
-    editorial content, not a live search).
+    fetched from Unsplash server-side (keeps the API key off the client,
+    cached in memory after the first mostly-successful call since this is
+    fixed editorial content, not a live search).
     """
     global _ranking_photos_cache
     if _ranking_photos_cache is not None:

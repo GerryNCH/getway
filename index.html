@@ -517,7 +517,7 @@
       <div class="flex-shrink-0 w-2"></div>
     </div>
     <div id="route-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-10 pb-16"></div>
-    <div id="route-search-empty" class="hidden text-center text-sm text-gray-400 py-10">No destinations match your search.</div>
+    <div id="route-search-empty" class="hidden text-center text-sm text-gray-400 py-10">No routes match these filters — try a different combination.</div>
     <div id="route-pagination" class="hidden items-center justify-center gap-1.5 pb-16"></div>
   </div>
   <!-- ── Final CTA ─────────────────────────────────────────────────── -->
@@ -1314,8 +1314,8 @@
      install banner is showing — visible otherwise. Desktop (md:) sizing is
      unchanged; this whole show/hide behavior is mobile-only since nothing
      collides with it at md: and up. -->
-<button id="support-chat-fab" onclick="toggleSupportChat()" class="btn-interactive fixed bottom-4 right-4 md:bottom-6 md:right-6 z-[150] w-12 h-12 md:w-14 md:h-14 rounded-full bg-[#8B5CF6] shadow-xl flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-200 md:opacity-100 md:pointer-events-auto">
-  <i data-lucide="message-circle" class="w-6 h-6 text-white"></i>
+<button id="support-chat-fab" onclick="toggleSupportChat()" aria-label="Contact us" title="Contact us" class="btn-interactive fixed bottom-4 right-4 md:bottom-6 md:right-6 z-[150] w-12 h-12 md:w-14 md:h-14 rounded-full bg-[#8B5CF6] shadow-xl flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-200 md:opacity-100 md:pointer-events-auto">
+  <i data-lucide="mail" class="w-6 h-6 text-white"></i>
 </button>
 <div id="support-chat-panel" class="hidden fixed bottom-20 right-4 md:bottom-24 md:right-6 z-[150] w-[320px] max-w-[calc(100vw-48px)] bg-white rounded-[22px] bento-card overflow-hidden">
   <div class="bg-[#8B5CF6] px-5 py-4 flex items-center justify-between">
@@ -2740,10 +2740,17 @@
     const rows = [...GLOBAL_TOURISM_RANKINGS.map((item) => ({ ...item, highlight: false })), { ...GLOBAL_TOURISM_VOLUME_HIGHLIGHT, rank: null, highlight: true }];
     list.innerHTML = rows.map((item, i) => {
       const seed = 'ranking-' + slugify(item.destination);
-      const routed = hasGetwayRoute(item.destination);
+      // Task 18 (Oct 23 bug sprint, phase 3): rows were purely decorative —
+      // "Has a route" looked clickable but did nothing. Reuse the exact
+      // same match findGetwayRouteForDestination() already does for the
+      // vibe-quiz result, and only make the row interactive (cursor,
+      // hover, click → openRouteCard) when there's a real route behind it.
+      const matchedRoute = findGetwayRouteForDestination(item.destination);
+      const routed = !!matchedRoute;
       const photo = RANKING_PHOTOS[item.key] ? RANKING_PHOTOS[item.key].url : '';
+      const clickAttr = routed ? ` onclick="openRouteCard('${matchedRoute.slug}')"` : '';
       return `
-      <div data-aos="fade-up" data-aos-delay="${i * 40}" class="bento-card bg-white rounded-[22px] p-4 md:p-5 flex items-center gap-4 ${item.highlight ? 'border border-[#C4B5FD]' : ''}">
+      <div data-aos="fade-up" data-aos-delay="${i * 40}"${clickAttr} class="bento-card bg-white rounded-[22px] p-4 md:p-5 flex items-center gap-4 ${item.highlight ? 'border border-[#C4B5FD]' : ''} ${routed ? 'btn-interactive cursor-pointer' : ''}">
         <div class="font-serif-display text-xl md:text-2xl text-gray-300 w-8 flex-shrink-0">${item.rank ? String(item.rank).padStart(2, '0') : '★'}</div>
         <div class="relative w-12 h-12 rounded-2xl flex-shrink-0 overflow-hidden" style="background:${gradientFor(seed)}">
           <img src="${photo}" alt="" class="absolute inset-0 w-full h-full object-cover" onerror="imgFallback(this,'map-pin','${seed}')">

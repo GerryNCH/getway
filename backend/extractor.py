@@ -557,3 +557,109 @@ def extract_frames(video_path: str, output_dir: str, n_frames: int = 8) -> list[
         )
 
     return frame_paths
+
+
+def extract_frames_scene_detect(video_path: str, output_dir: str, n_frames: int = 8) -> list[str]:
+    """
+    EXPERIMENTAL / diagnostic-only (Nov 2026 — item 7, "missed stops"
+    investigation). NOT used by the production generation pipeline —
+    only by the /admin/test-scene-detection diagnostic endpoint, which
+    runs this side-by-side against extract_frames() on the same video to
+    measure whether sampling actual scene cuts (instead of fixed time
+    intervals) catches locations that appear only briefly in fast-cut
+    compilation videos and fall between extract_frames()'s evenly-spaced
+    samples.
+
+    Same frame BUDGET as extract_frames() — the exact same
+    duration-scaled target (`min(40, round(duration/4))`), so if this
+    ever replaces the baseline, per-route AI cost is unchanged; only
+    WHICH moments get sampled changes.
+
+    Method (pure OpenCV, no new dependency): scans the video at a fine,
+    fixed granularity (~3 scan points/sec within the 3%–97% window,
+    capped at 400 scan points so this stays fast even on long videos),
+    scores each scan point by its grayscale pixel-difference from the
+    PREVIOUS scan point (a cheap, standard proxy for "how much the
+    picture just changed" — not true shot-boundary detection, but enough
+    to separate real cuts/pans from a static shot), then greedily keeps
+    the highest-scoring points first, skipping any candidate within
+    `duration / (2 * target)` seconds of one already kept — without this
+    spacing rule, one noisy burst (e.g. rapid flash-cut montage) could
+    claim the entire frame budget and starve the rest of the video.
+    """
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise RuntimeError(
+            f"OpenCV could not open the video file: {video_path}\n"
+            "Make sure the video downloaded correctly and is a valid mp4."
+        )
+
+    fps          = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    duration_sec = total_frames / fps
+
+    if duration_sec < 3:
+        cap.release()
+        raise RuntimeError("Video is too short to extract meaningful frames.")
+
+    target = max(n_frames, min(40, round(duration_sec / 4)))  # identical budget to extract_frames()
+
+    start_sec = duration_sec * 0.03
+    end_sec   = duration_sec * 0.97
+    span      = end_sec - start_sec
+
+    scan_count = min(400, max(target * 6, int(span * 3)))
+    scan_step  = span / max(scan_count - 1, 1)
+    scan_timestamps = [start_sec + i * scan_step for i in range(scan_count)]
+
+    scored: list[tuple[float, float]] = []  # (diff_score, timestamp)
+    prev_small = None
+    for ts in scan_timestamps:
+        cap.set(cv2.CAP_PROP_POS_MSEC, ts * 1000)
+        ret, frame = cap.read()
+        if not ret or frame is None:
+            continue
+        small = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (80, 45), interpolation=cv2.INTER_AREA)
+        if prev_small is not None:
+            score = float(cv2.mean(cv2.absdiff(small, prev_small))[0])
+            scored.append((score, ts))
+        prev_small = small
+
+    if not scored:
+        cap.release()
+        raise RuntimeError("Scene-detect scan produced no comparable frames.")
+
+    min_gap = span / max(2 * target, 1)
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+
+    chosen_timestamps: list[float] = []
+    for _score, ts in scored:
+        if all(abs(ts - c) >= min_gap for c in chosen_timestamps):
+            chosen_timestamps.append(ts)
+        if len(chosen_timestamps) >= target:
+            break
+    chosen_timestamps.sort()
+
+    frame_paths: list[str] = []
+    for i, ts in enumerate(chosen_timestamps):
+        cap.set(cv2.CAP_PROP_POS_MSEC, ts * 1000)
+        ret, frame = cap.read()
+        if not ret or frame is None:
+            continue
+        h, w = frame.shape[:2]
+        if w > 960:
+            scale = 960 / w
+            frame = cv2.resize(frame, (960, int(h * scale)), interpolation=cv2.INTER_AREA)
+        out_path = os.path.join(output_dir, f"scene_{i:02d}.jpg")
+        cv2.imwrite(out_path, frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        frame_paths.append(out_path)
+
+    cap.release()
+
+    if not frame_paths:
+        raise RuntimeError(
+            "OpenCV extracted zero scene-detect frames. The video may be "
+            "corrupted or in a format cv2 cannot decode on this system."
+        )
+
+    return frame_paths

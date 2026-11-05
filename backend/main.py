@@ -50,13 +50,14 @@ from extractor import (
     is_slideshow, fetch_slideshow_post, download_slideshow_images,
     fetch_top_comments, is_instagram_url, fetch_instagram_post,
     download_instagram_video, resolve_canonical_url, is_supported_platform,
+    extract_frames_scene_detect,
 )
 from troll_filter import check_is_travel
 from ai_analyzer import (
     analyse_frames, generate_vibe_match, generate_travel_tips,
     generate_trip_summary, generate_month_calendar, generate_grounded_descriptions,
     _booking_affiliate_url, _expedia_affiliate_url, _hotel_checkin_checkout_for_nights,
-    dedupe_landmark_stops,
+    dedupe_landmark_stops, _getyourguide_affiliate_url,
 )
 from quality_check import ai_quality_check
 # Module handle alongside the named imports below purely so
@@ -386,8 +387,16 @@ async def extract(req: ExtractRequest):
                 print(f"[Comments] Fetch failed (non-fatal): {e}")
 
         # Claude multimodal analysis
+        # Item 7 (Nov 2026): pass the video's own title/description along
+        # as a free, zero-extra-cost identification aid — see
+        # analyse_frames' `caption` docstring. Free because meta was
+        # already fetched above (Layer 3) for the troll filter; this is
+        # just reusing it.
+        caption_text = f"{meta.get('title', '')}\n{meta.get('description', '')}".strip()
         try:
-            itinerary, ai_price_category, ai_tags, ai_cost_usd = analyse_frames(frames, comments=raw_comments)
+            itinerary, ai_price_category, ai_tags, ai_cost_usd = analyse_frames(
+                frames, comments=raw_comments, caption=caption_text
+            )
             itinerary.generation_cost_usd = troll_cost_usd + ai_cost_usd
             print(f"[Cost] ${itinerary.generation_cost_usd:.4f} "
                   f"(troll ${troll_cost_usd:.4f} + analysis ${ai_cost_usd:.4f})")
@@ -1232,6 +1241,95 @@ def places_diagnostic():
     return result
 
 
+@app.post("/admin/test-scene-detection", dependencies=[Depends(verify_admin_secret)])
+def admin_test_scene_detection(url: str, max_frames: int = 8):
+    """
+    DIAGNOSTIC ONLY (Nov 2026 — item 7, "missed stops" investigation).
+    Never called by the normal "Paste a video" generation flow, and
+    never saves a route (no database write) — this exists purely to get
+    Gerry the exact before/after numbers she asked for before approving
+    any permanent pipeline change.
+
+    Downloads ONE video and runs Claude's multimodal analysis TWICE on
+    it: once on extract_frames()'s current evenly-spaced frames
+    (baseline — what production uses today), once on the new
+    extract_frames_scene_detect()'s biggest-visual-change frames (test).
+    Both use the exact same frame budget, so any extra cost reported
+    here is from running the analysis twice for comparison, not from the
+    scene-detect method itself — if it's ever adopted, per-route
+    production cost stays the same as today.
+
+    Only supports plain TikTok/YouTube-style URLs that download_video()
+    can fetch directly via yt-dlp — not Instagram or slideshow posts
+    (those go through Apify instead; out of scope for this test).
+    """
+    if is_instagram_url(url) or is_slideshow(url):
+        raise HTTPException(
+            400,
+            "This diagnostic only supports plain video URLs (TikTok/YouTube-style) for now — "
+            "not Instagram or slideshow posts.",
+        )
+
+    try:
+        meta = fetch_metadata(url)
+    except RuntimeError as e:
+        raise HTTPException(422, f"Could not fetch video info: {e}")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            video_path = download_video(url, tmp)
+        except RuntimeError as e:
+            raise HTTPException(422, f"Video download failed: {e}")
+
+        try:
+            baseline_frames = extract_frames(video_path, tmp, max_frames)
+        except RuntimeError as e:
+            raise HTTPException(500, f"Baseline frame extraction failed: {e}")
+
+        try:
+            scene_frames = extract_frames_scene_detect(video_path, tmp, max_frames)
+        except RuntimeError as e:
+            raise HTTPException(500, f"Scene-detect frame extraction failed: {e}")
+
+        caption_text = f"{meta.get('title', '')}\n{meta.get('description', '')}".strip()
+
+        try:
+            baseline_itin, _bp, _bt, baseline_cost = analyse_frames(baseline_frames, caption=caption_text)
+        except ValueError as e:
+            raise HTTPException(502, f"Baseline AI analysis failed: {e}")
+
+        try:
+            scene_itin, _sp, _st, scene_cost = analyse_frames(scene_frames, caption=caption_text)
+        except ValueError as e:
+            raise HTTPException(502, f"Scene-detect AI analysis failed: {e}")
+
+    def _stop_names(itin) -> list[str]:
+        return [stop.name for day in itin.days for stop in day.stops]
+
+    baseline_stops = _stop_names(baseline_itin)
+    scene_stops = _stop_names(scene_itin)
+
+    return {
+        "status": "ok",
+        "video_title": (meta.get("title") or "")[:120],
+        "baseline": {
+            "frame_count": len(baseline_frames),
+            "stop_count": len(baseline_stops),
+            "stop_names": baseline_stops,
+            "cost_usd": round(baseline_cost, 4),
+        },
+        "scene_detect": {
+            "frame_count": len(scene_frames),
+            "stop_count": len(scene_stops),
+            "stop_names": scene_stops,
+            "cost_usd": round(scene_cost, 4),
+        },
+        "stops_only_in_scene_detect": [n for n in scene_stops if n not in baseline_stops],
+        "stops_only_in_baseline": [n for n in baseline_stops if n not in scene_stops],
+        "test_run_total_cost_usd": round(baseline_cost + scene_cost, 4),
+    }
+
+
 @app.post("/track/view/{video_id}")
 def track_view(video_id: str):
     """
@@ -1259,6 +1357,44 @@ def track_affiliate_click(video_id: str, partner: str = "unknown"):
     """
     database.increment_affiliate_click_count(video_id)
     database.increment_partner_click_count(partner)
+    return {"status": "ok"}
+
+
+@app.post("/track/home-cta")
+def track_home_cta(button_id: str = "unknown"):
+    """
+    Public, unauthenticated — bumps a homepage CTA button's click count by
+    1 (e.g. button_id="paste_video" or "pick_city", the two hero buttons
+    added in the Nov 2026 homepage redesign). Not tied to a video_id since
+    these are clicked before any route exists. This is the homepage's
+    entire "analytics": a cookie-free, no-PII counter, same family as
+    /track/affiliate-click above — never a third-party tracking tool, so
+    it doesn't trigger the Privacy Policy/consent-banner obligations a
+    real analytics SDK would. See database.increment_home_cta_click_count
+    and the admin Statistics tab (get_stats()'s "home_cta_clicks").
+    """
+    database.increment_home_cta_click_count(button_id)
+    return {"status": "ok"}
+
+
+@app.post("/track/homepage-visit")
+def track_homepage_visit(utm_source: str = "", utm_content: str = "", route: str = ""):
+    """
+    Public, unauthenticated — bumps the counter for one (utm_source,
+    utm_content, route) combo by 1. Called once per page load from
+    index.html's bootstrap (trackHomepageVisit()), and ONLY when the
+    visitor's URL actually carries at least one of these three params —
+    e.g. arriving via a TikTok/Instagram bio or caption link to GetWay.
+    A plain visit with none of them present never reaches this endpoint
+    at all. No PII, no IP, no per-visit log — just a counter per combo.
+    See database.increment_homepage_visit_count and the admin Statistics
+    tab's "Visits by source" / "Visits by post" cards.
+    """
+    if not (utm_source or utm_content or route):
+        return {"status": "skipped", "reason": "no utm/route params present"}
+    database.increment_homepage_visit_count(
+        utm_source or "(none)", utm_content or "(none)", route or "(none)"
+    )
     return {"status": "ok"}
 
 
@@ -1548,6 +1684,60 @@ def admin_backfill_coordinates(force: bool = False):
         "stops_unmatched": len(unmatched),
         "unmatched_stop_names": unmatched,
         "approx_cost_usd": round(0.032 * (stops_filled + len(unmatched)), 4),
+    }
+
+
+@app.post("/admin/backfill-activity-booking-urls", dependencies=[Depends(verify_admin_secret)])
+def admin_backfill_activity_booking_urls():
+    """
+    One-time pass (Nov 2026) rebuilding booking_url for every existing
+    "activity" stop with the CURRENT GetYourGuide query format (stop name
+    + city — see ai_analyzer._attach_booking_urls's activity/sight
+    branch). Routes generated before that fix still carry the old,
+    near-useless generic "{city} tours activities" search for any
+    activity where is_specific_name was False (e.g. "ATV Ride
+    Experience" used to get a bare "Bali tours activities" link instead
+    of "ATV Ride Experience Bali").
+
+    Pure string rebuild — no Google Places calls, so this is free and
+    carries no cost estimate. Idempotent: a stop whose booking_url is
+    already correct is left untouched (compared before writing), so
+    it's safe to re-run after a future query-format change too.
+    """
+    routes = database.list_by_status("approved") + database.list_by_status("pending")
+    routes_updated = 0
+    stops_updated = 0
+
+    for row in routes:
+        video_id = row["video_id"]
+        itinerary = database.get_itinerary(video_id)
+        if not itinerary:
+            continue
+        city = destination_search_city(itinerary.destination)
+        route_changed = False
+
+        for day in itinerary.days:
+            for stop in day.stops:
+                if stop.category != "activity":
+                    continue
+                name = (stop.name or "").strip()
+                if not name:
+                    continue
+                new_url = _getyourguide_affiliate_url(f"{name} {city}".strip())
+                if new_url != (stop.booking_url or ""):
+                    stop.booking_url = new_url
+                    stops_updated += 1
+                    route_changed = True
+
+        if route_changed:
+            database.save_days(video_id, itinerary.days)
+            routes_updated += 1
+
+    return {
+        "status": "ok",
+        "routes_checked": len(routes),
+        "routes_updated": routes_updated,
+        "stops_updated": stops_updated,
     }
 
 

@@ -607,6 +607,15 @@ def _facts_from_place(place: dict) -> dict:
     }
 
 
+def _strip_parenthetical(name: str) -> str:
+    """
+    Strips a trailing "(...)" annotation from a place name, e.g.
+    "Zócalo (Plaza de la Constitución)" -> "Zócalo". Used as a one-time
+    retry in _get_place_photo_location_and_facts below.
+    """
+    return re.sub(r"\s*\([^)]*\)\s*$", "", name).strip()
+
+
 def _get_place_photo_location_and_facts(query: str, max_width: int = 800) -> tuple[str, tuple[float, float] | None, dict]:
     """
     Same name-matching logic as _get_place_photo_url, but also returns the
@@ -617,7 +626,34 @@ def _get_place_photo_location_and_facts(query: str, max_width: int = 800) -> tup
     _empty_facts()) when nothing confidently matches; returns ("", location,
     facts) when a confident name match has coordinates/facts but no usable
     photo — a stop can still get a map pin and real facts without a photo.
+
+    Fallback (Nov 2026 — Zócalo, Mexico City): when the stop's name has a
+    parenthetical annotation like "Zócalo (Plaza de la Constitución)" and
+    the full form finds no confident match, retries ONCE with the
+    annotation stripped. Google's Text Search can fail to resolve the
+    combined form even though the bare name alone matches cleanly — this
+    costs one extra Places call, only ever on an otherwise-failed lookup.
     """
+    result = _get_place_photo_location_and_facts_core(query, max_width)
+    _photo_url, location, facts = result
+    if location is not None or any(facts.values()):
+        return result  # already got a usable match — no need to retry
+
+    query_core, _, rest = query.partition(",")
+    if "(" not in query_core:
+        return result  # nothing to strip, retrying would just repeat the same search
+
+    stripped_core = _strip_parenthetical(query_core)
+    if not stripped_core or stripped_core == query_core:
+        return result
+
+    retry_query = f"{stripped_core},{rest}" if rest else stripped_core
+    print(f"[Places] No match for '{query}' — retrying without parenthetical as '{retry_query}'")
+    return _get_place_photo_location_and_facts_core(retry_query, max_width)
+
+
+def _get_place_photo_location_and_facts_core(query: str, max_width: int = 800) -> tuple[str, tuple[float, float] | None, dict]:
+    """Original single-attempt body of _get_place_photo_location_and_facts — see that function's docstring."""
     places = _search_places(query, max_results=3)
     if not places:
         print(f"[Places] No places found for '{query}'")

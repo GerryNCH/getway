@@ -315,6 +315,25 @@ function renderStats(stats) {
       return `<li class="flex justify-between py-2.5 border-b border-gray-100 text-sm"><span>${name}${note}</span><span class="font-semibold">${p.clicks}</span></li>`;
     })
     .join("");
+  // Nov 2026 homepage redesign: the two hero buttons (Paste a video / Pick
+  // a city). This is the whole "analytics" feature for that task — a
+  // cookie-free click counter, not a third-party tracking tool.
+  const HOME_CTA_DISPLAY_NAMES = { paste_video: "Paste a video", pick_city: "Pick a city" };
+  const homeCtaRows = (stats.home_cta_clicks || [])
+    .map((c) => {
+      const name = HOME_CTA_DISPLAY_NAMES[c.button_id] || escapeHtml(c.button_id);
+      return `<li class="flex justify-between py-2.5 border-b border-gray-100 text-sm"><span>${name}</span><span class="font-semibold">${c.clicks}</span></li>`;
+    })
+    .join("");
+  // Nov 2026 homepage redesign, decision 5: visits by utm_source and by
+  // utm_content ("by post") — see /track/homepage-visit and
+  // database.get_stats()'s visits_by_source / visits_by_content.
+  const visitsBySourceRows = (stats.visits_by_source || [])
+    .map((s) => `<li class="flex justify-between py-2.5 border-b border-gray-100 text-sm"><span>${escapeHtml(s.source)}</span><span class="font-semibold">${s.visits}</span></li>`)
+    .join("");
+  const visitsByContentRows = (stats.visits_by_content || [])
+    .map((c) => `<li class="flex justify-between py-2.5 border-b border-gray-100 text-sm"><span>${escapeHtml(c.content)}</span><span class="font-semibold">${c.visits}</span></li>`)
+    .join("");
   content.innerHTML = `
     <div class="flex items-center justify-end mb-4">
       <button id="export-routes-btn" class="pill-btn pill-gray btn-interactive text-xs">${saveIconSvg()}<span>Export all routes</span></button>
@@ -350,6 +369,23 @@ function renderStats(stats) {
     <div class="bento-card p-6 mb-6">
       <div class="font-serif-display text-lg mb-3">Affiliate clicks by partner</div>
       <ul>${partnerRows || '<li class="text-gray-400 text-sm">No data yet</li>'}</ul>
+    </div>
+    <div class="bento-card p-6 mb-6">
+      <div class="font-serif-display text-lg mb-3">Homepage CTA clicks</div>
+      <p class="text-xs text-gray-400 leading-relaxed mb-3">"Paste a video" vs "Pick a city" — the two hero buttons. Counts a click, not a completed route.</p>
+      <ul>${homeCtaRows || '<li class="text-gray-400 text-sm">No data yet</li>'}</ul>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+      <div class="bento-card p-6">
+        <div class="font-serif-display text-lg mb-3">Visits by source</div>
+        <p class="text-xs text-gray-400 leading-relaxed mb-3">From ?utm_source= on the link. Only visits that arrived with a tracked link are counted here — a plain homepage visit isn't.</p>
+        <ul>${visitsBySourceRows || '<li class="text-gray-400 text-sm">No data yet</li>'}</ul>
+      </div>
+      <div class="bento-card p-6">
+        <div class="font-serif-display text-lg mb-3">Visits by post</div>
+        <p class="text-xs text-gray-400 leading-relaxed mb-3">From ?utm_content= on the link — one value per TikTok/Instagram post.</p>
+        <ul>${visitsByContentRows || '<li class="text-gray-400 text-sm">No data yet</li>'}</ul>
+      </div>
     </div>
     <div class="bento-card p-6">
       <div class="font-serif-display text-lg mb-3">Top destinations</div>

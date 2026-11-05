@@ -283,7 +283,7 @@
       <div class="text-center mb-6">
         <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">AI-Powered</div>
         <div class="font-serif-display text-2xl md:text-3xl mb-2">AI Magic Box</div>
-        <div class="text-xs md:text-sm text-gray-600">Turn any TikTok or Instagram video into a ready-to-book route in 60 seconds.</div>
+        <div class="text-xs md:text-sm text-gray-600">Turn any TikTok or Instagram video into a ready-to-book route — or pick a city and build your own.</div>
       </div>
       <div class="flex items-center gap-2 sm:gap-2.5 mb-3.5">
         <div class="flex-1 min-w-0 flex items-center gap-2 sm:gap-2.5 h-[52px] px-3 sm:px-4 bg-white/70 border border-gray-200 rounded-2xl">
@@ -292,10 +292,21 @@
         </div>
         <button type="button" onclick="pasteFromClipboard('home-tiktok-url')" class="btn-interactive flex-shrink-0 h-[52px] w-[52px] sm:w-auto sm:px-4 rounded-2xl bg-[#8B5CF6]/10 text-[#6D28D9] text-xs font-medium flex items-center justify-center gap-1 border border-[#8B5CF6]/15"><i data-lucide="clipboard" class="w-3.5 h-3.5"></i><span class="hidden sm:inline">Paste</span></button>
       </div>
-      <button onclick="(function(){ var v=document.getElementById('home-tiktok-url').value.trim(); if(v){document.getElementById('tiktok-url').value=v;} showScreen('magicbox'); if(v){startMagicBox();} })()" class="btn-interactive w-full h-[50px] flex items-center justify-center gap-2 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">
-        Build my route <i data-lucide="rocket" class="w-4 h-4"></i>
-      </button>
-      <button type="button" onclick="startBuildTrip()" class="w-full text-center text-xs text-gray-400 hover:text-gray-600 mt-3">Or build your own trip →</button>
+      <!-- Nov 2026 homepage redesign: two co-equal buttons replacing the
+           old single primary "Build my route" button + subordinate text
+           link ("Or build your own trip →"). "Paste a video" submits
+           whatever's in the input above (identical logic to the old
+           button); "Pick a city" is the DIY path (startBuildTrip()),
+           promoted to equal visual weight. Both call trackHomeCta() —
+           see that function above for what "analytics" means here. -->
+      <div class="grid grid-cols-2 gap-2.5 sm:gap-3">
+        <button type="button" onclick="trackHomeCta('paste_video'); (function(){ var v=document.getElementById('home-tiktok-url').value.trim(); if(v){document.getElementById('tiktok-url').value=v;} showScreen('magicbox'); if(v){startMagicBox();} })();" class="btn-interactive h-[50px] flex items-center justify-center gap-1.5 sm:gap-2 bg-[#8B5CF6] text-white text-xs sm:text-sm font-medium rounded-2xl px-2">
+          <i data-lucide="music-2" class="w-4 h-4 flex-shrink-0"></i><span class="truncate">Paste a video</span>
+        </button>
+        <button type="button" onclick="trackHomeCta('pick_city'); startBuildTrip();" class="btn-interactive h-[50px] flex items-center justify-center gap-1.5 sm:gap-2 bg-white border border-[#8B5CF6]/25 text-[#6D28D9] text-xs sm:text-sm font-medium rounded-2xl px-2">
+          <i data-lucide="map-pin" class="w-4 h-4 flex-shrink-0"></i><span class="truncate">Pick a city</span>
+        </button>
+      </div>
     </div>
   </div>
   <!-- Task 19 fix (Nov 2026): this spacer plus every section's own py-14
@@ -379,59 +390,21 @@
       </div>
     </div>
   </div>
-  <div class="h-4 md:h-6"></div>
-  <!-- ── Build your own trip — quiet secondary path for someone who'd
-       rather pick everything themselves instead of taking the quiz or
-       pasting a video link. Same bento-card two-column layout as the vibe
-       quiz teaser right above it, for visual consistency. ────────────── -->
-  <div class="max-w-6xl mx-auto px-6 md:px-14 mb-4 md:mb-8">
-    <div data-aos="fade-up" class="bento-card bg-white rounded-[32px] p-6 md:p-12 relative">
-      <div class="grid md:grid-cols-2 gap-8 md:gap-14 items-center">
-        <div>
-          <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-3">Do it yourself</div>
-          <div class="font-serif-display text-3xl md:text-4xl mb-3">Build your own trip</div>
-          <div class="text-sm text-gray-600 leading-relaxed mb-6 max-w-md">Want to choose everything yourself? No problem — pick your destination, your budget, and exactly what you want to see, and we'll turn it into a real route.</div>
-          <button onclick="startBuildTrip()" class="btn-interactive inline-flex items-center gap-2 h-[46px] px-6 bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">Create your route <i data-lucide="arrow-right" class="w-4 h-4"></i></button>
-        </div>
-        <div class="bg-[#F8F6FF] rounded-[24px] p-6 md:p-8">
-          <div class="grid grid-cols-3 gap-2.5">
-            <div class="bg-white rounded-2xl px-2 py-4 text-center border border-gray-100"><i data-lucide="map-pin" class="w-5 h-5 mx-auto mb-1.5 text-[#7C3AED]"></i><span class="text-xs font-medium block leading-snug">Destination</span></div>
-            <div class="bg-white rounded-2xl px-2 py-4 text-center border border-gray-100"><i data-lucide="list-checks" class="w-5 h-5 mx-auto mb-1.5 text-[#7C3AED]"></i><span class="text-xs font-medium block leading-snug">Your picks</span></div>
-            <div class="bg-white rounded-2xl px-2 py-4 text-center border border-gray-100"><i data-lucide="route" class="w-5 h-5 mx-auto mb-1.5 text-[#7C3AED]"></i><span class="text-xs font-medium block leading-snug">Your route</span></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
+  <!-- Task (Nov 2026, homepage redesign, "fewer sections"): the standalone
+       "Build your own trip" card that used to live here was dropped —
+       it was a second, full-width restatement of the exact same path
+       ("Pick a city", startBuildTrip()) now promoted to equal weight in
+       the hero card above. One fewer section, no path lost — Build your
+       trip is still reachable from the hero, the nav, the mobile menu,
+       and the final CTA. -->
   <div class="h-8 md:h-12"></div>
-  <!-- ── Rankings: Top city destinations worldwide ──────────────────────
-       Real, sourced tourism data (Euromonitor International's Top 100 City
-       Destinations Index — a composite attractiveness/competitiveness
-       index, not a pure visitor-count ranking, hence the title; the
-       Bangkok highlight below is the one entry that IS pure arrival
-       volume), not GetWay's own
-       Magic Box usage. Published annually each December for the prior
-       year — there is no publicly available global "most visited
-       destinations" dataset at monthly granularity, so this section shows
-       the Year ranking only, with a visible source citation, rather than
-       a fake monthly tab. Update GLOBAL_TOURISM_RANKINGS below each time
-       Euromonitor (or another cited source) publishes a new edition.
-       Placed BEFORE the routes grid — real-world tourism popularity, not
-       just what's already on GetWay, is the more credible opening claim. -->
-  <div id="rankings-section" class="max-w-6xl mx-auto px-6 md:px-14 py-9 md:py-20">
-    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
-      <div data-aos="fade-up">
-        <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">Rankings</div>
-        <div class="flex items-center gap-2.5 flex-wrap">
-          <div class="font-serif-display text-3xl md:text-4xl">Top city destinations worldwide</div>
-          <span class="text-[10px] font-medium text-[#6D28D9] bg-[#F1EEFF] px-2.5 py-1 rounded-full whitespace-nowrap">Latest edition · Dec 2025</span>
-        </div>
-      </div>
-      <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 max-w-xs md:text-right">Euromonitor's top-ranked city destinations worldwide, from the latest published index — not just what's popular on GetWay. Some already have a route here; some are still on the list to build.</div>
-    </div>
-    <div id="rankings-list" class="space-y-3"></div>
-    <div data-aos="fade-up" class="text-[11px] text-gray-400 mt-5">Source: <a href="https://www.euromonitor.com/article/top-100-city-destinations-index-2025-driving-growth-and-innovation" target="_blank" rel="noopener" class="underline hover:text-gray-600">Euromonitor International, Top 100 City Destinations Index</a> — 2025 edition, published December 2025. Updated here annually when a new edition is published.</div>
-  </div>
+  <!-- Task (Nov 2026, homepage redesign, decision 4): "Top city
+       destinations worldwide" (Rankings) moved OFF the homepage into its
+       own screen (#screen-rankings, below the legal pages) — still
+       reachable via the nav's "Most visited" link (desktop + mobile),
+       which now opens that screen directly instead of scrolling here.
+       #rankings-list / renderRankings() are unchanged; they just render
+       into the new screen's markup instead of this spot. -->
   <!-- ── Best places to visit this month — AI-generated (real seasonal
        reasons: festivals, weather windows, wildlife — see
        ai_analyzer.generate_month_calendar, which generates all 12 months
@@ -905,6 +878,30 @@
 </div>
 </div>
 <!-- ====================================================================== -->
+<!-- SCREEN: RANKINGS (Top city destinations worldwide)                    -->
+<!-- Moved off the homepage (Nov 2026 homepage redesign, decision 4) into  -->
+<!-- its own screen. Reached from the nav's "Most visited" link (desktop + -->
+<!-- mobile) via showScreen('rankings'). Content/data unchanged — same    -->
+<!-- #rankings-list, same renderRankings(), same GLOBAL_TOURISM_RANKINGS. -->
+<!-- ====================================================================== -->
+<div id="screen-rankings" class="screen">
+<div class="max-w-6xl mx-auto px-6 md:px-14 py-10 md:py-16">
+  <button onclick="showScreen('home')" class="font-serif-display text-base md:text-xl mb-10 inline-block">GetWay<span class="text-[#8B5CF6]">.</span></button>
+  <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
+    <div>
+      <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">Rankings</div>
+      <div class="flex items-center gap-2.5 flex-wrap">
+        <div class="font-serif-display text-3xl md:text-4xl">Top city destinations worldwide</div>
+        <span class="text-[10px] font-medium text-[#6D28D9] bg-[#F1EEFF] px-2.5 py-1 rounded-full whitespace-nowrap">Latest edition · Dec 2025</span>
+      </div>
+    </div>
+    <div class="text-xs md:text-sm text-gray-500 max-w-xs md:text-right">Euromonitor's top-ranked city destinations worldwide, from the latest published index — not just what's popular on GetWay. Some already have a route here; some are still on the list to build.</div>
+  </div>
+  <div id="rankings-list" class="space-y-3"></div>
+  <div class="text-[11px] text-gray-400 mt-5">Source: <a href="https://www.euromonitor.com/article/top-100-city-destinations-index-2025-driving-growth-and-innovation" target="_blank" rel="noopener" class="underline hover:text-gray-600">Euromonitor International, Top 100 City Destinations Index</a> — 2025 edition, published December 2025. Updated here annually when a new edition is published.</div>
+</div>
+</div>
+<!-- ====================================================================== -->
 <!-- SCREEN 4 & 5: LEGAL PAGES                                              -->
 <!-- ====================================================================== -->
 <div id="screen-privacy" class="screen">
@@ -993,9 +990,11 @@
 </div>
 <!-- ====================================================================== -->
 <!-- SCREEN: BUILD YOUR OWN TRIP (builder flow)                             -->
-<!-- Two real entry points: the "Or build your own trip →" link under the  -->
-<!-- AI Magic Box on the homepage, and the vibe quiz's "no route for this   -->
-<!-- destination yet" result. #build-trip in the URL (handleBuildTripHash() -->
+<!-- Two real entry points: the "Pick a city" button in the AI Magic Box   -->
+<!-- on the homepage (was a small "Or build your own trip →" text link     -->
+<!-- until the Nov 2026 homepage redesign, now promoted to equal weight),  -->
+<!-- and the vibe quiz's "no route for this destination yet" result.       -->
+<!-- #build-trip in the URL (handleBuildTripHash() -->
 <!-- below) still works too as a harmless direct deep link.                 -->
 <!-- Step 6's actual preview reuses screen-ai-route's own rendering code    -->
 <!-- (renderAiRoute) — this screen's own #build-trip-step6 is only a brief  -->
@@ -1967,8 +1966,11 @@
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
   function scrollToRankings() {
-    const el = document.getElementById('rankings-section');
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Nov 2026 homepage redesign (decision 4): Rankings moved off the
+    // homepage into its own screen — this now opens that screen instead
+    // of scrolling, kept under its original name so the nav/mobile-menu
+    // onclick handlers didn't need to change.
+    showScreen('rankings');
   }
   function renderHeroMedia(slidesOverride) {
     const layer = document.getElementById('hero-media-layer');
@@ -3283,6 +3285,35 @@
   function trackAffiliateClick(videoId, partner) {
     if (!videoId) return;
     fetch(`${BACKEND_URL}/track/affiliate-click/${encodeURIComponent(videoId)}?partner=${encodeURIComponent(partner || 'unknown')}`, { method: 'POST' }).catch(() => {});
+  }
+  // Nov 2026 homepage redesign: the two hero buttons ("Paste a video" /
+  // "Pick a city"). Deliberately the SAME cookie-free, no-PII counter
+  // pattern as trackAffiliateClick above, fired on click, fire-and-forget
+  // — not a third-party analytics tool, so it doesn't touch the Privacy
+  // Policy's "no cookies / no analytics tool" claim (Section 4). Visible
+  // in the admin Statistics tab ("Homepage CTA clicks").
+  function trackHomeCta(buttonId) {
+    fetch(`${BACKEND_URL}/track/home-cta?button_id=${encodeURIComponent(buttonId || 'unknown')}`, { method: 'POST' }).catch(() => {});
+  }
+  // Nov 2026 homepage redesign (decision 5): records ONE pageview
+  // whenever a visitor arrives via a link carrying utm_source,
+  // utm_content and/or route — e.g. a TikTok/Instagram bio or caption
+  // link to GetWay. Same cookie-free, no-PII, no-IP pattern as
+  // trackHomeCta above: just these three short strings read straight
+  // off the URL's own query params. A plain visit with none of these
+  // present writes nothing — see admin Statistics tab's "Visits by
+  // source" / "Visits by post" cards for the result.
+  function trackHomepageVisit() {
+    const params = new URLSearchParams(location.search);
+    const utmSource = params.get('utm_source') || '';
+    const utmContent = params.get('utm_content') || '';
+    const route = params.get('route') || '';
+    if (!utmSource && !utmContent && !route) return;
+    const q = new URLSearchParams();
+    if (utmSource) q.set('utm_source', utmSource);
+    if (utmContent) q.set('utm_content', utmContent);
+    if (route) q.set('route', route);
+    fetch(`${BACKEND_URL}/track/homepage-visit?${q.toString()}`, { method: 'POST' }).catch(() => {});
   }
   // Task 8: facts (place_type, address, area_label, opening hours,
   // rating, price_level) come ONLY from Google Places (see
@@ -4719,8 +4750,10 @@
   }
   // ======================================================================
   // BUILD YOUR OWN TRIP — builder flow.
-  // Two real entry points: the "Or build your own trip →" link under the
-  // AI Magic Box on the homepage (blank start), and the vibe quiz's
+  // Two real entry points: the "Pick a city" button in the AI Magic Box
+  // on the homepage (blank start — was a small "Or build your own trip →"
+  // text link until the Nov 2026 homepage redesign, now a co-equal button
+  // next to "Paste a video"), and the vibe quiz's
   // "no route for this destination yet" result (startBuildTrip(destination)
   // pre-fills step1 with the matched destination). #build-trip in the URL
   // still works too (see handleBuildTripHash() below) — harmless to keep
@@ -5575,6 +5608,7 @@
     safeRun('AOS.init', function () {
       if (typeof AOS !== 'undefined') { AOS.init({ duration: 800, once: true }); }
     });
+    safeRun('trackHomepageVisit', trackHomepageVisit);
     safeRun('handleSharedRouteParam', handleSharedRouteParam);
     safeRun('handleSharedBuildTripParam', handleSharedBuildTripParam);
     safeRun('handleBuildTripHash', handleBuildTripHash);

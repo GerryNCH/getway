@@ -477,7 +477,7 @@ def dedupe_landmark_stops(itinerary: Itinerary) -> int:
     return dropped
 
 
-def analyse_frames(frame_paths: list[str], comments: list[dict] | None = None) -> tuple[Itinerary, str, list[str], float]:
+def analyse_frames(frame_paths: list[str], comments: list[dict] | None = None, caption: str = "") -> tuple[Itinerary, str, list[str], float]:
     """
     Sends all frames to Claude Sonnet and parses the JSON itinerary response.
     Raises ValueError if the response cannot be parsed.
@@ -489,6 +489,17 @@ def analyse_frames(frame_paths: list[str], comments: list[dict] | None = None) -
     never see since it only looks at frames. Only the comments themselves
     decide this — the AI is told explicitly not to guess a name it can't
     verify from either frames or comments.
+
+    `caption` (optional, Nov 2026 — item 7, "missed stops"): the video's
+    own title/description text (meta["title"] + meta["description"] from
+    extractor.fetch_metadata/fetch_instagram_post), passed in for the
+    same reason as comments — the AI currently only sees sampled frames,
+    so a place mentioned by name in the caption but shown only briefly
+    (or in a frame that fell between samples) is otherwise invisible to
+    it. Same guardrail as comments: the caption only helps NAME/CONFIRM
+    a place that's genuinely shown or implied — it's never license to
+    add a stop that isn't actually in the video, and never raises
+    is_specific_name on its own.
 
     Returns (itinerary, price_category, tags, cost_usd) — price_category
     and tags aren't part of the Itinerary content model (they're
@@ -502,6 +513,21 @@ def analyse_frames(frame_paths: list[str], comments: list[dict] | None = None) -
         f"Here are {len(frame_paths)} evenly-spaced frames from a travel video. "
         "Please identify every travel location and return the structured JSON itinerary."
     )
+
+    caption_text = (caption or "").strip()
+    if caption_text:
+        intro_text += (
+            "\n\nHere is the video's own title/caption text, exactly as "
+            "posted. It can help you NAME or CONFIRM a place that's shown "
+            "or implied in the frames, and can point you to a place the "
+            "frames only glimpse briefly. Do NOT add a stop that isn't "
+            "actually shown in the video just because it's mentioned here, "
+            "and do not treat a caption mention alone as confirmation "
+            "strong enough to set is_specific_name: true — that still "
+            "requires the name to be legible on-screen or confirmed in "
+            "the comments.\n\n"
+            f"{caption_text[:1500]}"
+        )
 
     # Comments are genuinely useful for exactly one thing: naming a place
     # the frames alone don't confirm. Keep it short (top 10 by likes) and

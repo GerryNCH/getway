@@ -178,6 +178,34 @@ def init_db() -> None:
                 click_count  INTEGER NOT NULL DEFAULT 0
             );
 
+            -- Homepage CTA clicks (Nov 2026 homepage redesign: the two hero
+            -- buttons "Paste a video" / "Pick a city"). Same cookie-free,
+            -- no-PII counter pattern as affiliate_partner_clicks above —
+            -- deliberately NOT a third-party analytics tool, so the
+            -- Privacy Policy's "no cookies / no analytics tool" claim
+            -- (Section 4) stays true without needing an update.
+            CREATE TABLE IF NOT EXISTS home_cta_clicks (
+                button_id    TEXT PRIMARY KEY,
+                click_count  INTEGER NOT NULL DEFAULT 0
+            );
+
+            -- Homepage pageviews carrying utm_source/utm_content/route
+            -- (Nov 2026 homepage redesign, decision 5) — e.g. a visitor
+            -- arriving from a TikTok/Instagram link. One counter row per
+            -- distinct (source, content, route) combo, not a per-visit
+            -- log — no timestamps, no PII, no IP, nothing identifying a
+            -- single visitor, just "this combo happened N times". Lets
+            -- the admin Statistics tab show visits by source and by post
+            -- (utm_content), and which route a post actually drove
+            -- traffic to.
+            CREATE TABLE IF NOT EXISTS homepage_visits (
+                utm_source   TEXT NOT NULL DEFAULT '(none)',
+                utm_content  TEXT NOT NULL DEFAULT '(none)',
+                route        TEXT NOT NULL DEFAULT '(none)',
+                visit_count  INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (utm_source, utm_content, route)
+            );
+
             -- Tracks one-time DATA migrations (e.g. "clear this cache table
             -- once") that need a run-exactly-once guard — schema changes
             -- (new columns) instead use the PRAGMA table_info pattern below,
@@ -1050,6 +1078,17 @@ def get_stats() -> dict:
         partner_click_rows = conn.execute(
             "SELECT partner, click_count FROM affiliate_partner_clicks ORDER BY click_count DESC"
         ).fetchall()
+        home_cta_rows = conn.execute(
+            "SELECT button_id, click_count FROM home_cta_clicks ORDER BY click_count DESC"
+        ).fetchall()
+        visits_by_source_rows = conn.execute(
+            """SELECT utm_source, SUM(visit_count) c FROM homepage_visits
+               GROUP BY utm_source ORDER BY c DESC"""
+        ).fetchall()
+        visits_by_content_rows = conn.execute(
+            """SELECT utm_content, SUM(visit_count) c FROM homepage_visits
+               WHERE utm_content != '(none)' GROUP BY utm_content ORDER BY c DESC"""
+        ).fetchall()
     return {
         "total": total,
         "pending": pending,
@@ -1069,6 +1108,15 @@ def get_stats() -> dict:
         ),
         "partner_clicks": [
             {"partner": r["partner"], "clicks": r["click_count"]} for r in partner_click_rows
+        ],
+        "home_cta_clicks": [
+            {"button_id": r["button_id"], "clicks": r["click_count"]} for r in home_cta_rows
+        ],
+        "visits_by_source": [
+            {"source": r["utm_source"], "visits": r["c"]} for r in visits_by_source_rows
+        ],
+        "visits_by_content": [
+            {"content": r["utm_content"], "visits": r["c"]} for r in visits_by_content_rows
         ],
     }
 
@@ -1105,6 +1153,39 @@ def increment_partner_click_count(partner: str) -> None:
             """INSERT INTO affiliate_partner_clicks (partner, click_count) VALUES (?, 1)
                ON CONFLICT(partner) DO UPDATE SET click_count = click_count + 1""",
             (partner,),
+        )
+
+
+def increment_home_cta_click_count(button_id: str) -> None:
+    """
+    Bumps a homepage CTA button's (e.g. "paste_video", "pick_city") click
+    count by 1 — upsert, same shape as increment_partner_click_count.
+    This is the entire "analytics" implementation for the Nov 2026
+    homepage redesign: a cookie-free, no-PII counter per button, visible
+    in the admin Statistics tab. No third-party tool involved.
+    """
+    with _conn() as conn:
+        conn.execute(
+            """INSERT INTO home_cta_clicks (button_id, click_count) VALUES (?, 1)
+               ON CONFLICT(button_id) DO UPDATE SET click_count = click_count + 1""",
+            (button_id,),
+        )
+
+
+def increment_homepage_visit_count(utm_source: str, utm_content: str, route: str) -> None:
+    """
+    Bumps the counter for one (utm_source, utm_content, route) combo by
+    1 — upsert, same shape as increment_partner_click_count/
+    increment_home_cta_click_count. Empty strings are normalized to
+    "(none)" by the caller (see main.track_homepage_visit) so a combo
+    missing one of the three fields still groups cleanly instead of
+    splitting into "" vs NULL variants.
+    """
+    with _conn() as conn:
+        conn.execute(
+            """INSERT INTO homepage_visits (utm_source, utm_content, route, visit_count) VALUES (?, ?, ?, 1)
+               ON CONFLICT(utm_source, utm_content, route) DO UPDATE SET visit_count = visit_count + 1""",
+            (utm_source, utm_content, route),
         )
 
 

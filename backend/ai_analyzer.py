@@ -187,7 +187,20 @@ def _attach_booking_urls(data: dict) -> dict:
     Any other category is left untouched.
     """
     destination = data.get("destination", "")
-    city = destination.split(",")[0].strip() if destination else ""
+    # Nov 2026 (task 14): a plain first-comma split breaks the same way
+    # places.destination_search_city's docstring describes for a
+    # multi-leg/multi-island destination ("Mexico City to Cancún,
+    # Mexico" → "Mexico City to Cancún" glued onto every stop's search
+    # regardless of which leg it's on). Can't import that helper directly
+    # (places.py already imports FROM this module — importing it back
+    # here would be circular), so the same narrow fix is duplicated
+    # inline: fall back to the country name (after the last comma) for a
+    # multi-leg destination, otherwise keep the original single-city
+    # behavior.
+    if destination and (re.search(r"\bto\b", destination, re.IGNORECASE) or "(" in destination) and "," in destination:
+        city = destination.rsplit(",", 1)[-1].strip()
+    else:
+        city = destination.split(",")[0].strip() if destination else ""
     # Task 7: dates for the hotel links — see _hotel_checkin_checkout.
     # Computed once per route (not per stop): every hotel stop in the
     # same route shares the same trip dates.
@@ -207,7 +220,17 @@ def _attach_booking_urls(data: dict) -> dict:
                 query = f"{name} {city}".strip()
                 stop["booking_url"] = _google_maps_search_url(query)
             elif category in ("activity", "sight"):
-                query = f"{name} {city}".strip() if is_specific else f"{city} tours activities"
+                # Nov 2026 (task 14): used to fall back to a generic
+                # "{city} tours activities" search whenever is_specific
+                # was False — throwing away the one thing that made the
+                # search useful. Unlike a hotel's made-up name (which
+                # could search for a property that doesn't exist),
+                # `name` for a non-specific activity/sight IS a real
+                # descriptive phrase the AI wrote from what it saw (e.g.
+                # "Snorkelling with sea turtles, Oahu") — exactly the
+                # kind of text GetYourGuide's own fuzzy search is built
+                # to match against, so it's used here either way.
+                query = f"{name} {city}".strip()
                 stop["booking_url"] = _getyourguide_affiliate_url(query)
 
     return data
@@ -409,6 +432,49 @@ Rules:
 - If you see fewer than 3 identifiable locations, mention it in Day 1 label
 - NEVER invent places you cannot see or read in the frames
 - Return only the JSON object"""
+
+
+def dedupe_landmark_stops(itinerary: Itinerary) -> int:
+    """
+    Task 14 route-quality pass (Nov 2026): drops a "sight"-category stop
+    that's a repeat of an earlier one already kept elsewhere in the SAME
+    route. Confirmed live as a real extraction bug, not a hypothetical:
+    "Palacio de Bellas Artes" showed up on BOTH Day 1 and Day 7 of a
+    7-day Mexico City route — the AI reading the same landmark out of two
+    different segments of a long video as if they were two different
+    stops.
+
+    Deliberately narrow — ONLY "sight". Hotel and food stops are NEVER
+    touched here: a hotel legitimately repeats across every night of a
+    multi-day stay, and a restaurant can legitimately be shown again as a
+    return visit — confirmed two more real (correct, not-a-bug) cases in
+    the same audit: a Milos route's hotel and a favourite restaurant both
+    genuinely appearing on Day 1 AND Day 4. Only "sight" is unambiguous
+    enough (a traveler doesn't typically re-visit the same landmark on
+    unrelated days of the same trip) to safely auto-fix without a human
+    call — every other category is left exactly as extracted.
+
+    Matches on a normalized name (lowercased, punctuation stripped) in
+    case the AI phrased the repeat slightly differently the second time.
+    Mutates itinerary.days in place and returns how many stops were
+    dropped (0 = nothing to do).
+    """
+    seen: set[str] = set()
+    dropped = 0
+    for day in itinerary.days:
+        kept = []
+        for stop in day.stops:
+            if stop.category == "sight":
+                key = re.sub(r"[^\w\s]", "", stop.name.lower()).strip()
+                if key and key in seen:
+                    print(f"[Dedup] Dropping duplicate sight stop '{stop.name}' (day {day.day})")
+                    dropped += 1
+                    continue
+                if key:
+                    seen.add(key)
+            kept.append(stop)
+        day.stops = kept
+    return dropped
 
 
 def analyse_frames(frame_paths: list[str], comments: list[dict] | None = None) -> tuple[Itinerary, str, list[str], float]:

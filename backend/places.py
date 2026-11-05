@@ -187,7 +187,15 @@ def _search_places(query: str, max_results: int = 1, _retries: int = 2) -> list[
                     # the free quota. No rating/userRatingCount/priceLevel/
                     # regularOpeningHours fields here — see _facts_from_place,
                     # which already defaults them to 0/""/[] when absent.
-                    "X-Goog-FieldMask": "places.photos,places.displayName,places.location" + _FACT_FIELDS_MASK_SUFFIX_PRO,
+                    # places.types added Nov 2026 (task 14 route-quality
+                    # pass): a Basic-tier field (free, no SKU change) —
+                    # needed as the fallback source for place_type when
+                    # Google's primaryTypeDisplayName comes back empty,
+                    # which it does for a large share of real, confidently-
+                    # matched places (villages/towns, streets, neighbourhoods,
+                    # even some famous landmarks) — see
+                    # _TYPE_DISPLAY_FALLBACK/_place_type_fallback below.
+                    "X-Goog-FieldMask": "places.photos,places.displayName,places.location,places.types" + _FACT_FIELDS_MASK_SUFFIX_PRO,
                 },
                 timeout=6,
             )
@@ -440,6 +448,42 @@ def _names_plausibly_match(query_name: str, candidate_name: str) -> bool:
     return len(overlap) / len(q_words) >= 0.4
 
 
+def destination_search_city(destination: str) -> str:
+    """
+    Best-effort city/region name to append to a stop's own name when
+    searching Places or Unsplash (so a generic stop name like "Zócalo"
+    doesn't get confused with a same-named place elsewhere), and the
+    (city, stop name) key used for stop_cache lookups/writes — every call
+    site that needs either MUST go through this one function, or cache
+    reads and writes silently stop matching each other.
+
+    For a normal single-destination route ("Vienna, Austria") this is
+    just the part before the first comma/&/and — unchanged from the
+    original logic this replaces (inlined identically at 7 call sites
+    before Nov 2026's task 14 route-quality pass).
+
+    For a multi-city or multi-leg route ("Mexico City to Cancún, Mexico",
+    "Hawaii (Oahu & Maui), USA") that first-split heuristic used to grab a
+    garbled fragment and glue it onto EVERY stop regardless of which leg
+    it's actually on: "Mexico City to Cancún" appended to "Taxco" or
+    "Zócalo" (nowhere near Mexico City OR Cancún specifically — confirmed
+    live as the reason Zócalo's Places search came back with literally no
+    match, despite being one of the most famous squares in the Americas);
+    or even "Hawaii (Oahu" for "Hawaii (Oahu & Maui), USA" (the split
+    regex matched the "&" inside the parens before it ever reached the
+    comma). Detected via a standalone "to" or a "(" in the string; falls
+    back to the country name after the LAST comma instead — less specific
+    than a real city, but always geographically correct for every single
+    stop on a multi-leg route, which beats a wrong or nonsensical one
+    every time.
+    """
+    d = (destination or "").strip()
+    is_multi_leg = bool(re.search(r"\bto\b", d, re.IGNORECASE)) or "(" in d
+    if is_multi_leg and "," in d:
+        return d.rsplit(",", 1)[-1].strip()
+    return re.split(r"\s*(?:,|&|\band\b)\s*", d, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+
+
 def _location_from_place(place: dict) -> tuple[float, float] | None:
     """
     Extracts (lat, lng) from a Places API (New) result's `location` field
@@ -469,6 +513,53 @@ def _place_type_display(place: dict) -> str:
     """Google's own human-readable category for a place, e.g. "Art museum"
     (Places' primaryTypeDisplayName) — never our own guess at a category."""
     return ((place.get("primaryTypeDisplayName") or {}).get("text") or "").strip()
+
+
+# Nov 2026 (task 14 route-quality pass): primaryTypeDisplayName (above) is
+# genuinely EMPTY for a large share of real, confidently-matched places —
+# confirmed live across a 20-stop sample of "missing Google data" stops:
+# 70% actually had a full formattedAddress (Places found them fine) but no
+# display-name type at all — villages/towns (Qrendi, Frigiliana, Taxco),
+# streets (Victoria Street, Champs-Élysées), neighbourhoods (Trastevere),
+# and even a famous landmark (Casa Milà). Google's raw `types` array (a
+# Basic-tier field — always returned, no extra SKU cost, just needed in the
+# field mask — see _search_places) is far more reliable, just machine-coded
+# rather than human-readable, so this maps the common ones a travel stop
+# can plausibly be to a short display label. Checked in array order (a
+# place's own types list leads with its most-specific type), first match
+# wins. Deliberately NOT exhaustive — covers the categories that actually
+# show up on a travel itinerary, with "Landmark" as the catch-all for the
+# two broadest, near-universal types (tourist_attraction/point_of_interest)
+# so a real, confirmed place essentially never has to come back with no
+# type label at all.
+_TYPE_DISPLAY_FALLBACK = {
+    "museum": "Museum", "art_gallery": "Art gallery",
+    "church": "Church", "hindu_temple": "Temple", "mosque": "Mosque",
+    "synagogue": "Synagogue", "place_of_worship": "Place of worship",
+    "park": "Park", "national_park": "National park",
+    "natural_feature": "Natural landmark", "beach": "Beach",
+    "zoo": "Zoo", "amusement_park": "Amusement park", "aquarium": "Aquarium",
+    "shopping_mall": "Shopping", "market": "Market",
+    "night_club": "Nightlife", "bar": "Bar", "cafe": "Café",
+    "restaurant": "Restaurant", "bakery": "Bakery", "food": "Restaurant",
+    "lodging": "Hotel", "campground": "Campground",
+    "route": "Street", "neighborhood": "Neighbourhood",
+    "sublocality": "Neighbourhood", "sublocality_level_1": "Neighbourhood",
+    "locality": "Village/town", "administrative_area_level_3": "Village/town",
+    "stadium": "Stadium", "plaza": "Square", "marina": "Marina",
+    "spa": "Spa", "casino": "Casino",
+    "tourist_attraction": "Landmark", "point_of_interest": "Landmark",
+}
+
+
+def _place_type_fallback(place: dict) -> str:
+    """Fallback category label from Google's raw `types` array — see
+    _TYPE_DISPLAY_FALLBACK above for why/when this is needed."""
+    for t in place.get("types") or []:
+        label = _TYPE_DISPLAY_FALLBACK.get(t)
+        if label:
+            return label
+    return ""
 
 
 def _area_label_from_components(place: dict) -> str:
@@ -506,7 +597,7 @@ def _facts_from_place(place: dict) -> dict:
     """Bundles every task-8 Google-sourced fact for one matched place —
     see _empty_facts for the shape when nothing is known."""
     return {
-        "place_type": _place_type_display(place),
+        "place_type": _place_type_display(place) or _place_type_fallback(place),
         "address": (place.get("formattedAddress") or "").strip(),
         "area_label": _area_label_from_components(place),
         "opening_hours_weekly": _opening_hours_weekly(place),
@@ -693,7 +784,7 @@ def _get_destination_gallery_unsplash(destination: str, count: int = 5) -> list[
     # need to be split down to a single clean city name — querying Unsplash
     # with the full compound string returns few or no results, which starved
     # the gallery down to 0-1 photos and hid the thumbnail strip entirely.
-    city = re.split(r"\s*(?:,|&|\band\b)\s*", destination, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+    city = destination_search_city(destination)
 
     # These target generically striking travel photography rather than
     # city-specific shots — "night skyline" or "waterfront" return nothing
@@ -838,7 +929,7 @@ def get_car_rental_photo_unsplash(destination: str) -> tuple[str, UnsplashAttrib
         attribution = UnsplashAttribution(**cached["attribution"]) if cached.get("attribution") else None
         return cached["url"], attribution
 
-    city = re.split(r"\s*(?:,|&|\band\b)\s*", destination, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+    city = destination_search_city(destination)
     queries = [f"{city} scenic road drive", f"{city} road trip", f"{city} countryside road"]
     for query in queries:
         candidates = sorted(_unsplash_candidates(query, per_page=6), key=lambda r: r.get("likes", 0), reverse=True)
@@ -908,16 +999,17 @@ def enrich_itinerary_with_photos(itinerary) -> None:
     itinerary.hero_attribution = hero["attribution"] if hero else None
     print(f"[Photos] Hero: {itinerary.destination} → {bool(itinerary.hero_photo_url)}")
 
-    # Single primary city (e.g. "Cairo" from "Cairo & Luxor") — same split
-    # used for the gallery above. Deliberately NOT the full multi-city
-    # string: appending "Cairo & Luxor" to every stop's search query would
-    # bias a Luxor stop's photo/Maps search toward Cairo just because it
-    # shares the trip. Imperfect for multi-city trips (a Luxor-only stop
-    # with no city in its own name still gets "Cairo" appended), but the
-    # AI usually already writes the correct city into stop.name itself
-    # (e.g. "Egyptian Museum, Cairo") — the fallback below only kicks in
-    # when it didn't.
-    city = re.split(r"\s*(?:,|&|\band\b)\s*", itinerary.destination, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+    # Single primary city (e.g. "Cairo" from "Cairo & Luxor") — same
+    # derivation used for the gallery above (destination_search_city).
+    # Deliberately not the full multi-city string: appending "Cairo &
+    # Luxor" to every stop's search query would bias a Luxor stop's
+    # photo/Maps search toward Cairo just because it shares the trip. For
+    # a multi-leg route (" to " or "(" in the destination), falls back to
+    # the country name instead of a garbled city fragment — see that
+    # function's docstring. The AI usually already writes the correct
+    # city into stop.name itself (e.g. "Egyptian Museum, Cairo") — the
+    # fallback below only kicks in when it didn't.
+    city = destination_search_city(itinerary.destination)
     used_ids: set[str] = set()  # avoid repeating a photo across stop cards
 
     def _best_fresh_unsplash(query: str) -> tuple[str, dict | None]:
@@ -927,6 +1019,19 @@ def enrich_itinerary_with_photos(itinerary) -> None:
         for stop in day.stops:
             is_specific = getattr(stop, "is_specific_name", True)
             name_query = stop.name if city.lower() in stop.name.lower() else f"{stop.name}, {city}"
+
+            # Nov 2026 (task 14): a generic activity description ("Snorkelling
+            # with sea turtles, Oahu", "ATV Ride Experience, Ubud") was never
+            # going to match a Places business listing — is_specific already
+            # being False means the block below correctly skips the Places
+            # call, but place_type stayed blank forever since nothing else
+            # set it. "Activity" here is a plain hardcoded label, not a
+            # Places fact — the small stop-facts line has something to show
+            # instead of nothing, same label CAT_CONFIG already uses for the
+            # category badge above it. The GetYourGuide booking button
+            # (frontend, category === 'activity') doesn't depend on this.
+            if stop.category == "activity" and not is_specific:
+                stop.place_type = "Activity"
 
             # Reuse a photo/address/facts already saved from a PREVIOUS
             # route for this exact city+stop name (e.g. the Colosseum
@@ -1070,18 +1175,41 @@ def backfill_stop_facts(itinerary) -> int:
     stop (e.g. the Colosseum across several Rome routes) picks up the same
     facts for free the next time IT loads, without its own Places call.
 
-    Only touches facts, and lat/lng when the stop didn't already have
-    coordinates — never touches photo_url or maps_url_override, so a
-    photo Gerry already manually fixed for this stop is left alone.
+    Touches facts, and now ALWAYS lat/lng too when a fresh confident match
+    has coordinates — Nov 2026 fix: this used to only fill lat/lng when
+    the stop didn't already have ANY (`stop.lat is None or stop.lng is
+    None`), which quietly protected a stop's OLD, possibly-wrong
+    coordinates from ever being corrected by a later refresh — confirmed
+    live as the cause of a real bug: "Cafe Bali" (a Bali route) had a
+    correct, freshly-refreshed Bali address but kept stale coordinates
+    pointing to Indiana, USA, 15,998 km away, because they were already
+    non-null from an earlier bad match. refresh_places=true (the only
+    caller of this function) means "trust this fresh Places data" — there
+    is no separate manual lat/lng override field (unlike
+    maps_url_override, which this still never touches) for this to
+    clobber. Never touches photo_url either, so a photo Gerry already
+    manually fixed for this stop is left alone.
+
+    Activity-category stops with no confirmed specific name (e.g.
+    "Snorkelling with sea turtles, Oahu", "ATV Ride Experience, Ubud") are
+    skipped entirely — Places has nothing to match a generic activity
+    description against, so every call for one of these was a guaranteed
+    paid miss. place_type is set to the plain "Activity" label instead
+    (matches enrich_itinerary_with_photos' new-route behavior — see
+    there), and the frontend already has a working GetYourGuide button
+    for this category regardless of place_type.
 
     Returns how many stops got at least one new fact (Places had no
     confident match for the rest, which is fine — they just keep their
     empty defaults, same as any other stop Places can't resolve).
     """
     filled = 0
-    city = re.split(r"\s*(?:,|&|\band\b)\s*", itinerary.destination, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+    city = destination_search_city(itinerary.destination)
     for day in itinerary.days:
         for stop in day.stops:
+            if stop.category == "activity" and not getattr(stop, "is_specific_name", True):
+                stop.place_type = stop.place_type or "Activity"
+                continue
             name_query = stop.name if city.lower() in stop.name.lower() else f"{stop.name}, {city}"
             photo_url, location, facts = _get_place_photo_location_and_facts(name_query)
             if not any(facts.values()):
@@ -1094,7 +1222,7 @@ def backfill_stop_facts(itinerary) -> int:
             stop.rating = facts["rating"]
             stop.user_rating_count = facts["user_rating_count"]
             stop.price_level = facts["price_level"]
-            if location and (stop.lat is None or stop.lng is None):
+            if location:
                 stop.lat, stop.lng = location
             database.upsert_stop_cache(
                 city, stop.name, stop.photo_url or photo_url,
@@ -1123,7 +1251,7 @@ def apply_cached_stop_facts(itinerary) -> int:
     write anything back — purely a read.
     """
     filled = 0
-    city = re.split(r"\s*(?:,|&|\band\b)\s*", itinerary.destination, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+    city = destination_search_city(itinerary.destination)
     for day in itinerary.days:
         for stop in day.stops:
             cached = database.get_cached_stop(city, stop.name)

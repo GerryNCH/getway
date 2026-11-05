@@ -17,7 +17,6 @@ Run locally:
 """
 
 import json
-import re
 import tempfile
 import threading
 import time
@@ -57,6 +56,7 @@ from ai_analyzer import (
     analyse_frames, generate_vibe_match, generate_travel_tips,
     generate_trip_summary, generate_month_calendar, generate_grounded_descriptions,
     _booking_affiliate_url, _expedia_affiliate_url, _hotel_checkin_checkout_for_nights,
+    dedupe_landmark_stops,
 )
 from quality_check import ai_quality_check
 # Module handle alongside the named imports below purely so
@@ -68,7 +68,7 @@ from places import (
     _trigger_unsplash_download, _get_place_photo_and_location, search_attractions_broad,
     search_hotels_near, _get_destination_gallery_unsplash, search_activities_by_type,
     _ACTIVITY_TYPE_QUERY_TERMS, search_places_freetext, get_car_rental_photo_unsplash,
-    backfill_stop_facts, apply_cached_stop_facts,
+    backfill_stop_facts, apply_cached_stop_facts, destination_search_city,
 )
 from trip_builder import (
     is_open as trip_place_is_open, fits_budget, curate_candidates,
@@ -396,6 +396,19 @@ async def extract(req: ExtractRequest):
                   f"{len(itinerary.days)} days")
         except Exception as e:
             raise HTTPException(500, f"AI analysis failed: {e}")
+
+        # Task 14 route-quality pass: drop a "sight" stop the AI pulled
+        # twice from two different segments of the same video (confirmed
+        # live — see dedupe_landmark_stops' docstring). Runs before the
+        # Places enrichment below so a dropped duplicate never wastes a
+        # Places call on itself either. Non-fatal and narrow by design —
+        # never touches hotel/food, which can legitimately repeat.
+        try:
+            dropped = dedupe_landmark_stops(itinerary)
+            if dropped:
+                print(f"[Dedup] Removed {dropped} duplicate sight stop(s)")
+        except Exception as e:
+            print(f"[Dedup] Failed (non-fatal): {e}")
 
         # ── Layer 7a: reject "can't identify a destination" results ─────────────
         # ai_analyzer's system prompt tells the model to output the literal
@@ -1504,7 +1517,7 @@ def admin_backfill_coordinates(force: bool = False):
         itinerary = database.get_itinerary(video_id)
         if not itinerary:
             continue
-        city = re.split(r"\s*(?:,|&|\band\b)\s*", itinerary.destination, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+        city = destination_search_city(itinerary.destination)
         route_changed = False
 
         for day in itinerary.days:
@@ -1567,7 +1580,7 @@ def admin_backfill_stop_photos(force: bool = False):
         itinerary = database.get_itinerary(video_id)
         if not itinerary:
             continue
-        city = re.split(r"\s*(?:,|&|\band\b)\s*", itinerary.destination, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+        city = destination_search_city(itinerary.destination)
         route_changed = False
 
         for day in itinerary.days:

@@ -18,6 +18,14 @@ By design this does NOT check:
     empty hotel_banner_photo_url on the Itinerary object doesn't mean the
     visitor sees no hotel content.
 
+It DOES check (added Nov 2026, task 14) one geographic thing: whether a
+day's stops are unreasonably far apart for a single day (see
+_MAX_SAME_DAY_KM/_day_distance_findings below) — unlike everything else
+in this file, this is deliberately NOT auto-fixed or reordered anywhere,
+only flagged, because the schema has no "this is a travel/transfer day"
+field to tell a genuine excursion/transfer day apart from a real mistake
+— only a human (Gerry) can make that call.
+
 Split between two layers, on purpose:
   - Countable facts (coordinate RANGE validity, placeholder/missing
     photos) are checked in plain Python — free, exact, instant. No reason
@@ -65,6 +73,55 @@ _HAIKU_OUTPUT_PER_MTOK = 5.00
 # as having no real photo at all (see index.html's old Lorem Picsum demo
 # fallbacks).
 _PLACEHOLDER_PHOTO_MARKERS = ("picsum.photos",)
+
+# Nov 2026, task 14 route-quality pass — Gerry's rule: stops more than
+# this far apart shouldn't be scheduled on the same day unless the day is
+# genuinely a travel/transfer day. Flagged for admin review only, never
+# auto-fixed (see module docstring above) — confirmed live on a real
+# route that a 60km same-day span can be a perfectly legitimate day trip
+# (e.g. Tokyo's Hakone excursion day), so this is a prompt for Gerry's
+# judgment, not a hard "this is broken" signal.
+_MAX_SAME_DAY_KM = 60
+
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    from math import radians, sin, cos, sqrt, atan2
+    r = 6371.0
+    dlat, dlon = radians(lat2 - lat1), radians(lon2 - lon1)
+    a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+    return r * 2 * atan2(sqrt(a), sqrt(1 - a))
+
+
+def _day_distance_findings(itinerary: Itinerary) -> dict:
+    """
+    Flags any day whose farthest-apart pair of stops exceeds
+    _MAX_SAME_DAY_KM. Keyed by (day, 0) — a whole-day problem, not a
+    single stop's, so stop_number 0 (never a real 1-based stop index)
+    keeps it from colliding with per-stop findings in the same merged
+    dict. Skips days with fewer than 2 stops that have coordinates at all
+    (nothing to compare).
+    """
+    findings: dict = {}
+    for day in itinerary.days:
+        pts = [(s.lat, s.lng, s.name) for s in day.stops if s.lat is not None and s.lng is not None]
+        if len(pts) < 2:
+            continue
+        max_dist, pair = 0.0, None
+        for i in range(len(pts)):
+            for j in range(i + 1, len(pts)):
+                d = _haversine_km(pts[i][0], pts[i][1], pts[j][0], pts[j][1])
+                if d > max_dist:
+                    max_dist, pair = d, (pts[i][2], pts[j][2])
+        if max_dist > _MAX_SAME_DAY_KM:
+            findings[(day.day, 0)] = {
+                "name": "(whole day)",
+                "problems": [
+                    f"{round(max_dist)} km between farthest stops in one day "
+                    f"({pair[0]} ↔ {pair[1]}) — review unless this is a travel/transfer day"
+                ],
+                "deduction": 8,
+            }
+    return findings
 
 _QUALITY_SYSTEM = """You are a travel-itinerary QA reviewer for GetWay, a TikTok-to-itinerary travel platform.
 
@@ -224,11 +281,15 @@ def ai_quality_check(itinerary: Itinerary) -> dict:
     """
     try:
         det_findings = _deterministic_stop_findings(itinerary)
+        day_distance_findings = _day_distance_findings(itinerary)
         haiku_findings, cost_usd = _haiku_stop_findings(itinerary)
 
-        # Merge the two per-stop dicts.
+        # Merge the per-stop and per-day dicts — distinct key spaces
+        # (stop_number 0 is never a real stop), so no collision risk.
         merged: dict = {}
         for key, entry in det_findings.items():
+            merged[key] = dict(entry)
+        for key, entry in day_distance_findings.items():
             merged[key] = dict(entry)
         for key, entry in haiku_findings.items():
             if key in merged:

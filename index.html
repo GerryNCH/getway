@@ -404,9 +404,12 @@
     </div>
   </div>
   <div class="h-8 md:h-12"></div>
-  <!-- ── Rankings: Most visited destinations worldwide ──────────────────
+  <!-- ── Rankings: Top city destinations worldwide ──────────────────────
        Real, sourced tourism data (Euromonitor International's Top 100 City
-       Destinations Index + reported arrival volumes), not GetWay's own
+       Destinations Index — a composite attractiveness/competitiveness
+       index, not a pure visitor-count ranking, hence the title; the
+       Bangkok highlight below is the one entry that IS pure arrival
+       volume), not GetWay's own
        Magic Box usage. Published annually each December for the prior
        year — there is no publicly available global "most visited
        destinations" dataset at monthly granularity, so this section shows
@@ -420,14 +423,14 @@
       <div data-aos="fade-up">
         <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">Rankings</div>
         <div class="flex items-center gap-2.5 flex-wrap">
-          <div class="font-serif-display text-3xl md:text-4xl">Most visited destinations worldwide</div>
+          <div class="font-serif-display text-3xl md:text-4xl">Top city destinations worldwide</div>
           <span class="text-[10px] font-medium text-[#6D28D9] bg-[#F1EEFF] px-2.5 py-1 rounded-full whitespace-nowrap">Latest edition · Dec 2025</span>
         </div>
       </div>
-      <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 max-w-xs md:text-right">The world's actual most-visited cities, from the latest published global index — not just what's popular on GetWay. Some already have a route here; some are still on the list to build.</div>
+      <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 max-w-xs md:text-right">Euromonitor's top-ranked city destinations worldwide, from the latest published index — not just what's popular on GetWay. Some already have a route here; some are still on the list to build.</div>
     </div>
     <div id="rankings-list" class="space-y-3"></div>
-    <div data-aos="fade-up" class="text-[11px] text-gray-400 mt-5">Source: <a href="https://www.euromonitor.com/article/top-100-city-destinations-index-2025-driving-growth-and-innovation" target="_blank" rel="noopener" class="underline hover:text-gray-600">Euromonitor International, Top 100 City Destinations Index</a> — 2025 edition, published December 2025 — the most recent one that exists; Euromonitor's next edition (covering 2026) isn't published until December 2026, so this is genuinely today's most current real data, not a stale number. Updated here annually.</div>
+    <div data-aos="fade-up" class="text-[11px] text-gray-400 mt-5">Source: <a href="https://www.euromonitor.com/article/top-100-city-destinations-index-2025-driving-growth-and-innovation" target="_blank" rel="noopener" class="underline hover:text-gray-600">Euromonitor International, Top 100 City Destinations Index</a> — 2025 edition, published December 2025. Updated here annually when a new edition is published.</div>
   </div>
   <!-- ── Best places to visit this month — AI-generated (real seasonal
        reasons: festivals, weather windows, wildlife — see
@@ -743,7 +746,7 @@
   </div>
   <!-- Stats bar -->
   <div class="flex items-center justify-center py-5 md:py-7 border-b border-gray-100">
-    <div class="flex items-center gap-1.5 px-5 md:px-10"><i data-lucide="map-pin" class="w-3.5 h-3.5 text-gray-400"></i><div><span id="ai-route-stop-count" class="text-base md:text-xl font-bold">0</span> <span class="text-[10px] md:text-xs text-gray-500">stops</span></div></div>
+    <div class="flex items-center gap-1.5 px-5 md:px-10"><i data-lucide="map-pin" class="w-3.5 h-3.5 text-gray-400"></i><div><span id="ai-route-stop-count" class="text-base md:text-xl font-bold">0</span> <span id="ai-route-stop-count-label" class="text-[10px] md:text-xs text-gray-500">stops</span></div></div>
     <div class="w-px h-7 bg-gray-200"></div>
     <div class="flex items-center gap-1.5 px-5 md:px-10"><i data-lucide="calendar-days" class="w-3.5 h-3.5 text-gray-400"></i><div><span id="ai-route-day-count" class="text-base md:text-xl font-bold">1</span> <span id="ai-route-duration-label" class="text-[10px] md:text-xs text-gray-500">day</span></div></div>
     <div class="w-px h-7 bg-gray-200"></div>
@@ -1907,7 +1910,7 @@
           <div class="w-12 h-12 rounded-xl flex-shrink-0" style="background:${matchedRoute.fallbackColor}"></div>
           <div class="min-w-0">
             <div class="text-sm font-medium truncate">${escapeHtml(matchedRoute.destination)}</div>
-            <div class="text-[11px] text-gray-500">${escapeHtml(matchedRoute.duration)} · ${matchedRoute.stopCount} stops — already on GetWay</div>
+            <div class="text-[11px] text-gray-500">${escapeHtml(matchedRoute.duration)} · ${matchedRoute.stopCount} stop${matchedRoute.stopCount !== 1 ? 's' : ''} — already on GetWay</div>
           </div>
         </button>
         ${moreOptionsHtml}
@@ -2129,7 +2132,7 @@
             <div class="text-lg md:text-xl font-bold tracking-tight uppercase">${r.destination}</div>
             <span class="text-[10px] font-medium text-[#6D28D9] bg-[#F1EEFF] px-2.5 py-1 rounded-full">${r.duration}</span>
           </div>
-          <div class="text-[11px] md:text-xs text-gray-500">via ${r.creatorHandle} · ${r.stopCount} stops</div>
+          <div class="text-[11px] md:text-xs text-gray-500">${r.creatorHandle ? `via ${escapeHtml(r.creatorHandle)} · ` : ''}${r.stopCount} stop${r.stopCount !== 1 ? 's' : ''}</div>
         </div>
       </a>`;
     }).join('');
@@ -3912,6 +3915,12 @@
       sourceBadge.innerHTML = `<i data-lucide="music-2" class="w-3 h-3"></i><a href="${escapeHtml(profileUrl)}" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-white">${escapeHtml(handle)} ↗</a>${clipLink}${reportLink}`;
     } else if (sourceUrl) {
       sourceBadge.innerHTML = `<i data-lucide="music-2" class="w-3 h-3"></i><a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener" class="underline underline-offset-2 hover:text-white">via TikTok ↗</a>`;
+    } else if (itinerary.source === 'custom_builder') {
+      // Task 17 fix (Oct 23 bug sprint): a Build Your Own Trip route has no
+      // video/creator behind it at all — "via AI Magic Box" was flatly
+      // wrong for it (that's the OTHER input path). No neutral "via X ↗"
+      // phrasing applies here, so this is a plain label, not a link.
+      sourceBadge.innerHTML = '<i data-lucide="route" class="w-3 h-3"></i><span>Built with GetWay</span>';
     } else {
       sourceBadge.innerHTML = '<i data-lucide="music-2" class="w-3 h-3"></i><span>via AI Magic Box</span>';
     }
@@ -3919,6 +3928,7 @@
     const totalStops = itinerary.days.reduce((n, d) => n + d.stops.length, 0);
     const totalDays = itinerary.days.length;
     document.getElementById('ai-route-stop-count').textContent = totalStops;
+    document.getElementById('ai-route-stop-count-label').textContent = totalStops === 1 ? 'stop' : 'stops';
     document.getElementById('ai-route-day-count').textContent = totalDays;
     // duration from API is e.g. "1 day" — strip the leading number to avoid "1 1 day"
     const durText = itinerary.duration || (totalDays === 1 ? 'day' : 'days');
@@ -4107,10 +4117,19 @@
             <div id="ai-route-hotel-search-results" class="flex flex-col gap-2"></div>
           </div>
         </div>` : '';
+      // Task 17 fix (Oct 23 bug sprint): some itineraries' day.label is just
+      // a generated fallback equal to "Day N" itself (no real theme to
+      // describe) — showing it next to the "Day N" heading above read as
+      // "Day 1 · Day 1". Only show the label when it actually adds
+      // something beyond the heading.
+      const dayLabelIsRedundant = !day.label || /^day\s*\d+$/i.test(day.label.trim());
+      const daySubheading = dayLabelIsRedundant
+        ? `${day.stops.length} stop${day.stops.length !== 1 ? 's' : ''}`
+        : `${day.label} · ${day.stops.length} stop${day.stops.length !== 1 ? 's' : ''}`;
       return `
         <div class="ai-day-group mb-10 md:mb-14">
           <div class="font-serif-display text-[26px] md:text-4xl leading-tight mb-1">Day ${day.day}</div>
-          <div class="text-xs md:text-sm text-gray-500 mb-6 md:mb-8">${day.label} · ${day.stops.length} stop${day.stops.length !== 1 ? 's' : ''}</div>
+          <div class="text-xs md:text-sm text-gray-500 mb-6 md:mb-8">${daySubheading}</div>
           ${transferBanner}
           ${hotels.map(h => renderAiStopCard(h, itinerary.destination, itinerary.creator_handle, videoId, false /* showHotelReplaceLink forced off — see hotelReplaceBlock comment below, task 11 */, nightsFromDuration(itinerary.duration))).join('')}
           ${hotelReplaceBlock}
@@ -4205,7 +4224,7 @@
             </div>
             <div class="p-3.5">
               <div class="text-sm font-semibold uppercase tracking-tight truncate">${escapeHtml(r.destination)}</div>
-              <div class="text-[11px] text-gray-500">${escapeHtml(r.duration)} · ${r.stopCount} stops</div>
+              <div class="text-[11px] text-gray-500">${escapeHtml(r.duration)} · ${r.stopCount} stop${r.stopCount !== 1 ? 's' : ''}</div>
             </div>
           </a>`;
         }).join('')}

@@ -236,7 +236,7 @@
       <button type="button" onclick="scrollToHowItWorks()" class="nav-link nav-hover-outline text-xs font-medium whitespace-nowrap">How it works</button>
       <button type="button" onclick="toggleSupportChat()" class="nav-link nav-hover-outline text-xs font-medium whitespace-nowrap">Support</button>
       <button type="button" onclick="scrollToBestMonth()" class="nav-link nav-hover-outline text-xs font-medium whitespace-nowrap">Best this month</button>
-      <button type="button" onclick="scrollToRankings()" class="nav-link nav-hover-outline text-xs font-medium whitespace-nowrap">Most visited</button>
+      <button type="button" onclick="scrollToRankings()" class="nav-link nav-hover-outline text-xs font-medium whitespace-nowrap">Top destinations</button>
     </div>
     <div class="flex items-center gap-2">
       <button type="button" onclick="toggleMobileMenu()" aria-label="Menu" class="lg:hidden nav-browse-btn btn-interactive text-white/90 w-10 h-10 rounded-full border border-white/40 flex items-center justify-center transition-colors duration-300">
@@ -264,7 +264,7 @@
         <button type="button" onclick="mobileMenuGo(scrollToHowItWorks)" class="mobile-menu-link">How it works</button>
         <button type="button" onclick="mobileMenuGo(toggleSupportChat)" class="mobile-menu-link">Support</button>
         <button type="button" onclick="mobileMenuGo(scrollToBestMonth)" class="mobile-menu-link">Best this month</button>
-        <button type="button" onclick="mobileMenuGo(scrollToRankings)" class="mobile-menu-link">Most visited</button>
+        <button type="button" onclick="mobileMenuGo(scrollToRankings)" class="mobile-menu-link">Top destinations</button>
       </div>
       <button type="button" onclick="mobileMenuGo(scrollToRoutes)" class="btn-interactive mt-auto w-full h-[48px] flex items-center justify-center bg-[#8B5CF6] text-white text-sm font-medium rounded-2xl">Browse Routes</button>
     </div>
@@ -401,7 +401,7 @@
   <!-- Task (Nov 2026, homepage redesign, decision 4): "Top city
        destinations worldwide" (Rankings) moved OFF the homepage into its
        own screen (#screen-rankings, below the legal pages) — still
-       reachable via the nav's "Most visited" link (desktop + mobile),
+       reachable via the nav's "Top destinations" link (desktop + mobile),
        which now opens that screen directly instead of scrolling here.
        #rankings-list / renderRankings() are unchanged; they just render
        into the new screen's markup instead of this spot. -->
@@ -880,7 +880,7 @@
 <!-- ====================================================================== -->
 <!-- SCREEN: RANKINGS (Top city destinations worldwide)                    -->
 <!-- Moved off the homepage (Nov 2026 homepage redesign, decision 4) into  -->
-<!-- its own screen. Reached from the nav's "Most visited" link (desktop + -->
+<!-- its own screen. Reached from the nav's "Top destinations" link (desktop + -->
 <!-- mobile) via showScreen('rankings'). Content/data unchanged — same    -->
 <!-- #rankings-list, same renderRankings(), same GLOBAL_TOURISM_RANKINGS. -->
 <!-- ====================================================================== -->
@@ -3295,22 +3295,32 @@
   function trackHomeCta(buttonId) {
     fetch(`${BACKEND_URL}/track/home-cta?button_id=${encodeURIComponent(buttonId || 'unknown')}`, { method: 'POST' }).catch(() => {});
   }
-  // Nov 2026 homepage redesign (decision 5): records ONE pageview
-  // whenever a visitor arrives via a link carrying utm_source,
-  // utm_content and/or route — e.g. a TikTok/Instagram bio or caption
-  // link to GetWay. Same cookie-free, no-PII, no-IP pattern as
-  // trackHomeCta above: just these three short strings read straight
-  // off the URL's own query params. A plain visit with none of these
-  // present writes nothing — see admin Statistics tab's "Visits by
-  // source" / "Visits by post" cards for the result.
+  // Nov 2026 homepage redesign (decision 5, extended by decision 1):
+  // records ONE pageview on every homepage load, cookie-free and with
+  // no PII/IP. Source resolves in priority order: a real ?utm_source=
+  // value; otherwise the bare referrer DOMAIN only (never its path or
+  // query string — those can carry a search term or something private)
+  // read from document.referrer, e.g. "instagram.com" or "google.com";
+  // otherwise "direct" (typed URL, bookmark, app — no referrer at all).
+  // See admin Statistics tab's "Visits by source" / "Visits by post" /
+  // "Visits today" cards for the result.
   function trackHomepageVisit() {
     const params = new URLSearchParams(location.search);
     const utmSource = params.get('utm_source') || '';
     const utmContent = params.get('utm_content') || '';
     const route = params.get('route') || '';
-    if (!utmSource && !utmContent && !route) return;
+    let source = utmSource;
+    if (!source) {
+      try {
+        const refHost = document.referrer ? new URL(document.referrer).hostname.replace(/^www\./, '') : '';
+        const ownHost = location.hostname.replace(/^www\./, '');
+        source = (refHost && refHost !== ownHost) ? refHost : 'direct';
+      } catch (e) {
+        source = 'direct';
+      }
+    }
     const q = new URLSearchParams();
-    if (utmSource) q.set('utm_source', utmSource);
+    q.set('utm_source', source);
     if (utmContent) q.set('utm_content', utmContent);
     if (route) q.set('route', route);
     fetch(`${BACKEND_URL}/track/homepage-visit?${q.toString()}`, { method: 'POST' }).catch(() => {});

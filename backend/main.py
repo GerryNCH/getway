@@ -1378,22 +1378,24 @@ def track_home_cta(button_id: str = "unknown"):
 
 
 @app.post("/track/homepage-visit")
-def track_homepage_visit(utm_source: str = "", utm_content: str = "", route: str = ""):
+def track_homepage_visit(utm_source: str = "direct", utm_content: str = "", route: str = ""):
     """
-    Public, unauthenticated — bumps the counter for one (utm_source,
-    utm_content, route) combo by 1. Called once per page load from
-    index.html's bootstrap (trackHomepageVisit()), and ONLY when the
-    visitor's URL actually carries at least one of these three params —
-    e.g. arriving via a TikTok/Instagram bio or caption link to GetWay.
-    A plain visit with none of them present never reaches this endpoint
-    at all. No PII, no IP, no per-visit log — just a counter per combo.
+    Public, unauthenticated — bumps the counter for one (today's UTC
+    date, utm_source, utm_content, route) combo by 1. Called once per
+    homepage page load from index.html's bootstrap (trackHomepageVisit()).
+
+    utm_source is whatever the frontend resolved it to: the real
+    ?utm_source= value when present, otherwise the bare referrer domain
+    (e.g. "instagram.com", "google.com") read from document.referrer, or
+    "direct" when there's no referrer at all (typed URL, bookmark, app).
+    The frontend never sends a referrer PATH or query string here — only
+    the bare hostname — so nothing personal (like a search term) reaches
+    this endpoint. No IP, no per-visit log — just a counter per combo.
     See database.increment_homepage_visit_count and the admin Statistics
-    tab's "Visits by source" / "Visits by post" cards.
+    tab's "Visits by source" / "Visits by post" / "Visits today" cards.
     """
-    if not (utm_source or utm_content or route):
-        return {"status": "skipped", "reason": "no utm/route params present"}
     database.increment_homepage_visit_count(
-        utm_source or "(none)", utm_content or "(none)", route or "(none)"
+        utm_source or "direct", utm_content or "(none)", route or "(none)"
     )
     return {"status": "ok"}
 
@@ -1687,9 +1689,17 @@ def admin_backfill_coordinates(force: bool = False):
     }
 
 
-@app.post("/admin/backfill-activity-booking-urls", dependencies=[Depends(verify_admin_secret)])
+@app.post("/admin/refresh-activity-booking-links", dependencies=[Depends(verify_admin_secret)])
 def admin_backfill_activity_booking_urls():
     """
+    (Renamed from /admin/backfill-activity-booking-urls — Nov 2026: the
+    original path's CORS preflight was being rejected by something
+    between the browser and Railway that never surfaced a clear cause;
+    every other new admin endpoint added in the same deploy preflighted
+    fine, and simple requests without the X-Admin-Secret header reached
+    this exact route normally, so the route itself was never the
+    problem. Renaming to rule out a path-string-specific block.)
+
     One-time pass (Nov 2026) rebuilding booking_url for every existing
     "activity" stop with the CURRENT GetYourGuide query format (stop name
     + city — see ai_analyzer._attach_booking_urls's activity/sight

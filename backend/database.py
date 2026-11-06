@@ -189,21 +189,24 @@ def init_db() -> None:
                 click_count  INTEGER NOT NULL DEFAULT 0
             );
 
-            -- Homepage pageviews carrying utm_source/utm_content/route
-            -- (Nov 2026 homepage redesign, decision 5) — e.g. a visitor
-            -- arriving from a TikTok/Instagram link. One counter row per
-            -- distinct (source, content, route) combo, not a per-visit
-            -- log — no timestamps, no PII, no IP, nothing identifying a
-            -- single visitor, just "this combo happened N times". Lets
-            -- the admin Statistics tab show visits by source and by post
-            -- (utm_content), and which route a post actually drove
-            -- traffic to.
+            -- Homepage pageviews (Nov 2026 homepage redesign, decisions 5
+            -- and 1-follow-up) — every page load, not just UTM-tagged
+            -- ones: utm_source falls back to the referrer's bare domain
+            -- (e.g. "instagram.com", "google.com") or "direct" when there
+            -- is none. One counter row per distinct (date, source,
+            -- content, route) combo, not a per-visit log — no time-of-
+            -- day, no PII, no IP, nothing identifying a single visitor,
+            -- just "this combo happened N times on this UTC date". Lets
+            -- the admin Statistics tab show visits by source, by post
+            -- (utm_content), which route a post drove traffic to, AND a
+            -- same-day total.
             CREATE TABLE IF NOT EXISTS homepage_visits (
-                utm_source   TEXT NOT NULL DEFAULT '(none)',
+                visit_date   TEXT NOT NULL,
+                utm_source   TEXT NOT NULL DEFAULT 'direct',
                 utm_content  TEXT NOT NULL DEFAULT '(none)',
                 route        TEXT NOT NULL DEFAULT '(none)',
                 visit_count  INTEGER NOT NULL DEFAULT 0,
-                PRIMARY KEY (utm_source, utm_content, route)
+                PRIMARY KEY (visit_date, utm_source, utm_content, route)
             );
 
             -- Tracks one-time DATA migrations (e.g. "clear this cache table
@@ -524,6 +527,30 @@ def init_db() -> None:
                 (_CACHE_RESET_MIGRATION_9, datetime.utcnow().isoformat()),
             )
             print(f"[DB] One-time migration: cleared {cleared_9} trip_candidates_cache row(s) (Places outage empty-result fix)")
+
+        # Migration (Nov 2026, decision 1 follow-up): homepage_visits
+        # launched minutes earlier without a date dimension, so "total
+        # visits today" wasn't answerable, and without a referrer-domain/
+        # "direct" fallback, so a plain (no-UTM) visit wrote nothing at
+        # all. Added visit_date to the primary key. That table had at
+        # most a handful of diagnostic-test rows at this point (no real
+        # campaign traffic yet) — nothing worth preserving, so this just
+        # drops and recreates it with the new shape instead of migrating
+        # data in place.
+        existing_hv_cols = {row["name"] for row in conn.execute("PRAGMA table_info(homepage_visits)")}
+        if existing_hv_cols and "visit_date" not in existing_hv_cols:
+            conn.execute("DROP TABLE homepage_visits")
+            conn.execute("""
+                CREATE TABLE homepage_visits (
+                    visit_date   TEXT NOT NULL,
+                    utm_source   TEXT NOT NULL DEFAULT 'direct',
+                    utm_content  TEXT NOT NULL DEFAULT '(none)',
+                    route        TEXT NOT NULL DEFAULT '(none)',
+                    visit_count  INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (visit_date, utm_source, utm_content, route)
+                )
+            """)
+            print("[DB] One-time migration: recreated homepage_visits with visit_date (no prior rows worth keeping)")
 
         # Seed the singleton site_settings row once, with the hero slides
         # that were previously hardcoded in index.html — so nothing changes
@@ -1089,6 +1116,10 @@ def get_stats() -> dict:
             """SELECT utm_content, SUM(visit_count) c FROM homepage_visits
                WHERE utm_content != '(none)' GROUP BY utm_content ORDER BY c DESC"""
         ).fetchall()
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        visits_today_row = conn.execute(
+            "SELECT COALESCE(SUM(visit_count), 0) c FROM homepage_visits WHERE visit_date = ?", (today,)
+        ).fetchone()
     return {
         "total": total,
         "pending": pending,
@@ -1118,6 +1149,7 @@ def get_stats() -> dict:
         "visits_by_content": [
             {"content": r["utm_content"], "visits": r["c"]} for r in visits_by_content_rows
         ],
+        "visits_today": visits_today_row["c"],
     }
 
 
@@ -1174,18 +1206,22 @@ def increment_home_cta_click_count(button_id: str) -> None:
 
 def increment_homepage_visit_count(utm_source: str, utm_content: str, route: str) -> None:
     """
-    Bumps the counter for one (utm_source, utm_content, route) combo by
-    1 — upsert, same shape as increment_partner_click_count/
-    increment_home_cta_click_count. Empty strings are normalized to
-    "(none)" by the caller (see main.track_homepage_visit) so a combo
-    missing one of the three fields still groups cleanly instead of
-    splitting into "" vs NULL variants.
+    Bumps the counter for one (today's UTC date, utm_source, utm_content,
+    route) combo by 1 — upsert, same shape as
+    increment_partner_click_count/increment_home_cta_click_count. The
+    date is just a UTC calendar date (no time-of-day), added so
+    get_stats() can report a same-day visit total — it's still not a
+    per-visit log and identifies no one. Empty strings are normalized by
+    the caller (see main.track_homepage_visit) to "direct"/"(none)" so a
+    combo missing a field still groups cleanly instead of splitting into
+    "" vs NULL variants.
     """
+    visit_date = datetime.utcnow().strftime("%Y-%m-%d")
     with _conn() as conn:
         conn.execute(
-            """INSERT INTO homepage_visits (utm_source, utm_content, route, visit_count) VALUES (?, ?, ?, 1)
-               ON CONFLICT(utm_source, utm_content, route) DO UPDATE SET visit_count = visit_count + 1""",
-            (utm_source, utm_content, route),
+            """INSERT INTO homepage_visits (visit_date, utm_source, utm_content, route, visit_count) VALUES (?, ?, ?, ?, 1)
+               ON CONFLICT(visit_date, utm_source, utm_content, route) DO UPDATE SET visit_count = visit_count + 1""",
+            (visit_date, utm_source, utm_content, route),
         )
 
 

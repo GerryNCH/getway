@@ -549,6 +549,28 @@ def init_db() -> None:
             )
             print(f"[DB] One-time migration: cleared {cleared_10} stale month_destinations_cache row(s) (factual-accuracy fix)")
 
+        # Eleventh one-time migration: migration 10's "name it if you're
+        # confident and double-check the month" rule still let real errors
+        # through — a spot-check found FESPACO (Burkina Faso) attached to
+        # April instead of its real late-Feb/early-March dates, and a
+        # Serengeti wildebeest-calving reason attached to April, weeks
+        # after the real Jan-March peak. The prompt's rule is now
+        # categorical (no named event at all, ever, for any destination —
+        # see ai_analyzer._REGION_CALENDAR_SYSTEM_TEMPLATE's FACTUAL
+        # ACCURACY section) rather than confidence-based. These rows need
+        # clearing again so the next request regenerates under it.
+        _CACHE_RESET_MIGRATION_11 = "clear_month_destinations_cache_for_no_named_events_rule"
+        already_applied_11 = conn.execute(
+            "SELECT 1 FROM _schema_migrations WHERE name = ?", (_CACHE_RESET_MIGRATION_11,)
+        ).fetchone()
+        if not already_applied_11:
+            cleared_11 = conn.execute("DELETE FROM month_destinations_cache").rowcount
+            conn.execute(
+                "INSERT INTO _schema_migrations (name, applied_at) VALUES (?, ?)",
+                (_CACHE_RESET_MIGRATION_11, datetime.utcnow().isoformat()),
+            )
+            print(f"[DB] One-time migration: cleared {cleared_11} stale month_destinations_cache row(s) (no-named-events rule)")
+
         # Migration (Nov 2026, decision 1 follow-up): homepage_visits
         # launched minutes earlier without a date dimension, so "total
         # visits today" wasn't answerable, and without a referrer-domain/
@@ -1827,8 +1849,21 @@ def get_month_destinations_cache(month: str) -> list[dict] | None:
       factual-accuracy section to the prompt (no invented events, a
       named event's month must be correct, fall back to a plain
       seasonal reason when unsure) — bump clears the pre-fix "v7" rows.
+      "v9:" (2026-11-06, same day) — "v8"'s softer "name it if you're
+      confident and double-check the month" rule still wasn't enough:
+      a spot-check of the v8 output found a FESPACO film-festival reason
+      attached to the wrong month (April; FESPACO is really late Feb/
+      early March) and a Serengeti wildebeest-calving reason attached to
+      April, weeks after the real Jan-March peak. Per Gerry's decision,
+      the rule is now categorical rather than confidence-based: NO named
+      festival/holiday/human-organized event, for any destination, ever
+      (not just "only when unsure") — reasons are seasonal only (weather,
+      crowds, prices) or a genuine natural phenomenon described in general
+      terms and only when its timing for that place is unambiguously
+      well-known, never a narrow/specific peak-timing claim. Bump clears
+      the pre-fix "v8" rows.
     """
-    key = "v8:" + month.strip().lower()
+    key = "v9:" + month.strip().lower()
     with _conn() as conn:
         row = conn.execute(
             "SELECT destinations_json, expires_at FROM month_destinations_cache WHERE cache_key = ?",
@@ -1849,7 +1884,7 @@ def save_month_destinations_cache(month: str, destinations: list[dict], ttl_days
     See get_month_destinations_cache's docstring for why the cache key
     (not the stored `month` value) carries a version prefix.
     """
-    key = "v8:" + month.strip().lower()
+    key = "v9:" + month.strip().lower()
     now = datetime.utcnow()
     expires_at = now + timedelta(days=ttl_days)
     with _conn() as conn:

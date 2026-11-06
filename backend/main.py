@@ -1241,6 +1241,22 @@ def places_diagnostic():
     return result
 
 
+@app.get("/admin/gallery-attributions-null-check", dependencies=[Depends(verify_admin_secret)])
+def gallery_attributions_null_check():
+    """
+    Diagnostic (Nov 2026): lists every route, across all statuses, whose
+    gallery_attributions has at least one null entry — the legitimate
+    "no Unsplash attribution for this Google-fallback photo" case that
+    used to crash database.get_itinerary() before models.py's
+    Itinerary.gallery_attributions was widened to allow it (see that
+    field's comment, and database.find_routes_with_null_gallery_attributions).
+    Read-only — doesn't fix or touch anything, just reports which routes
+    were affected so they can be spot-checked now that the fix is live.
+    """
+    affected = database.find_routes_with_null_gallery_attributions()
+    return {"affected_count": len(affected), "routes": affected}
+
+
 @app.post("/admin/test-scene-detection", dependencies=[Depends(verify_admin_secret)])
 def admin_test_scene_detection(url: str, max_frames: int = 8):
     """

@@ -1717,37 +1717,52 @@ def admin_backfill_activity_booking_urls():
     routes = database.list_by_status("approved") + database.list_by_status("pending")
     routes_updated = 0
     stops_updated = 0
+    # Diagnostic (Nov 2026): this endpoint was failing with a bare
+    # "TypeError: Failed to fetch" in the browser and no server-side error
+    # ever surfaced to us (no shell/log access from this session). That
+    # symptom is what an UNHANDLED exception looks like from the browser —
+    # Starlette's CORSMiddleware never gets a chance to add CORS headers to
+    # a response that errored out past it, so fetch() reports it as a CORS
+    # failure even though the real cause is a crash somewhere in this loop.
+    # Catching per-route and returning what broke (instead of raising) lets
+    # us see the real cause in the JSON response on the next run, then this
+    # try/except and the errors list can come back out once it's fixed.
+    errors: list[str] = []
 
     for row in routes:
         video_id = row["video_id"]
-        itinerary = database.get_itinerary(video_id)
-        if not itinerary:
-            continue
-        city = destination_search_city(itinerary.destination)
-        route_changed = False
+        try:
+            itinerary = database.get_itinerary(video_id)
+            if not itinerary:
+                continue
+            city = destination_search_city(itinerary.destination)
+            route_changed = False
 
-        for day in itinerary.days:
-            for stop in day.stops:
-                if stop.category != "activity":
-                    continue
-                name = (stop.name or "").strip()
-                if not name:
-                    continue
-                new_url = _getyourguide_affiliate_url(f"{name} {city}".strip())
-                if new_url != (stop.booking_url or ""):
-                    stop.booking_url = new_url
-                    stops_updated += 1
-                    route_changed = True
+            for day in itinerary.days:
+                for stop in day.stops:
+                    if stop.category != "activity":
+                        continue
+                    name = (stop.name or "").strip()
+                    if not name:
+                        continue
+                    new_url = _getyourguide_affiliate_url(f"{name} {city}".strip())
+                    if new_url != (stop.booking_url or ""):
+                        stop.booking_url = new_url
+                        stops_updated += 1
+                        route_changed = True
 
-        if route_changed:
-            database.save_days(video_id, itinerary.days)
-            routes_updated += 1
+            if route_changed:
+                database.save_days(video_id, itinerary.days)
+                routes_updated += 1
+        except Exception as e:
+            errors.append(f"{video_id}: {type(e).__name__}: {e}")
 
     return {
-        "status": "ok",
+        "status": "ok" if not errors else "completed_with_errors",
         "routes_checked": len(routes),
         "routes_updated": routes_updated,
         "stops_updated": stops_updated,
+        "errors": errors,
     }
 
 

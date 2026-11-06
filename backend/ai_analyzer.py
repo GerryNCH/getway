@@ -838,22 +838,131 @@ _VALID_REGIONS = set(_REGION_ORDER)
 # right — it's simply which loop iteration produced the entry, so it can
 # never come back malformed/missing (no more validating it against
 # _VALID_REGIONS at all).
+# Nov 2026 (Gerry's decision, after v8 and v9 both still let errors through
+# via the model's own "knowledge" of events/phenomena): the model no longer
+# gets to decide what's a real, correctly-timed event or natural phenomenon
+# at all. This is the ONLY source of truth for event/festival reasons now —
+# hand-built and checked against real sources once, kept deliberately short
+# and conservative (if a month/location pairing wasn't easy to verify
+# confidently, it isn't here). Natural phenomena (migrations, blooms,
+# aurora, whale season) are gone entirely — that was the OTHER source of
+# remaining errors (a Pretoria jacaranda-bloom reason placed in June, the
+# Southern Hemisphere's actual winter, when the real bloom is Oct-Nov) even
+# after named festivals were banned. Adding an entry here means a human
+# checked it — the model never gets to add one on its own judgment.
+_VERIFIED_EVENTS_LIST = """
+January:
+- New Year's Day — worldwide — Jan 1
+- Cape Town Minstrel Carnival / Kaapse Klopse — Cape Town, South Africa — Jan 2
+- Vodoun Day / Voodoo Festival — Ouidah, Benin — Jan 10
+- Timkat (Ethiopian Epiphany) — Ethiopia — Jan 19-20
+- Australia Day — Australia — Jan 26
+- Harbin Ice and Snow Festival — Harbin, China — Jan-Feb
+- Lunar New Year (Chinese New Year / Tet / Seollal) — China, Vietnam, South Korea, broader East Asia — late Jan-Feb
+
+February:
+- Waitangi Day — New Zealand — Feb 6
+- Carnival / Mardi Gras (Rio de Janeiro; Venice; New Orleans; Carnaval de Oruro, Bolivia; Sydney Gay and Lesbian Mardi Gras) — Feb-Mar
+- Holi — India — Feb-Mar
+- Lunar New Year — China, Vietnam, South Korea, broader East Asia — late Jan-Feb (some years)
+
+March:
+- St. Patrick's Day — Ireland, worldwide Irish communities — Mar 17
+- Nowruz (Persian New Year) — Iran, Central Asia — Mar 20-21
+- Fiesta Nacional de la Vendimia (grape harvest festival) — Mendoza, Argentina — late Feb-early Mar
+- Carnival / Mardi Gras, Holi — see February — Feb-Mar
+- South by Southwest (SXSW) — Austin, USA — Mar
+
+April:
+- Easter (incl. Semana Santa) — worldwide Christian countries, esp. Spain — Mar-Apr
+- Passover — Israel, Jewish communities worldwide — Mar-Apr
+- Songkran (Thai New Year) — Thailand — Apr 13-15
+- Qingming Festival (Tomb-Sweeping Day) — China — early Apr
+- ANZAC Day — Australia, New Zealand — Apr 25
+- Coachella — California, USA — Apr
+- Vesak (Buddha's Birthday) — Thailand, Sri Lanka, Southeast Asia — Apr-May
+
+May:
+- Cinco de Mayo — Mexico — May 5
+- Cannes Film Festival — France — May
+- Kentucky Derby — USA — May (first Saturday)
+- Vesak — see April — Apr-May (some years)
+- Dragon Boat Festival — China, broader East Asia — late May-Jun
+- Vivid Sydney — Sydney, Australia — late May-mid Jun
+
+June:
+- Inti Raymi (Festival of the Sun) — Cusco, Peru — Jun 24
+- Glastonbury Festival — England — late Jun
+- Wimbledon — England — late Jun-early Jul
+- Dragon Boat Festival, Vivid Sydney — see May — late May-Jun
+
+July:
+- Canada Day — Canada — Jul 1
+- Independence Day — USA — Jul 4
+- San Fermín (Running of the Bulls) — Pamplona, Spain — Jul 6-14
+- Bastille Day — France — Jul 14
+- Gion Matsuri — Kyoto, Japan — Jul
+- Tour de France — France — Jul
+- Naadam Festival — Mongolia — Jul 11-13
+- Calgary Stampede — Calgary, Canada — Jul
+- Durban July (horse race) — Durban, South Africa — Jul (first Saturday)
+- Wimbledon — see June — late Jun-early Jul
+
+August:
+- Edinburgh Festival Fringe — Scotland — Aug
+- Obon — Japan — mid-Aug
+- Notting Hill Carnival — London, UK — Aug (bank holiday weekend)
+- La Tomatina — Buñol, Spain — last Wed of Aug
+- Venice Film Festival — Italy — late Aug-early Sep
+
+September:
+- Oktoberfest — Munich, Germany — mid-Sep to first Sun of Oct
+- Mid-Autumn Festival — China, broader East Asia — Sep-Oct
+- Venice Film Festival — see August — late Aug-early Sep
+
+October:
+- Oktoberfest — see September — mid-Sep to first Sun of Oct
+- Mid-Autumn Festival — see September — Sep-Oct (some years)
+- Golden Week (National Day) — China — Oct 1-7
+- Albuquerque International Balloon Fiesta — New Mexico, USA — Oct
+- Halloween — USA, UK, worldwide — Oct 31
+- Diwali — India, South Asian diaspora worldwide — Oct-Nov (some years)
+
+November:
+- Día de los Muertos (Day of the Dead) — Mexico — Nov 1-2
+- Diwali — India, South Asian diaspora worldwide — Oct-Nov
+- Melbourne Cup — Melbourne, Australia — Nov (first Tuesday)
+- Thanksgiving — USA — Nov (fourth Thursday)
+- European Christmas Markets — Germany, Austria, France, Czech Republic, Poland, UK, and most of Europe — late Nov-Dec
+
+December:
+- European Christmas Markets — see November — late Nov-Dec
+- Fiestas de Quito — Quito, Ecuador — early Dec (through Dec 6)
+- Hanukkah — Israel, Jewish communities worldwide — Nov-Dec (some years)
+- Christmas — worldwide — Dec 25
+- Boxing Day — UK, Commonwealth countries — Dec 26
+- New Year's Eve — worldwide, incl. Sydney Harbour fireworks — Dec 31
+"""
+
 _REGION_CALENDAR_SYSTEM_TEMPLATE = """You are building a year-long "best places to visit this month" calendar for {region} ONLY, for GetWay, a travel app's homepage section.
 
 For EACH of the 12 months (January through December), pick 15 real, well-known, genuinely popular tourist destinations (a country, region, or city) IN {region} — places with an actual, established tourism industry and real traveler demand (hotels, organized tours, meaningful visitor numbers), not places nobody actually visits as a tourist — that are genuinely at their best that month, for a real, specific reason. Aim for the full 15 even if some are less obvious picks than your first few — a downstream step (not something you need to worry about) trims and cross-checks this list afterward, so holding back to a "safer" shorter list only removes options it could have used; fewer than 15 is fine ONLY if {region} genuinely doesn't have 15 legitimately-at-their-best destinations for that month.
 
-Weather CAN be part of the reason, but never as the sole, generic "nice weather" justification that could apply to that place in half the year or to any place at any time — pair it with something concrete and specific to that exact month (e.g. "shoulder season — still warm, tourist crowds have thinned, prices drop before winter" is fine; "pleasant weather" alone is not). A genuine natural phenomenon (a well-known wildlife migration, a reliably-timed bloom season, the northern lights) or a seasonal-quality shift (crowds, prices, shoulder season) are valid reason types — mix them, don't lean on one. Do NOT name a specific festival, holiday, or any other human-organized recurring event as a reason, for any destination, ever — see FACTUAL ACCURACY below for why.
+Weather CAN be part of the reason, but never as the sole, generic "nice weather" justification that could apply to that place in half the year or to any place at any time — pair it with something concrete and specific to that exact month (e.g. "shoulder season — still warm, tourist crowds have thinned, prices drop before winter" is fine; "pleasant weather" alone is not). Your ONLY valid reason types are: weather, crowds, price/shoulder-season — OR an event named in the EVENTS LIST below, in one of ITS listed months, for ITS listed location. Nothing else. Mix reason types across the month's picks, don't lean on one.
+
+EVENTS — read this before writing any reason that names a festival, holiday, or celebration:
+{events_list}
+Rules for using this list:
+1. You may name an event ONLY if it appears above, word-for-word close enough to be clearly the same event, AND only in a month it is listed under, AND only for the location it is listed for (or a destination that is genuinely that location — e.g. "Oktoberfest" only for Munich/Bavaria, never a different German city or a different country entirely).
+2. If an event you remember or believe is real is NOT in this list, you may NOT mention it — not by name, not vaguely alluded to, not hedged ("festival season", "local celebrations are common this time of year" is also out if it's clearly gesturing at one specific unlisted event). This is true even if you are confident it is real and correctly timed. The list above is the only source of truth for this prompt; your own background knowledge of festivals and holidays is explicitly NOT trusted here, because it has produced real, confirmed errors before (a Vietnamese new year misattributed to the wrong month, a wine-harvest festival misattributed to the wrong country, a film festival misattributed to the wrong month).
+3. Most months, for most regions, you will have ZERO usable events from the list — that is expected and completely fine. A destination with no listed event for its month gets a weather/crowds/price reason instead, exactly like every other pick. Do not force an event in to seem more interesting.
+4. Do NOT name ANY natural phenomenon — no wildlife migration, no bloom/blossom season, no northern lights, no whale season, nothing in this category, for any destination, ever, even one you are confident about. This category produced its own confirmed error (a flowering tree's bloom season placed in the wrong hemisphere's season) even after festivals were banned, so it is removed entirely, the same way festivals are now locked to the list above. Use weather, crowds, or price instead.
 
 The SAME destination MAY appear in more than one month, but ONLY if each appearance has a genuinely different, specific reason — never repeat the same destination with the same or a near-identical reason (including "nice weather" reused) just to fill a slot. A destination should not appear more than 3 times across the whole year, even with different reasons — pick your 3 strongest, most distinct seasonal angles for it, don't pad. This cap plus the specific-reason rule exist specifically to stop one "safe, pleasant-year-round" country from becoming a generic filler pick that shows up almost every month — every appearance must earn its place with a real, distinct angle.
 
 Treat that 3-appearance cap as a ceiling for your few best, most genuinely seasonal picks — not a target every destination should reach. Across the FULL YEAR (all 12 months combined, not just within one month), {region} has dozens upon dozens of real, well-known, established tourist destinations beyond the same handful of famous names — don't default to a small rotating shortlist reused with reworded reasons (e.g. Asia is far more than Thailand/Japan/Bali repeated; South America is far more than Peru/Brazil/Argentina's capitals; Oceania is far more than Australia/New Zealand/Fiji). Most destinations across the year should appear ONCE, a genuine minority two or three times — if you notice yourself reaching for the same names again and again across different months, that is a sign to look harder for a different real, specific destination instead, not to reuse a favorite.
 
-Within each month, make sure the mix of picks covers genuinely DIFFERENT traveler motivations for that month — don't let every pick skew toward one angle (e.g. don't make every November pick a "still warm, beach escape" destination). Include, where genuinely true, all three of these motivation types across the month's picks: (a) a warm-weather escape from colder regions (e.g. the Canary Islands or Cape Verde still being warm in November); (b) a distinct natural or seasonal atmosphere tied to the month itself — long or short daylight, snow, a bloom, a dramatic quality of light, cooler or wetter air — described in plain seasonal terms, never by naming a specific recurring festival, holiday, or event (e.g. "crisp, clear air and early sunsets make the old town's lights feel especially atmospheric in late November" rather than naming any particular market or celebration); and (c) a genuine shoulder-season pick — crowds thinned, weather still pleasant enough to comfortably see the sights, prices lower (e.g. a major European capital in a month right after its busy season ends). Type (c) matters as much as the other two — plenty of real travelers deliberately want to see famous sights WITHOUT a crowd, just decent weather and fewer people. A traveler deciding "where should I go this month" should see real, different kinds of good reasons in the results, not one repeated angle. Also cover a real geographic spread within {region}, not just its most famous 3-4 countries repeated every month.
-
-FACTUAL ACCURACY — stricter than a simple "double-check the month" rule now, because that softer version still let real errors through (Tet attributed to the wrong month for Vietnam, a Vendimia grape-harvest festival attributed to the wrong country, a FESPACO film-festival reason attached to the wrong month, a wildlife-calving reason attached to a month weeks after the real peak had passed) even with an explicit instruction to be confident and double-check:
-1. NEVER name a specific festival, holiday, carnival, film/arts festival, or any other human-organized recurring event, for ANY destination, in ANY reason — not even one you are personally confident is real and correctly timed. This is categorical, not "only when unsure": a confident-sounding claim is exactly what produced every error above, so naming this category of thing at all is now off-limits here, full stop. Use a plain seasonal reason instead (weather, crowds, prices, shoulder season) — it never goes stale and never needs fact-checking.
-2. A genuine natural phenomenon (a wildlife migration, a bloom season, the northern lights, monsoon timing, whale season) MAY still be named, but only when BOTH of these hold: (a) you describe it in general seasonal terms, not a narrow peak claim ("migration season" rather than claiming the exact week calving happens, or exactly when a bloom peaks); and (b) that phenomenon's general timing for that specific place is widely and unambiguously known to you, not a specific recollection you are reconstructing with any uncertainty. If there is ANY doubt, drop the natural phenomenon too and fall back to weather, crowds, or price — a plain but true reason always beats a specific but wrong one.
-3. When in doubt about anything date- or calendar-related, the safe default is always weather, crowds, or price — never guess toward a more "interesting"-sounding but riskier reason.
+Within each month, make sure the mix of picks covers genuinely DIFFERENT traveler motivations for that month — don't let every pick skew toward one angle (e.g. don't make every November pick a "still warm, beach escape" destination). Include, where genuinely true: (a) a warm-weather escape from colder regions (e.g. the Canary Islands or Cape Verde still being warm in November); (b) an event from the EVENTS LIST above, when one genuinely applies to this region and month — otherwise another weather/crowd/price angle instead, never a substitute event or phenomenon; and (c) a genuine shoulder-season pick — crowds thinned, weather still pleasant enough to comfortably see the sights, prices lower (e.g. a major European capital in a month right after its busy season ends). Type (c) matters as much as the other two — plenty of real travelers deliberately want to see famous sights WITHOUT a crowd, just decent weather and fewer people. A traveler deciding "where should I go this month" should see real, different kinds of good reasons in the results, not one repeated angle. Also cover a real geographic spread within {region}, not just its most famous 3-4 countries repeated every month.
 
 One short, engaging sentence per destination (max ~18 words) explaining the specific reason.
 
@@ -936,7 +1045,7 @@ def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
                 response = _client.messages.create(
                     model="claude-haiku-4-5-20251001",
                     max_tokens=16000,
-                    system=_REGION_CALENDAR_SYSTEM_TEMPLATE.format(region=region),
+                    system=_REGION_CALENDAR_SYSTEM_TEMPLATE.format(region=region, events_list=_VERIFIED_EVENTS_LIST),
                     messages=[{"role": "user", "content": f"Generate the {region} 12-month calendar."}],
                 )
                 if response.stop_reason == "max_tokens":

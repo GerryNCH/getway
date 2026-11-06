@@ -571,6 +571,34 @@ def init_db() -> None:
             )
             print(f"[DB] One-time migration: cleared {cleared_11} stale month_destinations_cache row(s) (no-named-events rule)")
 
+        # Fifth month_destinations_cache reset (Nov 2026, v10 — Gerry's
+        # final decision for this feature): "v9"'s categorical ban on
+        # named events still left natural phenomena to the model's own
+        # judgment, and that's where the next confirmed error showed up
+        # (a Pretoria jacaranda-bloom reason placed in June, the real
+        # Southern Hemisphere winter, when the actual bloom is Oct-Nov).
+        # Natural phenomena are now banned outright and named events may
+        # only come from ai_analyzer._VERIFIED_EVENTS_LIST, a short
+        # hand-verified list, in one of its listed months (see
+        # _REGION_CALENDAR_SYSTEM_TEMPLATE). These rows also predate the
+        # TTL going from 180 days to effectively permanent and the
+        # switch to manual-only regeneration (main.py's
+        # /admin/regenerate-month-calendar) — clearing them ensures the
+        # one generation that gets manually verified under v10 is a
+        # clean one, not a mix of stale v9 rows that happened not to
+        # have expired yet.
+        _CACHE_RESET_MIGRATION_12 = "clear_month_destinations_cache_for_verified_events_whitelist"
+        already_applied_12 = conn.execute(
+            "SELECT 1 FROM _schema_migrations WHERE name = ?", (_CACHE_RESET_MIGRATION_12,)
+        ).fetchone()
+        if not already_applied_12:
+            cleared_12 = conn.execute("DELETE FROM month_destinations_cache").rowcount
+            conn.execute(
+                "INSERT INTO _schema_migrations (name, applied_at) VALUES (?, ?)",
+                (_CACHE_RESET_MIGRATION_12, datetime.utcnow().isoformat()),
+            )
+            print(f"[DB] One-time migration: cleared {cleared_12} stale month_destinations_cache row(s) (verified-events whitelist, v10)")
+
         # Migration (Nov 2026, decision 1 follow-up): homepage_visits
         # launched minutes earlier without a date dimension, so "total
         # visits today" wasn't answerable, and without a referrer-domain/
@@ -1862,8 +1890,25 @@ def get_month_destinations_cache(month: str) -> list[dict] | None:
       terms and only when its timing for that place is unambiguously
       well-known, never a narrow/specific peak-timing claim. Bump clears
       the pre-fix "v8" rows.
+      "v10:" (2026-11-06, same day) — "v9"'s categorical ban on named
+      events still left the model free to judge natural phenomena on its
+      own "confidence", and that's exactly where the next confirmed error
+      showed up: a Pretoria jacaranda-bloom reason placed in June (South
+      African winter) when the real bloom is Oct-Nov. Per Gerry's final
+      decision for this feature, the model no longer gets to use its own
+      judgment about event OR phenomenon factuality at all: natural
+      phenomena are banned outright (not just "only when well-known"),
+      and a named event may ONLY be cited from ai_analyzer's new
+      _VERIFIED_EVENTS_LIST — a short, hand-built, source-checked list —
+      in one of that event's listed months. This data is also now
+      intended to be generated once, manually verified in full (all 12
+      months, every entry), and then left alone — see
+      save_month_destinations_cache's ttl_days default below and
+      main.py's /admin/regenerate-month-calendar (the only remaining way
+      to regenerate it; GET /destinations/by-month no longer auto-
+      regenerates on a miss). Bump clears the pre-fix "v9" rows.
     """
-    key = "v9:" + month.strip().lower()
+    key = "v10:" + month.strip().lower()
     with _conn() as conn:
         row = conn.execute(
             "SELECT destinations_json, expires_at FROM month_destinations_cache WHERE cache_key = ?",
@@ -1874,17 +1919,23 @@ def get_month_destinations_cache(month: str) -> list[dict] | None:
     return json.loads(row["destinations_json"])
 
 
-def save_month_destinations_cache(month: str, destinations: list[dict], ttl_days: int = 180) -> None:
+def save_month_destinations_cache(month: str, destinations: list[dict], ttl_days: int = 36500) -> None:
     """
-    Saves/overwrites the destinations list cached for `month`. Long
-    default TTL (~6 months) — real, well-established seasonal patterns
-    (cherry blossom season, monsoon timing, festival months) don't shift
-    year to year, unlike per-destination content elsewhere in this file.
+    Saves/overwrites the destinations list cached for `month`.
+
+    v10 (2026-11-06): TTL changed from 180 days to effectively permanent
+    (~100 years) — per Gerry's decision, this data is now generated once
+    against the verified-events whitelist, manually checked in full, and
+    then deliberately left alone; it should never silently expire and
+    regenerate on its own. See get_month_destinations_cache's docstring
+    and main.py's /admin/regenerate-month-calendar, the only remaining
+    way this ever gets regenerated (an explicit admin call, never a
+    cache-miss side effect).
 
     See get_month_destinations_cache's docstring for why the cache key
     (not the stored `month` value) carries a version prefix.
     """
-    key = "v9:" + month.strip().lower()
+    key = "v10:" + month.strip().lower()
     now = datetime.utcnow()
     expires_at = now + timedelta(days=ttl_days)
     with _conn() as conn:

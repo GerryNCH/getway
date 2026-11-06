@@ -703,11 +703,15 @@ _VALID_MONTHS = {
     "july", "august", "september", "october", "november", "december",
 }
 
-# Serializes generate_month_calendar() regeneration across concurrent
-# requests — see get_month_destinations' comment for the real bug this
-# fixes (concurrent cold-cache requests each racing their own full
-# 6-region regeneration, contending for Anthropic capacity and letting
-# a partial result silently overwrite a complete one).
+# Serializes generate_month_calendar() regeneration. Originally added
+# because concurrent cold-cache GET /destinations/by-month requests each
+# raced their own full 6-region regeneration, contending for Anthropic
+# capacity and letting a partial result silently overwrite a complete
+# one (a live month ended up missing entire regions). That auto-
+# regeneration path is gone as of v10 (see get_month_destinations'
+# comment) — regeneration now only happens via the admin-only
+# /admin/regenerate-month-calendar — but this lock is kept so that two
+# overlapping manual triggers still can't race each other the same way.
 _month_calendar_regen_lock = threading.Lock()
 
 
@@ -726,9 +730,21 @@ def get_month_destinations(month: str):
     destination may legitimately appear in more than one month (see that
     function's docstring for why the previous single-call, whole-year-
     unique design didn't hold up under a raised target) — cached hard,
-    long-term (database.get/save_month_destinations_cache): a cache miss
-    for ANY month regenerates and re-caches every month (across all 6
-    regions) at once, so later requests for other months are free too.
+    long-term (database.get/save_month_destinations_cache).
+
+    v10 (Nov 2026): this endpoint no longer auto-regenerates on a cache
+    miss. It used to — a miss for ANY month regenerated and re-cached
+    every month (across all 6 regions) at once — but that auto-
+    regeneration was the whole reason factual errors (a misnamed
+    festival, a natural phenomenon placed in the wrong hemisphere's
+    season) could silently reappear any time the 180-day TTL expired,
+    with nobody re-checking the new output. Gerry's decision: this data
+    is now verified once by hand and then frozen — see
+    _month_calendar_regen_lock's comment below and
+    /admin/regenerate-month-calendar, the only remaining way to
+    regenerate it. A cache miss here just means it hasn't been generated
+    yet (or was explicitly cleared) — it returns an empty list for that
+    month rather than reintroducing uncontrolled regeneration.
 
     Photos are fetched separately, per destination, at request time via
     places._get_destination_gallery_unsplash(count=1) — itself cached, so
@@ -744,30 +760,7 @@ def get_month_destinations(month: str):
 
     cached = database.get_month_destinations_cache(month)
     if cached is None:
-        # Real bug this fixes, confirmed live right after the v3 cache-key
-        # bump: several requests hit a cold cache at once (this endpoint's
-        # own regeneration is what invalidated it for every month, so the
-        # very next few requests — including this session's own back-to-
-        # back manual checks — all raced in simultaneously), each
-        # independently kicking off its own full 6-region regeneration.
-        # Firing 6x that many concurrent Anthropic calls at once made some
-        # of THOSE individual region calls fail/timeout, and whichever
-        # regeneration finished last silently overwrote an earlier, more
-        # complete save with its own partial one — a live month ended up
-        # missing entire regions (Europe/Asia/Africa) that should
-        # obviously have real picks (November has Christmas markets!).
-        # This lock serializes regeneration: only the first request in a
-        # cold-cache window actually calls the (slow, 6-call) generator;
-        # everyone else waits, then re-reads the now-populated cache
-        # instead of piling on their own redundant, contention-prone
-        # regeneration.
-        with _month_calendar_regen_lock:
-            cached = database.get_month_destinations_cache(month)  # re-check: another request may have just finished while we waited for the lock
-            if cached is None:
-                calendar, _cost = generate_month_calendar()
-                for m, destinations in calendar.items():
-                    database.save_month_destinations_cache(m, destinations)
-                cached = calendar.get(month, [])
+        cached = []
 
     enriched = []
     for d in cached:
@@ -1255,6 +1248,33 @@ def gallery_attributions_null_check():
     """
     affected = database.find_routes_with_null_gallery_attributions()
     return {"affected_count": len(affected), "routes": affected}
+
+
+@app.post("/admin/regenerate-month-calendar", dependencies=[Depends(verify_admin_secret)])
+def admin_regenerate_month_calendar():
+    """
+    Manual-only trigger for the "Best places this month" calendar (Nov
+    2026, v10 — Gerry's decision after v8 and v9 each still let factual
+    errors through by trusting the model's own judgment about which
+    events/phenomena are real and correctly timed: see
+    ai_analyzer._VERIFIED_EVENTS_LIST and _REGION_CALENDAR_SYSTEM_TEMPLATE).
+    This endpoint is now the ONLY way the calendar ever regenerates —
+    get_month_destinations() below no longer auto-regenerates on a cache
+    miss, and save_month_destinations_cache's TTL is effectively
+    permanent (see database.py), so nothing recreates this data on its
+    own anymore. Call this only when Gerry explicitly asks for a refresh
+    (e.g. the verified-events whitelist changed), then manually
+    re-verify all 12 months/every entry before trusting it live — this
+    endpoint returns the full generated calendar precisely so that
+    verification can be done from its response.
+    """
+    with _month_calendar_regen_lock:
+        calendar, cost = generate_month_calendar()
+        counts = {}
+        for m, destinations in calendar.items():
+            database.save_month_destinations_cache(m, destinations)
+            counts[m] = len(destinations)
+    return {"status": "regenerated", "cost_usd": cost, "counts": counts, "calendar": calendar}
 
 
 @app.post("/admin/test-scene-detection", dependencies=[Depends(verify_admin_secret)])

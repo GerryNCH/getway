@@ -528,6 +528,27 @@ def init_db() -> None:
             )
             print(f"[DB] One-time migration: cleared {cleared_9} trip_candidates_cache row(s) (Places outage empty-result fix)")
 
+        # Tenth one-time migration: _REGION_CALENDAR_SYSTEM_TEMPLATE had no
+        # rule against inventing holidays/events or misattributing a real
+        # one's month — confirmed live in October's cached results: Tet
+        # (Vietnam's Lunar New Year, actually late Jan/Feb) attributed to
+        # Vietnam in October, and a Vendimia grape-harvest festival
+        # attributed to Germany. The prompt now has an explicit factual-
+        # accuracy section (no invented events, correct month required,
+        # fall back to a plain seasonal reason when unsure) — these rows
+        # need clearing again so the next request regenerates under it.
+        _CACHE_RESET_MIGRATION_10 = "clear_month_destinations_cache_for_factual_accuracy_fix"
+        already_applied_10 = conn.execute(
+            "SELECT 1 FROM _schema_migrations WHERE name = ?", (_CACHE_RESET_MIGRATION_10,)
+        ).fetchone()
+        if not already_applied_10:
+            cleared_10 = conn.execute("DELETE FROM month_destinations_cache").rowcount
+            conn.execute(
+                "INSERT INTO _schema_migrations (name, applied_at) VALUES (?, ?)",
+                (_CACHE_RESET_MIGRATION_10, datetime.utcnow().isoformat()),
+            )
+            print(f"[DB] One-time migration: cleared {cleared_10} stale month_destinations_cache row(s) (factual-accuracy fix)")
+
         # Migration (Nov 2026, decision 1 follow-up): homepage_visits
         # launched minutes earlier without a date dimension, so "total
         # visits today" wasn't answerable, and without a referrer-domain/
@@ -1763,8 +1784,16 @@ def get_month_destinations_cache(month: str) -> list[dict] | None:
       instead of genuinely varying by month — added explicit prompt
       guidance against that, confirmed live it raised Asia's unique
       destination count from 26 to 120 across the year.
+      "v8:" (2026-11-06) — the prompt had no rule against inventing a
+      holiday/event or getting its month wrong. Confirmed live in
+      October's cached results: Tet (Vietnam's Lunar New Year, actually
+      late Jan/Feb) attributed to Vietnam in October, and a Vendimia
+      grape-harvest festival attributed to Germany. Added an explicit
+      factual-accuracy section to the prompt (no invented events, a
+      named event's month must be correct, fall back to a plain
+      seasonal reason when unsure) — bump clears the pre-fix "v7" rows.
     """
-    key = "v7:" + month.strip().lower()
+    key = "v8:" + month.strip().lower()
     with _conn() as conn:
         row = conn.execute(
             "SELECT destinations_json, expires_at FROM month_destinations_cache WHERE cache_key = ?",
@@ -1785,7 +1814,7 @@ def save_month_destinations_cache(month: str, destinations: list[dict], ttl_days
     See get_month_destinations_cache's docstring for why the cache key
     (not the stored `month` value) carries a version prefix.
     """
-    key = "v7:" + month.strip().lower()
+    key = "v8:" + month.strip().lower()
     now = datetime.utcnow()
     expires_at = now + timedelta(days=ttl_days)
     with _conn() as conn:

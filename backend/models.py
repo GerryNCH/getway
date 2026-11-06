@@ -219,7 +219,20 @@ class Itinerary(BaseModel):
     hero_photo_url: str = ""  # Best single photo for the destination
     hero_attribution: Optional[UnsplashAttribution] = None
     gallery_photo_urls: list[str] = []  # 4-5 photos for the hero gallery
-    gallery_attributions: list[UnsplashAttribution] = []  # parallel to gallery_photo_urls
+    # Optional per element, NOT just Optional at the field level (like
+    # hero_attribution above) — parallel to gallery_photo_urls, and one
+    # entry can legitimately be None: places._get_destination_gallery_unsplash
+    # falls back to a Google Places photo when Unsplash has nothing for a
+    # destination, and that photo has no Unsplash attribution to show.
+    # Bug (found Nov 2026): this was `list[UnsplashAttribution]` with no
+    # Optional, so database.get_itinerary() crashed with a Pydantic
+    # ValidationError for any route whose gallery included that fallback
+    # photo — database.save_itinerary() already wrote `null` for it
+    # correctly (see database._attr_to_dict), only the read-side type was
+    # too strict. The frontend's renderUnsplashCredit() already treats a
+    # falsy attribution as "no credit to show", so no data or JS change
+    # needed — this one-line type widening is the whole fix.
+    gallery_attributions: list[Optional[UnsplashAttribution]] = []
     comments: list[Comment] = []  # Real TikTok comments, fetched via Apify
                                    # (clockworks/tiktok-comments-scraper).
                                    # Empty for itineraries cached before this

@@ -647,6 +647,41 @@ def _attr_to_dict(attr) -> dict | None:
     return attr.model_dump() if hasattr(attr, "model_dump") else dict(attr)
 
 
+def find_routes_with_null_gallery_attributions() -> list[dict]:
+    """
+    Diagnostic (Nov 2026 gallery_attributions type-fix — see models.py's
+    Itinerary.gallery_attributions comment for the full story): scans
+    every route, across ALL statuses, for a `null` entry in
+    gallery_attributions_json. A null entry is legitimate — it means that
+    one gallery photo came from the Google Places fallback in
+    places._get_destination_gallery_unsplash and has no Unsplash
+    attribution to show — but it used to crash Itinerary(...) construction
+    before the field was widened to list[Optional[UnsplashAttribution]].
+    Read-only, no side effects — just reports which routes have at least
+    one, so they can be spot-checked live now that the fix is deployed.
+    """
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT video_id, status, destination, gallery_attributions_json FROM itineraries"
+        ).fetchall()
+    results = []
+    for row in rows:
+        try:
+            attrs = json.loads(row["gallery_attributions_json"] or "[]")
+        except (json.JSONDecodeError, TypeError):
+            continue
+        null_count = sum(1 for a in attrs if a is None)
+        if null_count:
+            results.append({
+                "video_id": row["video_id"],
+                "status": row["status"],
+                "destination": row["destination"],
+                "null_count": null_count,
+                "gallery_size": len(attrs),
+            })
+    return results
+
+
 def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
     """Saves a freshly extracted itinerary to the cache."""
     with _conn() as conn:

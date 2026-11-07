@@ -448,6 +448,40 @@ def _names_plausibly_match(query_name: str, candidate_name: str) -> bool:
     return len(overlap) / len(q_words) >= 0.4
 
 
+def destination_is_real_place(name: str) -> bool:
+    """
+    v11 "Best this month" fix (Nov 2026): the AI month-calendar generator
+    (ai_analyzer.generate_month_calendar) used to occasionally put an
+    EVENT's own name in the destination field itself — e.g. "Thanksgiving,
+    USA nationwide", "Dragon Boat Festival (China, East Asia)" — instead
+    of a real, bookable place. Harmless-looking JSON, but broken on the
+    homepage card (its photo lookup has nothing real to search for) and a
+    factual-accuracy problem in its own right, found during the v10
+    audit. Confirms `name` resolves to an actual Google Places result
+    whose own name plausibly overlaps what was asked for — the same
+    "is this really the place I asked for" check the stop-resolution
+    pipeline already uses (_names_plausibly_match above). Cheap (1
+    result, minimal field mask, via _search_places) and good enough: a
+    genuine place reliably resolves to itself, while an event name either
+    returns nothing from Places or returns something whose own name
+    shares no real overlap with it.
+    """
+    name = (name or "").strip()
+    if not name:
+        return False
+    try:
+        results = _search_places(name, max_results=1)
+    except Exception as e:
+        print(f"[Places] destination_is_real_place('{name}') lookup failed: {type(e).__name__}: {e}")
+        return False
+    if not results:
+        return False
+    display_name = (results[0].get("displayName") or {}).get("text", "").strip()
+    if not display_name:
+        return False
+    return _names_plausibly_match(name, display_name)
+
+
 def destination_search_city(destination: str) -> str:
     """
     Best-effort city/region name to append to a stop's own name when

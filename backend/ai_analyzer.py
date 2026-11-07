@@ -838,144 +838,166 @@ _VALID_REGIONS = set(_REGION_ORDER)
 # right — it's simply which loop iteration produced the entry, so it can
 # never come back malformed/missing (no more validating it against
 # _VALID_REGIONS at all).
-# Nov 2026 (Gerry's decision, after v8 and v9 both still let errors through
-# via the model's own "knowledge" of events/phenomena): the model no longer
-# gets to decide what's a real, correctly-timed event or natural phenomenon
-# at all. This is the ONLY source of truth for event/festival reasons now —
-# hand-built and checked against real sources once, kept deliberately short
-# and conservative (if a month/location pairing wasn't easy to verify
-# confidently, it isn't here). Natural phenomena (migrations, blooms,
-# aurora, whale season) are gone entirely — that was the OTHER source of
-# remaining errors (a Pretoria jacaranda-bloom reason placed in June, the
-# Southern Hemisphere's actual winter, when the real bloom is Oct-Nov) even
-# after named festivals were banned. Adding an entry here means a human
-# checked it — the model never gets to add one on its own judgment.
-_VERIFIED_EVENTS_LIST = """
-January:
-- New Year's Day — worldwide — Jan 1
-- Cape Town Minstrel Carnival / Kaapse Klopse — Cape Town, South Africa — Jan 2
-- Vodoun Day / Voodoo Festival — Ouidah, Benin — Jan 10
-- Timkat (Ethiopian Epiphany) — Ethiopia — Jan 19-20
-- Australia Day — Australia — Jan 26
-- Harbin Ice and Snow Festival — Harbin, China — Jan-Feb
-- Lunar New Year (Chinese New Year / Tet / Seollal) — China, Vietnam, South Korea, broader East Asia — late Jan-Feb
+# v11 (Nov 2026, Gerry's decision after the v10 audit): v10 kept this
+# list as PROSE and trusted the model to (a) only cite an event from it,
+# in its right month, for its right location, and (b) never mention a
+# natural phenomenon at all. Both trusts were confirmed broken on a real
+# v10 generation — not edge cases, 50+ entries: Gion Matsuri cited in
+# June while the model's own text admitted "begins in July"; Obon cited
+# in July when it's only ever mid-August; "Post-Mardi Gras"/"Post-Timkat"
+# used as a month anchor outside the event's own month; two invented
+# events not on the list at all ("Brisbane Festival", "Auckland
+# Anniversary Day"); and 51 explicit mentions of banned natural
+# phenomena (aurora, wildebeest calving/migration, bloom/blossom,
+# autumn foliage, coral spawning, whale season, migratory birds) despite
+# the prompt saying "NO natural phenomenon, ever". Per Gerry: a prompt
+# instruction is no longer enough on its own — this is now STRUCTURED
+# data the CODE validates after generation (see generate_month_calendar
+# below), not prose the model has to interpret and self-police. The
+# model only ever supplies an `event_id` from this table; the displayed
+# event name and the month/location check both come from here, in code,
+# never from the model's own text.
+#   id -> {"name": display name shown to users,
+#          "months": set of 1-12 ints this event is valid for,
+#          "locations": None (worldwide/no restriction) or a list of
+#          lowercase substrings — the destination name must contain at
+#          least one for this event_id to be accepted for it}
+# Changes from the v10 prose list, per Gerry's review of it:
+#   - Glastonbury Festival REMOVED entirely — it has fallow/no-festival
+#     years (including 2026), so "late Jun" isn't reliably true every
+#     year the way the other fixed/predictable events are.
+#   - Vesak widened to Apr-Jun (was Apr-May) — Thailand's Vesak fell in
+#     June in 2023; the lunar date genuinely moves enough that Apr-May
+#     alone is too narrow for Thailand specifically.
+#   - Carnival / Mardi Gras locations now explicitly include Salvador
+#     and Recife, Brazil (two of Brazil's biggest, most famous Carnival
+#     cities — the v10 list only named Rio, so otherwise-correct Feb-Mar
+#     Carnival picks for Salvador/Recife had nowhere valid to point to).
+_VERIFIED_EVENTS: dict[str, dict] = {
+    "new_years_day": {"name": "New Year's Day", "months": {1}, "locations": None},
+    "cape_town_carnival": {"name": "Cape Town Minstrel Carnival / Kaapse Klopse", "months": {1}, "locations": ["cape town"]},
+    "voodoo_festival": {"name": "Vodoun Day / Voodoo Festival", "months": {1}, "locations": ["ouidah", "benin"]},
+    "timkat": {"name": "Timkat (Ethiopian Epiphany)", "months": {1}, "locations": ["ethiopia"]},
+    "australia_day": {"name": "Australia Day", "months": {1}, "locations": ["australia"]},
+    "harbin_ice_festival": {"name": "Harbin Ice and Snow Festival", "months": {1, 2}, "locations": ["harbin"]},
+    "lunar_new_year": {"name": "Lunar New Year (Chinese New Year / Tet / Seollal)", "months": {1, 2}, "locations": ["china", "vietnam", "korea", "hong kong", "taiwan", "singapore", "east asia"]},
+    "waitangi_day": {"name": "Waitangi Day", "months": {2}, "locations": ["new zealand"]},
+    "carnival_mardi_gras": {"name": "Carnival / Mardi Gras", "months": {2, 3}, "locations": ["rio de janeiro", "rio", "venice", "new orleans", "oruro", "sydney", "salvador", "recife"]},
+    "holi": {"name": "Holi", "months": {2, 3}, "locations": ["india"]},
+    "st_patricks_day": {"name": "St. Patrick's Day", "months": {3}, "locations": ["ireland"]},
+    "nowruz": {"name": "Nowruz (Persian New Year)", "months": {3}, "locations": ["iran", "uzbekistan", "tajikistan", "kazakhstan", "kyrgyzstan", "azerbaijan", "afghanistan"]},
+    "vendimia": {"name": "Fiesta Nacional de la Vendimia (grape harvest festival)", "months": {2, 3}, "locations": ["mendoza"]},
+    "sxsw": {"name": "South by Southwest (SXSW)", "months": {3}, "locations": ["austin"]},
+    "easter": {"name": "Easter (incl. Semana Santa)", "months": {3, 4}, "locations": None},
+    "passover": {"name": "Passover", "months": {3, 4}, "locations": ["israel"]},
+    "songkran": {"name": "Songkran (Thai New Year)", "months": {4}, "locations": ["thailand"]},
+    "qingming": {"name": "Qingming Festival (Tomb-Sweeping Day)", "months": {4}, "locations": ["china"]},
+    "anzac_day": {"name": "ANZAC Day", "months": {4}, "locations": ["australia", "new zealand"]},
+    "coachella": {"name": "Coachella", "months": {4}, "locations": ["california"]},
+    "vesak": {"name": "Vesak (Buddha's Birthday)", "months": {4, 5, 6}, "locations": ["thailand", "sri lanka"]},
+    "cinco_de_mayo": {"name": "Cinco de Mayo", "months": {5}, "locations": ["mexico"]},
+    "cannes_film_festival": {"name": "Cannes Film Festival", "months": {5}, "locations": ["cannes", "france"]},
+    "kentucky_derby": {"name": "Kentucky Derby", "months": {5}, "locations": ["kentucky"]},
+    "dragon_boat_festival": {"name": "Dragon Boat Festival", "months": {5, 6}, "locations": ["china", "east asia", "hong kong", "taiwan"]},
+    "vivid_sydney": {"name": "Vivid Sydney", "months": {5, 6}, "locations": ["sydney"]},
+    "inti_raymi": {"name": "Inti Raymi (Festival of the Sun)", "months": {6}, "locations": ["cusco"]},
+    "wimbledon": {"name": "Wimbledon", "months": {6, 7}, "locations": ["england", "london"]},
+    "canada_day": {"name": "Canada Day", "months": {7}, "locations": ["canada"]},
+    "independence_day_usa": {"name": "Independence Day", "months": {7}, "locations": ["usa", "united states"]},
+    "san_fermin": {"name": "San Fermín (Running of the Bulls)", "months": {7}, "locations": ["pamplona"]},
+    "bastille_day": {"name": "Bastille Day", "months": {7}, "locations": ["france"]},
+    "gion_matsuri": {"name": "Gion Matsuri", "months": {7}, "locations": ["kyoto"]},
+    "tour_de_france": {"name": "Tour de France", "months": {7}, "locations": ["france"]},
+    "naadam": {"name": "Naadam Festival", "months": {7}, "locations": ["mongolia"]},
+    "calgary_stampede": {"name": "Calgary Stampede", "months": {7}, "locations": ["calgary"]},
+    "durban_july": {"name": "Durban July (horse race)", "months": {7}, "locations": ["durban"]},
+    "edinburgh_fringe": {"name": "Edinburgh Festival Fringe", "months": {8}, "locations": ["edinburgh", "scotland"]},
+    "obon": {"name": "Obon", "months": {8}, "locations": ["japan"]},
+    "notting_hill_carnival": {"name": "Notting Hill Carnival", "months": {8}, "locations": ["london"]},
+    "la_tomatina": {"name": "La Tomatina", "months": {8}, "locations": ["buñol", "bunol", "valencia"]},
+    "venice_film_festival": {"name": "Venice Film Festival", "months": {8, 9}, "locations": ["venice", "italy"]},
+    "oktoberfest": {"name": "Oktoberfest", "months": {9, 10}, "locations": ["munich", "bavaria"]},
+    "mid_autumn_festival": {"name": "Mid-Autumn Festival", "months": {9, 10}, "locations": ["china", "east asia", "hong kong", "taiwan", "vietnam", "korea"]},
+    "golden_week": {"name": "Golden Week (National Day)", "months": {10}, "locations": ["china"]},
+    "balloon_fiesta": {"name": "Albuquerque International Balloon Fiesta", "months": {10}, "locations": ["albuquerque"]},
+    "halloween": {"name": "Halloween", "months": {10}, "locations": None},
+    "diwali": {"name": "Diwali", "months": {10, 11}, "locations": ["india", "nepal"]},
+    "day_of_the_dead": {"name": "Día de los Muertos (Day of the Dead)", "months": {11}, "locations": ["mexico"]},
+    "melbourne_cup": {"name": "Melbourne Cup", "months": {11}, "locations": ["melbourne"]},
+    "thanksgiving": {"name": "Thanksgiving", "months": {11}, "locations": ["usa", "united states"]},
+    "christmas_markets": {"name": "European Christmas Markets", "months": {11, 12}, "locations": ["germany", "austria", "france", "czech", "poland", "uk", "united kingdom", "vienna", "strasbourg", "prague", "kraków", "krakow", "warsaw"]},
+    "fiestas_de_quito": {"name": "Fiestas de Quito", "months": {12}, "locations": ["quito"]},
+    "hanukkah": {"name": "Hanukkah", "months": {11, 12}, "locations": ["israel"]},
+    "christmas": {"name": "Christmas", "months": {12}, "locations": None},
+    "boxing_day": {"name": "Boxing Day", "months": {12}, "locations": ["uk", "united kingdom", "canada", "australia", "new zealand"]},
+    "new_years_eve": {"name": "New Year's Eve", "months": {12}, "locations": None},
+}
 
-February:
-- Waitangi Day — New Zealand — Feb 6
-- Carnival / Mardi Gras (Rio de Janeiro; Venice; New Orleans; Carnaval de Oruro, Bolivia; Sydney Gay and Lesbian Mardi Gras) — Feb-Mar
-- Holi — India — Feb-Mar
-- Lunar New Year — China, Vietnam, South Korea, broader East Asia — late Jan-Feb (some years)
 
-March:
-- St. Patrick's Day — Ireland, worldwide Irish communities — Mar 17
-- Nowruz (Persian New Year) — Iran, Central Asia — Mar 20-21
-- Fiesta Nacional de la Vendimia (grape harvest festival) — Mendoza, Argentina — late Feb-early Mar
-- Carnival / Mardi Gras, Holi — see February — Feb-Mar
-- South by Southwest (SXSW) — Austin, USA — Mar
+def _events_table_text() -> str:
+    """Compact `id | name | months | where` table for the prompt — see
+    _VERIFIED_EVENTS's comment for why this is structured data the model
+    only ever references by id, not prose it has to interpret."""
+    lines = []
+    for eid, ev in _VERIFIED_EVENTS.items():
+        months_txt = ",".join(_CALENDAR_MONTHS[m - 1][:3] for m in sorted(ev["months"]))
+        where_txt = ", ".join(ev["locations"]) if ev["locations"] else "worldwide"
+        lines.append(f"{eid} | {ev['name']} | {months_txt} | {where_txt}")
+    return "\n".join(lines)
 
-April:
-- Easter (incl. Semana Santa) — worldwide Christian countries, esp. Spain — Mar-Apr
-- Passover — Israel, Jewish communities worldwide — Mar-Apr
-- Songkran (Thai New Year) — Thailand — Apr 13-15
-- Qingming Festival (Tomb-Sweeping Day) — China — early Apr
-- ANZAC Day — Australia, New Zealand — Apr 25
-- Coachella — California, USA — Apr
-- Vesak (Buddha's Birthday) — Thailand, Sri Lanka, Southeast Asia — Apr-May
 
-May:
-- Cinco de Mayo — Mexico — May 5
-- Cannes Film Festival — France — May
-- Kentucky Derby — USA — May (first Saturday)
-- Vesak — see April — Apr-May (some years)
-- Dragon Boat Festival — China, broader East Asia — late May-Jun
-- Vivid Sydney — Sydney, Australia — late May-mid Jun
-
-June:
-- Inti Raymi (Festival of the Sun) — Cusco, Peru — Jun 24
-- Glastonbury Festival — England — late Jun
-- Wimbledon — England — late Jun-early Jul
-- Dragon Boat Festival, Vivid Sydney — see May — late May-Jun
-
-July:
-- Canada Day — Canada — Jul 1
-- Independence Day — USA — Jul 4
-- San Fermín (Running of the Bulls) — Pamplona, Spain — Jul 6-14
-- Bastille Day — France — Jul 14
-- Gion Matsuri — Kyoto, Japan — Jul
-- Tour de France — France — Jul
-- Naadam Festival — Mongolia — Jul 11-13
-- Calgary Stampede — Calgary, Canada — Jul
-- Durban July (horse race) — Durban, South Africa — Jul (first Saturday)
-- Wimbledon — see June — late Jun-early Jul
-
-August:
-- Edinburgh Festival Fringe — Scotland — Aug
-- Obon — Japan — mid-Aug
-- Notting Hill Carnival — London, UK — Aug (bank holiday weekend)
-- La Tomatina — Buñol, Spain — last Wed of Aug
-- Venice Film Festival — Italy — late Aug-early Sep
-
-September:
-- Oktoberfest — Munich, Germany — mid-Sep to first Sun of Oct
-- Mid-Autumn Festival — China, broader East Asia — Sep-Oct
-- Venice Film Festival — see August — late Aug-early Sep
-
-October:
-- Oktoberfest — see September — mid-Sep to first Sun of Oct
-- Mid-Autumn Festival — see September — Sep-Oct (some years)
-- Golden Week (National Day) — China — Oct 1-7
-- Albuquerque International Balloon Fiesta — New Mexico, USA — Oct
-- Halloween — USA, UK, worldwide — Oct 31
-- Diwali — India, South Asian diaspora worldwide — Oct-Nov (some years)
-
-November:
-- Día de los Muertos (Day of the Dead) — Mexico — Nov 1-2
-- Diwali — India, South Asian diaspora worldwide — Oct-Nov
-- Melbourne Cup — Melbourne, Australia — Nov (first Tuesday)
-- Thanksgiving — USA — Nov (fourth Thursday)
-- European Christmas Markets — Germany, Austria, France, Czech Republic, Poland, UK, and most of Europe — late Nov-Dec
-
-December:
-- European Christmas Markets — see November — late Nov-Dec
-- Fiestas de Quito — Quito, Ecuador — early Dec (through Dec 6)
-- Hanukkah — Israel, Jewish communities worldwide — Nov-Dec (some years)
-- Christmas — worldwide — Dec 25
-- Boxing Day — UK, Commonwealth countries — Dec 26
-- New Year's Eve — worldwide, incl. Sydney Harbour fireworks — Dec 31
-"""
+# v11 (Nov 2026): the v10 prompt's categorical "NO natural phenomenon,
+# ever" instruction was confirmed broken on a real generation — 51
+# entries still named one (aurora/northern lights, wildebeest calving/
+# migration, bloom/blossom, autumn foliage/fall colors, coral spawning,
+# whale season, migratory birds). Per Gerry: this can no longer be a
+# prompt-only rule — it's now a CODE-level filter applied to every
+# entry's reason_detail (and destination name) after generation,
+# regardless of what the prompt says, with explicit synonyms for each
+# phenomenon category rather than one keyword each (e.g. "fall colors"
+# as well as "foliage", "leaves turning" as well as "autumn colors") —
+# the model found ways to describe these phenomena without using the
+# single keyword a narrower filter would have caught.
+_BANNED_PHENOMENON_RE = re.compile(
+    r"\bmigrat\w*|\bbloom\w*|\bblossom\w*|\baurora\b|\bnorthern lights\b|"
+    r"\bwhale\w*|\bcalv(e|ing)\b|\bspawn\w*|\bnest(ing)?\b|\brut\b|"
+    r"\bfoliage\b|\beclipse\b|\bturtle\w*|\bhatch(ing)?\b|\bwildebeest\b|"
+    r"\bfirefl(y|ies)\b|\bfall colo[u]?rs\b|\bautumn colo[u]?rs\b|"
+    r"\bleaves (turn\w*|chang\w*)\b|\bsupermoon\b|\bmeteor shower\b|"
+    r"\btulip\b|\bwildflower\w*|\bcherry blossom\w*|\bmagnolias?\b",
+    re.I,
+)
 
 _REGION_CALENDAR_SYSTEM_TEMPLATE = """You are building a year-long "best places to visit this month" calendar for {region} ONLY, for GetWay, a travel app's homepage section.
 
-For EACH of the 12 months (January through December), pick 15 real, well-known, genuinely popular tourist destinations (a country, region, or city) IN {region} — places with an actual, established tourism industry and real traveler demand (hotels, organized tours, meaningful visitor numbers), not places nobody actually visits as a tourist — that are genuinely at their best that month, for a real, specific reason. Aim for the full 15 even if some are less obvious picks than your first few — a downstream step (not something you need to worry about) trims and cross-checks this list afterward, so holding back to a "safer" shorter list only removes options it could have used; fewer than 15 is fine ONLY if {region} genuinely doesn't have 15 legitimately-at-their-best destinations for that month.
+For EACH of the 12 months (January through December), propose 6-8 real, well-known, genuinely popular tourist destinations (a country, region, or specific city) IN {region} — places with an actual, established tourism industry and real traveler demand, NEVER an event's own name, NEVER a generic phrase. A downstream step in CODE (not something you write, and not something you need to get right by following instructions alone) re-validates every one of these against Google Places and the EVENTS TABLE below and drops whatever doesn't check out, keeping only ~3-4 per month — so propose the full 6-8 even for less-obvious picks; a short list here just means fewer survive validation, never more.
 
-Weather CAN be part of the reason, but never as the sole, generic "nice weather" justification that could apply to that place in half the year or to any place at any time — pair it with something concrete and specific to that exact month (e.g. "shoulder season — still warm, tourist crowds have thinned, prices drop before winter" is fine; "pleasant weather" alone is not). Your ONLY valid reason types are: weather, crowds, price/shoulder-season — OR an event named in the EVENTS LIST below, in one of ITS listed months, for ITS listed location. Nothing else. Mix reason types across the month's picks, don't lean on one.
+For each destination, set reason_type to exactly one of "weather", "crowds", "prices", or "event":
+- "weather" / "crowds" / "prices": write reason_detail as one short, specific clause (max ~16 words) — concrete to that exact month, never a generic "nice weather" that could apply any time of year. Leave event_id null.
+- "event": set event_id to one id from the EVENTS TABLE below — ONLY when the current month you're writing is one of that event's listed months AND the destination is (or genuinely is part of) one of that event's listed locations. Never invent an event_id, never use one for the wrong month or a different location. reason_detail should describe what a visitor would see or do (max ~14 words) WITHOUT repeating the event's name or date — the app inserts the real name and timing automatically from the table, your text is just color.
 
-EVENTS — read this before writing any reason that names a festival, holiday, or celebration:
-{events_list}
-Rules for using this list:
-1. You may name an event ONLY if it appears above, word-for-word close enough to be clearly the same event, AND only in a month it is listed under, AND only for the location it is listed for (or a destination that is genuinely that location — e.g. "Oktoberfest" only for Munich/Bavaria, never a different German city or a different country entirely).
-2. If an event you remember or believe is real is NOT in this list, you may NOT mention it — not by name, not vaguely alluded to, not hedged ("festival season", "local celebrations are common this time of year" is also out if it's clearly gesturing at one specific unlisted event). This is true even if you are confident it is real and correctly timed. The list above is the only source of truth for this prompt; your own background knowledge of festivals and holidays is explicitly NOT trusted here, because it has produced real, confirmed errors before (a Vietnamese new year misattributed to the wrong month, a wine-harvest festival misattributed to the wrong country, a film festival misattributed to the wrong month).
-3. Most months, for most regions, you will have ZERO usable events from the list — that is expected and completely fine. A destination with no listed event for its month gets a weather/crowds/price reason instead, exactly like every other pick. Do not force an event in to seem more interesting.
-4. Do NOT name ANY natural phenomenon — no wildlife migration, no bloom/blossom season, no northern lights, no whale season, nothing in this category, for any destination, ever, even one you are confident about. This category produced its own confirmed error (a flowering tree's bloom season placed in the wrong hemisphere's season) even after festivals were banned, so it is removed entirely, the same way festivals are now locked to the list above. Use weather, crowds, or price instead.
+ABSOLUTE RULES for reason_detail, every reason_type, no exceptions — a CODE-level filter checks these after you respond and silently drops any entry that breaks them, so there is no advantage to bending them:
+1. Never name, hint at, or hedge toward any festival/holiday/carnival/celebration other than through a valid event_id as described above. Phrases like "festival season" or "local celebrations" with no valid event_id are OUT — use weather/crowds/prices instead.
+2. Never mention ANY natural phenomenon, in any phrasing — no bloom/blossom/wildflowers, no autumn foliage/fall colors/leaves turning, no wildlife migration/calving/nesting/spawning, no aurora/northern lights, no whale season, nothing in this category, for any destination, ever. Use weather/crowds/prices instead.
+3. The destination itself must always be a real, independently-bookable place — e.g. "Kyoto, Japan", never "Gion Matsuri (Kyoto, Japan)"; "Munich, Germany", never "Oktoberfest". If you can't name the place without naming the event, pick a different destination.
 
-The SAME destination MAY appear in more than one month, but ONLY if each appearance has a genuinely different, specific reason — never repeat the same destination with the same or a near-identical reason (including "nice weather" reused) just to fill a slot. A destination should not appear more than 3 times across the whole year, even with different reasons — pick your 3 strongest, most distinct seasonal angles for it, don't pad. This cap plus the specific-reason rule exist specifically to stop one "safe, pleasant-year-round" country from becoming a generic filler pick that shows up almost every month — every appearance must earn its place with a real, distinct angle.
+EVENTS TABLE — id | name | valid month(s) | where (usable ONLY as described above; never write the name/location text into reason_detail yourself):
+{events_table}
 
-Treat that 3-appearance cap as a ceiling for your few best, most genuinely seasonal picks — not a target every destination should reach. Across the FULL YEAR (all 12 months combined, not just within one month), {region} has dozens upon dozens of real, well-known, established tourist destinations beyond the same handful of famous names — don't default to a small rotating shortlist reused with reworded reasons (e.g. Asia is far more than Thailand/Japan/Bali repeated; South America is far more than Peru/Brazil/Argentina's capitals; Oceania is far more than Australia/New Zealand/Fiji). Most destinations across the year should appear ONCE, a genuine minority two or three times — if you notice yourself reaching for the same names again and again across different months, that is a sign to look harder for a different real, specific destination instead, not to reuse a favorite.
+The SAME destination MAY appear in more than one month, but ONLY with a genuinely different, specific reason each time — never the same or near-identical reason reused. No destination should appear more than 3 times across the whole year.
 
-Within each month, make sure the mix of picks covers genuinely DIFFERENT traveler motivations for that month — don't let every pick skew toward one angle (e.g. don't make every November pick a "still warm, beach escape" destination). Include, where genuinely true: (a) a warm-weather escape from colder regions (e.g. the Canary Islands or Cape Verde still being warm in November); (b) an event from the EVENTS LIST above, when one genuinely applies to this region and month — otherwise another weather/crowd/price angle instead, never a substitute event or phenomenon; and (c) a genuine shoulder-season pick — crowds thinned, weather still pleasant enough to comfortably see the sights, prices lower (e.g. a major European capital in a month right after its busy season ends). Type (c) matters as much as the other two — plenty of real travelers deliberately want to see famous sights WITHOUT a crowd, just decent weather and fewer people. A traveler deciding "where should I go this month" should see real, different kinds of good reasons in the results, not one repeated angle. Also cover a real geographic spread within {region}, not just its most famous 3-4 countries repeated every month.
-
-One short, engaging sentence per destination (max ~18 words) explaining the specific reason.
+Across the FULL YEAR (all 12 months combined), {region} has dozens of real, well-known destinations beyond its 3-4 most famous names — cover a genuine geographic spread, don't default to the same handful reused with reworded reasons.
 
 Reply with ONLY valid JSON, no markdown fences, all 12 month keys present:
-{{"January": [{{"name": "...", "reason": "..."}}, ...], "February": [...], "March": [...], "April": [...], "May": [...], "June": [...], "July": [...], "August": [...], "September": [...], "October": [...], "November": [...], "December": [...]}}"""
+{{"January": [{{"destination": "...", "reason_type": "weather", "event_id": null, "reason_detail": "..."}}, ...], "February": [...], "March": [...], "April": [...], "May": [...], "June": [...], "July": [...], "August": [...], "September": [...], "October": [...], "November": [...], "December": [...]}}"""
 
-# Cap per (month, region) pair — not a global per-month cap anymore, since
-# each region is now its own independent call/pool. No ABSOLUTE_FLOOR
-# below this: if a region genuinely only has 1-2 legitimate picks for a
-# given month, that's what gets shown — padding with a weaker repeat just
-# to hit a number is exactly the filler behavior the new prompt's 3-
-# appearance cap and specific-reason rule are designed to prevent.
-TARGET_PER_REGION_MONTH = 10
+# v11 (Nov 2026): target lowered from 10 to 4 per Gerry's decision — with
+# every entry now also validated against Google Places and the events
+# table in code (see generate_month_calendar), a smaller, fully-verified
+# set beats a larger one padded with whatever survives. No ABSOLUTE_FLOOR
+# below this: if a region genuinely has fewer than 4 legitimate,
+# validated picks for a given month, that's what gets shown.
+TARGET_PER_REGION_MONTH = 4
 
 
 def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
@@ -998,6 +1020,27 @@ def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
     regions too — never raises overall; returns ({}, 0.0) only if every
     single region's call fails.
 
+    v11 (Nov 2026): the model's raw output per entry is now structured
+    ("destination", "reason_type", "event_id", "reason_detail" — see
+    _REGION_CALENDAR_SYSTEM_TEMPLATE) and every entry is independently
+    re-validated here in CODE before it's kept, not trusted from the
+    prompt alone (v10's prompt-only categorical bans were confirmed
+    broken on a real generation — see _VERIFIED_EVENTS/
+    _BANNED_PHENOMENON_RE's comments for specifics):
+      1. Reject if reason_detail or destination matches
+         _BANNED_PHENOMENON_RE (natural phenomena, any phrasing).
+      2. If reason_type is "event": look up event_id in
+         _VERIFIED_EVENTS and reject unless the current month and the
+         destination's location both check out against that table —
+         the DISPLAYED event name/text always comes from the table,
+         never from the model's own words.
+      3. Reject if `destination` doesn't resolve to a real place via
+         Google Places (places.destination_is_real_place) — catches an
+         event's own name being used as the "destination" field itself.
+    Only entries that survive all three end up in raw_pools; the final
+    per-region-per-month selection + year-wide 3x repeat cap below is
+    unchanged from v10.
+
     Returns ({month_name: [{"name", "reason", "region"}, ...]}, total_cost_usd),
     entries from all 6 regions concatenated per month. "region" is set
     from which loop iteration produced the entry, never parsed from the
@@ -1016,6 +1059,28 @@ def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
     # rank 10 to be able to backfill a dropped slot with the next-ranked
     # candidate instead of just losing it.
     raw_pools: dict[str, dict[str, list[dict]]] = {}
+
+    # Deferred import — places.py does `from ai_analyzer import ...` at
+    # its own module level, so importing it back at ai_analyzer's module
+    # level would be circular (see the duplicated-inline-fix comment
+    # above in this file's affiliate-link code for the same constraint).
+    # Safe here because by the time this function actually RUNS, both
+    # modules have already finished loading.
+    import places as _places_module
+
+    # Local cache (this call only — a fresh one every regeneration, which
+    # is fine since this only runs on an explicit manual admin trigger):
+    # the same destination name can legitimately appear across several
+    # months/regions in one run (e.g. a destination with 2-3 genuinely
+    # different seasonal reasons), and this is a real network call
+    # (Google Places), so avoid re-querying it every time.
+    _place_check_cache: dict[str, bool] = {}
+
+    def _destination_is_real_place_cached(name: str) -> bool:
+        key = name.strip().lower()
+        if key not in _place_check_cache:
+            _place_check_cache[key] = _places_module.destination_is_real_place(name)
+        return _place_check_cache[key]
 
     for region_idx, region in enumerate(_REGION_ORDER):
         # CONFIRMED root cause (2026-09-13), via a local run with real API
@@ -1045,7 +1110,7 @@ def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
                 response = _client.messages.create(
                     model="claude-haiku-4-5-20251001",
                     max_tokens=16000,
-                    system=_REGION_CALENDAR_SYSTEM_TEMPLATE.format(region=region, events_list=_VERIFIED_EVENTS_LIST),
+                    system=_REGION_CALENDAR_SYSTEM_TEMPLATE.format(region=region, events_table=_events_table_text()),
                     messages=[{"role": "user", "content": f"Generate the {region} 12-month calendar."}],
                 )
                 if response.stop_reason == "max_tokens":
@@ -1077,35 +1142,66 @@ def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
         try:
             region_pool: dict[str, list[dict]] = {}
             for month in _CALENDAR_MONTHS:
+                midx = _CALENDAR_MONTHS.index(month) + 1
                 entries = result.get(month) or []
-                destinations = [
-                    {
-                        "name": str(d.get("name") or "").strip(),
-                        "reason": str(d.get("reason") or "").strip(),
-                        "region": region,
-                    }
-                    for d in entries
-                ]
-                # Same length-cap reasoning as before: a place name is
-                # always short, so a whole descriptive phrase leaking into
-                # "name" gets dropped rather than shown broken. Dedup here
-                # is deliberately narrow — only an exact (name, reason)
-                # repeat WITHIN this region+month's own raw list (a literal
-                # AI slip, e.g. accidentally listing something twice) is
-                # removed. No TARGET_PER_REGION_MONTH cutoff here anymore —
-                # that selection, and the year-wide repeat cap, both happen
-                # together in the final pass below so a dropped pick can be
-                # backfilled from further down this same list.
                 seen: set[tuple[str, str]] = set()
                 kept = []
-                for d in destinations:
-                    if not d["name"] or not d["reason"] or len(d["name"]) > 40:
+                for d in entries:
+                    destination = str(d.get("destination") or "").strip()
+                    reason_type = str(d.get("reason_type") or "").strip().lower()
+                    event_id = d.get("event_id")
+                    reason_detail = str(d.get("reason_detail") or "").strip()
+
+                    if not destination or len(destination) > 48 or not reason_detail:
                         continue
-                    key = (d["name"].strip().lower(), d["reason"].strip().lower())
+
+                    # v11 code-level filter #1 (see _BANNED_PHENOMENON_RE's
+                    # comment): natural-phenomenon ban is no longer a
+                    # prompt instruction the model has to self-police —
+                    # reject outright, regardless of reason_type, if either
+                    # field matches, since v10 proved the model will still
+                    # describe these without using an obvious keyword.
+                    if _BANNED_PHENOMENON_RE.search(reason_detail) or _BANNED_PHENOMENON_RE.search(destination):
+                        continue
+
+                    if reason_type == "event":
+                        # v11 code-level filter #2: the event's real name
+                        # and whether it's even allowed this month/location
+                        # is looked up here, in code, from _VERIFIED_EVENTS
+                        # — never trusted from the model's own text. Any
+                        # mismatch (unknown id, wrong month, wrong/missing
+                        # location) drops the entry rather than trying to
+                        # salvage it as a weather/crowds/prices pick, since
+                        # reason_detail was written assuming the event
+                        # context and may not stand alone sensibly.
+                        ev = _VERIFIED_EVENTS.get(str(event_id or "").strip())
+                        if not ev or midx not in ev["months"]:
+                            continue
+                        if ev["locations"] and not any(loc in destination.lower() for loc in ev["locations"]):
+                            continue
+                        final_reason = f"{ev['name']} — {reason_detail}"
+                    elif reason_type in ("weather", "crowds", "prices"):
+                        final_reason = reason_detail
+                    else:
+                        continue
+
+                    # v11 code-level filter #3: the destination itself
+                    # must resolve to a real, independently-bookable place
+                    # — catches the "event name used as the destination"
+                    # bug found in the v10 audit (e.g. "Thanksgiving, USA
+                    # nationwide", "Dragon Boat Festival (China, East
+                    # Asia)"), which the phenomenon/event checks above
+                    # don't catch on their own since those names aren't
+                    # phenomena and often don't even set reason_type to
+                    # "event". See places.destination_is_real_place.
+                    if not _destination_is_real_place_cached(destination):
+                        continue
+
+                    key = (destination.strip().lower(), final_reason.strip().lower())
                     if key in seen:
                         continue
                     seen.add(key)
-                    kept.append(d)
+                    kept.append({"name": destination, "reason": final_reason, "region": region})
                 region_pool[month] = kept
             raw_pools[region] = region_pool
         except Exception as e:

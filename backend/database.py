@@ -599,6 +599,31 @@ def init_db() -> None:
             )
             print(f"[DB] One-time migration: cleared {cleared_12} stale month_destinations_cache row(s) (verified-events whitelist, v10)")
 
+        # Sixth month_destinations_cache reset (Nov 2026, v11 — a full
+        # audit of the actual v10 generation, not a spot-check, found the
+        # "trust the prompt" approach failing at real scale: 51 of 595
+        # entries named a banned natural phenomenon anyway, several named
+        # a whitelisted event in the wrong month (Gion Matsuri in June,
+        # Obon in July), two invented events not on the list at all, and
+        # ~15 put an event's own name in the destination field instead of
+        # a real place. v11 moves all of this validation into CODE (see
+        # ai_analyzer._BANNED_PHENOMENON_RE, _VERIFIED_EVENTS, and
+        # places.destination_is_real_place) rather than trusting the
+        # prompt alone — these rows predate that and need to go so the
+        # next generation (meant to be the final, fully-verified one) is
+        # clean from the start.
+        _CACHE_RESET_MIGRATION_13 = "clear_month_destinations_cache_for_code_level_validation"
+        already_applied_13 = conn.execute(
+            "SELECT 1 FROM _schema_migrations WHERE name = ?", (_CACHE_RESET_MIGRATION_13,)
+        ).fetchone()
+        if not already_applied_13:
+            cleared_13 = conn.execute("DELETE FROM month_destinations_cache").rowcount
+            conn.execute(
+                "INSERT INTO _schema_migrations (name, applied_at) VALUES (?, ?)",
+                (_CACHE_RESET_MIGRATION_13, datetime.utcnow().isoformat()),
+            )
+            print(f"[DB] One-time migration: cleared {cleared_13} stale month_destinations_cache row(s) (code-level validation, v11)")
+
         # Migration (Nov 2026, decision 1 follow-up): homepage_visits
         # launched minutes earlier without a date dimension, so "total
         # visits today" wasn't answerable, and without a referrer-domain/
@@ -1907,8 +1932,34 @@ def get_month_destinations_cache(month: str) -> list[dict] | None:
       main.py's /admin/regenerate-month-calendar (the only remaining way
       to regenerate it; GET /destinations/by-month no longer auto-
       regenerates on a miss). Bump clears the pre-fix "v9" rows.
+      "v11:" (2026-11-06, same day) — a real v10 generation was audited
+      in full (all 595 entries, not a spot-check) and the "trust the
+      prompt" approach failed again, at real scale: 51 entries named a
+      banned natural phenomenon anyway (aurora, wildebeest calving/
+      migration, bloom/blossom, autumn foliage, coral spawning, whale
+      season, migratory birds) despite the prompt's categorical "never,
+      ever" wording; Gion Matsuri was cited for June even though the
+      model's own text admitted "begins in July"; two events not on the
+      list at all were invented ("Brisbane Festival", "Auckland
+      Anniversary Day"); and ~15 entries put an event's own name in the
+      destination field instead of a real place ("Thanksgiving, USA
+      nationwide"). Per Gerry: a prompt rule alone is no longer trusted
+      for this feature at all. generate_month_calendar() now gets
+      STRUCTURED output (destination / reason_type / event_id /
+      reason_detail) and independently re-validates every entry in code
+      — a code-level natural-phenomenon keyword filter with synonyms
+      (ai_analyzer._BANNED_PHENOMENON_RE), an event_id looked up against
+      ai_analyzer._VERIFIED_EVENTS (month + location checked in code,
+      display name/text always inserted by code, never the model's own
+      words), and a Google Places check that the destination itself
+      resolves to a real place (places.destination_is_real_place) — see
+      that function's docstring and generate_month_calendar's updated
+      one for the full list. Target per region/month also lowered from
+      10 to 4 (ai_analyzer.TARGET_PER_REGION_MONTH) — smaller but fully
+      validated beats larger and partly wrong. Bump clears the pre-fix
+      "v10" rows (the ones with the confirmed errors above).
     """
-    key = "v10:" + month.strip().lower()
+    key = "v11:" + month.strip().lower()
     with _conn() as conn:
         row = conn.execute(
             "SELECT destinations_json, expires_at FROM month_destinations_cache WHERE cache_key = ?",
@@ -1932,10 +1983,14 @@ def save_month_destinations_cache(month: str, destinations: list[dict], ttl_days
     way this ever gets regenerated (an explicit admin call, never a
     cache-miss side effect).
 
+    v11 (2026-11-06, same day): key bumped alongside
+    get_month_destinations_cache's — see that docstring's "v11:" entry.
+    ttl_days unchanged (still effectively permanent).
+
     See get_month_destinations_cache's docstring for why the cache key
     (not the stored `month` value) carries a version prefix.
     """
-    key = "v10:" + month.strip().lower()
+    key = "v11:" + month.strip().lower()
     now = datetime.utcnow()
     expires_at = now + timedelta(days=ttl_days)
     with _conn() as conn:

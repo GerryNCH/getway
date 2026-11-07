@@ -415,7 +415,17 @@
        don't blow up the section's height. Placed right after Rankings —
        both are "help me pick a destination" sections, just from different
        angles (real-world popularity vs. seasonal timing). ───────────── -->
-  <div id="month-destinations-section" class="max-w-6xl mx-auto px-6 md:px-14 py-9 md:py-20">
+  <!-- Hidden by default (Nov 2026, v10): shown only once the initial
+       load confirms the current month's cache actually has data — see
+       setMonthSectionVisible/loadMonthDestinations below. Needed because
+       this cache is now manual-only (no auto-regeneration on a miss —
+       see main.py's get_month_destinations), so right after a deploy,
+       before Gerry has run /admin/regenerate-month-calendar and verified
+       it, every month is genuinely empty — showing this section with an
+       "couldn't find recommendations" message in that window read as a
+       broken feature rather than a not-yet-filled one, so it's hidden
+       entirely until there's real data to show. -->
+  <div id="month-destinations-section" class="hidden max-w-6xl mx-auto px-6 md:px-14 py-9 md:py-20">
     <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
       <div data-aos="fade-up">
         <div class="text-[10px] md:text-[11px] font-semibold tracking-[0.18em] text-[#8B5CF6] uppercase mb-2">Best time to go</div>
@@ -2785,6 +2795,18 @@
   const REGIONS = ['All', 'Europe', 'Asia', 'Africa', 'North America', 'South America', 'Oceania'];
   let _monthDestinationsSelectedRegion = 'All';
   let _monthDestinationsAll = []; // full fetched list for the current month, unfiltered by region
+  // Whole-section visibility — see the "hidden by default" comment on
+  // #month-destinations-section above. Only the INITIAL load (cache
+  // empty = nothing has been generated/verified yet at all) hides the
+  // whole section, including its month/continent picker chips — a later
+  // month switch that happens to come up empty must NOT hide the
+  // section, or the visitor loses the chips they'd need to switch back
+  // to a month that does have data (see loadMonthDestinations' isInitialLoad
+  // param).
+  function setMonthSectionVisible(visible) {
+    const sec = document.getElementById('month-destinations-section');
+    if (sec) sec.classList.toggle('hidden', !visible);
+  }
   function renderMonthPicker() {
     const picker = document.getElementById('month-picker');
     if (!picker) return;
@@ -2793,7 +2815,7 @@
     picker.innerHTML = MONTH_NAMES.map(m => `
       <button type="button" onclick="selectMonthDestinations('${m}', this)" class="month-chip flex-shrink-0 h-[36px] px-4 text-xs font-medium rounded-full whitespace-nowrap transition-colors ${m === currentMonth ? 'bg-[#8B5CF6] text-white' : 'bg-white border border-gray-200 text-gray-600'}">${m}</button>
     `).join('');
-    loadMonthDestinations(currentMonth);
+    loadMonthDestinations(currentMonth, /* isInitialLoad */ true);
   }
   // Rendered once at init (unlike renderMonthPicker, which rebuilds its
   // chips' active state every month switch) — the region chips' active
@@ -2814,7 +2836,7 @@
     });
     btn.classList.remove('bg-white', 'border', 'border-gray-200', 'text-gray-600');
     btn.classList.add('bg-[#8B5CF6]', 'text-white');
-    loadMonthDestinations(month);
+    loadMonthDestinations(month, /* isInitialLoad */ false);
   }
   function selectRegionDestinations(region, btn) {
     if (region === _monthDestinationsSelectedRegion) return;
@@ -2827,7 +2849,7 @@
     btn.classList.add('bg-[#8B5CF6]', 'text-white');
     applyRegionFilterAndRender();
   }
-  async function loadMonthDestinations(month) {
+  async function loadMonthDestinations(month, isInitialLoad = false) {
     const listEl = document.getElementById('month-destinations-list');
     const loadingEl = document.getElementById('month-destinations-loading');
     const emptyEl = document.getElementById('month-destinations-empty');
@@ -2836,7 +2858,10 @@
     listEl.innerHTML = '';
     emptyEl.classList.add('hidden');
     regionEmptyEl.classList.add('hidden');
-    loadingEl.classList.remove('hidden');
+    // Only show the loading spinner for a month switch — on the initial
+    // load the whole section is still hidden (see setMonthSectionVisible)
+    // until we know there's real data, so there's nothing to spin over yet.
+    if (!isInitialLoad) loadingEl.classList.remove('hidden');
     try {
       const res = await fetch(`${BACKEND_URL}/destinations/by-month?month=${encodeURIComponent(month)}`);
       const data = res.ok ? await res.json() : { destinations: [] };
@@ -2846,15 +2871,30 @@
       const destinations = data.destinations || [];
       loadingEl.classList.add('hidden');
       if (!destinations.length) {
-        emptyEl.classList.remove('hidden');
+        // Initial load with nothing cached yet (e.g. right after a
+        // deploy, before /admin/regenerate-month-calendar has been run
+        // and verified) — hide the whole section rather than showing an
+        // empty/broken-looking one. A later month switch coming up
+        // empty is different: keep the section (and its chips) visible,
+        // just show the small inline "couldn't find" message.
+        if (isInitialLoad) {
+          setMonthSectionVisible(false);
+        } else {
+          emptyEl.classList.remove('hidden');
+        }
         return;
       }
+      setMonthSectionVisible(true);
       _monthDestinationsAll = destinations;
       applyRegionFilterAndRender();
     } catch (e) {
       if (myMonth !== _monthDestinationsSelectedMonth) return;
       loadingEl.classList.add('hidden');
-      emptyEl.classList.remove('hidden');
+      if (isInitialLoad) {
+        setMonthSectionVisible(false);
+      } else {
+        emptyEl.classList.remove('hidden');
+      }
     }
   }
   // Shared by loadMonthDestinations (new month fetched) and

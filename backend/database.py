@@ -1958,6 +1958,16 @@ def get_month_destinations_cache(month: str) -> list[dict] | None:
       10 to 4 (ai_analyzer.TARGET_PER_REGION_MONTH) — smaller but fully
       validated beats larger and partly wrong. Bump clears the pre-fix
       "v10" rows (the ones with the confirmed errors above).
+      No "v12:" bump (Nov 2026, same week): Gerry's required manual
+      read-through of the full v11 generation (257 entries) found 5 more
+      bad ones — 1 phenomenon-filter evasion, 4 filed under the wrong
+      continent (see ai_analyzer/places' new destination_matches_region
+      and the widened _BANNED_PHENOMENON_RE, added for any FUTURE
+      regeneration) — but per Gerry's explicit decision this round is
+      hand-patched directly in place (main.py's one-time
+      /admin/patch-v11-month-cache) rather than regenerated, so the key
+      stays "v11:" even though 2 more code-level checks now exist than
+      existed when this data was actually generated.
     """
     key = "v11:" + month.strip().lower()
     with _conn() as conn:

@@ -964,7 +964,15 @@ _BANNED_PHENOMENON_RE = re.compile(
     r"\bfoliage\b|\beclipse\b|\bturtle\w*|\bhatch(ing)?\b|\bwildebeest\b|"
     r"\bfirefl(y|ies)\b|\bfall colo[u]?rs\b|\bautumn colo[u]?rs\b|"
     r"\bleaves (turn\w*|chang\w*)\b|\bsupermoon\b|\bmeteor shower\b|"
-    r"\btulip\b|\bwildflower\w*|\bcherry blossom\w*|\bmagnolias?\b",
+    r"\btulip\b|\bwildflower\w*|\bcherry blossom\w*|\bmagnolias?\b|"
+    # v12 additions (Nov 2026) — found via Gerry's manual read-through of
+    # a full v11 generation: "Clear winter nights ideal for viewing rare
+    # northern sky phenomena from dark locations" (Iceland, January)
+    # described aurora without using either literal keyword above. These
+    # catch that style of paraphrase plus a couple of adjacent phrasings,
+    # without trying to be an exhaustive rewrite of the whole regex.
+    r"\bsky phenomen\w*|\bcelestial (display|phenomen\w*|event)\b|"
+    r"\bnight sky lights?\b|\bpolar lights?\b",
     re.I,
 )
 
@@ -1041,6 +1049,21 @@ def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
     per-region-per-month selection + year-wide 3x repeat cap below is
     unchanged from v10.
 
+    v12 (Nov 2026): a manual read-through of a full v11 generation (all
+    257 survivors) found two more gaps checks 1-3 above don't cover:
+      4. Reject if `destination`'s own country doesn't match the
+         `region` this loop iteration is actually generating for (see
+         places.destination_matches_region) — a real, correctly-dated,
+         correctly-whitelisted event (Wimbledon, Edinburgh Festival
+         Fringe, Notting Hill Carnival, Oktoberfest) still turned up
+         filed under "North America" because nothing ever checked that
+         London/Edinburgh/Munich are actually in Europe. Reuses the SAME
+         Places lookup as #3 (via _resolve_place_cached below) rather
+         than making a second network call per destination.
+      5. _BANNED_PHENOMENON_RE itself was widened (see its own comment)
+         after "rare northern sky phenomena" (an aurora paraphrase using
+         neither literal banned word) got through live.
+
     Returns ({month_name: [{"name", "reason", "region"}, ...]}, total_cost_usd),
     entries from all 6 regions concatenated per month. "region" is set
     from which loop iteration produced the entry, never parsed from the
@@ -1074,13 +1097,17 @@ def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
     # months/regions in one run (e.g. a destination with 2-3 genuinely
     # different seasonal reasons), and this is a real network call
     # (Google Places), so avoid re-querying it every time.
-    _place_check_cache: dict[str, bool] = {}
+    # v12: caches the resolved Places dict itself (not just a bool), so
+    # checks #3 (is this real) and #4 (is this the right continent) can
+    # share one Places lookup per destination instead of making it twice
+    # — see places.resolve_destination_place's docstring.
+    _place_cache: dict[str, dict | None] = {}
 
-    def _destination_is_real_place_cached(name: str) -> bool:
+    def _resolve_place_cached(name: str) -> dict | None:
         key = name.strip().lower()
-        if key not in _place_check_cache:
-            _place_check_cache[key] = _places_module.destination_is_real_place(name)
-        return _place_check_cache[key]
+        if key not in _place_cache:
+            _place_cache[key] = _places_module.resolve_destination_place(name)
+        return _place_cache[key]
 
     for region_idx, region in enumerate(_REGION_ORDER):
         # CONFIRMED root cause (2026-09-13), via a local run with real API
@@ -1194,7 +1221,15 @@ def generate_month_calendar() -> tuple[dict[str, list[dict]], float]:
                     # don't catch on their own since those names aren't
                     # phenomena and often don't even set reason_type to
                     # "event". See places.destination_is_real_place.
-                    if not _destination_is_real_place_cached(destination):
+                    place = _resolve_place_cached(destination)
+                    if not _places_module.destination_matches_place(destination, place):
+                        continue
+
+                    # v12 code-level filter #4 (see this function's
+                    # docstring and places.destination_matches_region):
+                    # the destination is real, but is it actually IN the
+                    # continent this loop iteration is generating for?
+                    if not _places_module.destination_matches_region(place, region):
                         continue
 
                     key = (destination.strip().lower(), final_reason.strip().lower())

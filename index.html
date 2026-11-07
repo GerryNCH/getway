@@ -2795,6 +2795,16 @@
   const REGIONS = ['All', 'Europe', 'Asia', 'Africa', 'North America', 'South America', 'Oceania'];
   let _monthDestinationsSelectedRegion = 'All';
   let _monthDestinationsAll = []; // full fetched list for the current month, unfiltered by region
+  // Manual kill switch (Nov 2026) — set true whenever the live v11 cache
+  // has a KNOWN, not-yet-fixed data problem (e.g. the v11 audit: 1
+  // phenomenon-filter evasion + 4 wrong-region entries found only by
+  // Gerry's manual read-through). Independent of the cache-empty check
+  // below: that one hides the section when there's nothing to show, this
+  // one hides it even though there IS data, because the data isn't
+  // trusted yet. Flip back to false only once a fix has been deployed
+  // AND verified live — see main.py's /admin/patch-v11-month-cache and
+  // the "Best Places This Month" project doc for the current status.
+  const MONTH_SECTION_FORCE_HIDDEN = true;
   // Whole-section visibility — see the "hidden by default" comment on
   // #month-destinations-section above. Only the INITIAL load (cache
   // empty = nothing has been generated/verified yet at all) hides the
@@ -2804,6 +2814,7 @@
   // to a month that does have data (see loadMonthDestinations' isInitialLoad
   // param).
   function setMonthSectionVisible(visible) {
+    if (MONTH_SECTION_FORCE_HIDDEN) visible = false;
     const sec = document.getElementById('month-destinations-section');
     if (sec) sec.classList.toggle('hidden', !visible);
   }

@@ -448,6 +448,48 @@ def _names_plausibly_match(query_name: str, candidate_name: str) -> bool:
     return len(overlap) / len(q_words) >= 0.4
 
 
+def resolve_destination_place(name: str) -> dict | None:
+    """
+    v12 "Best this month" fix (Nov 2026): split out of what used to be
+    destination_is_real_place's own inline call so the ONE Places lookup
+    for a destination can now back TWO independent checks —
+    destination_matches_place (unchanged logic, see below) AND
+    destination_matches_region (new, see its own docstring) — without
+    doubling the Places API call generate_month_calendar makes per
+    candidate. Returns the raw place dict (photos/displayName/location/
+    types/addressComponents/... per _search_places' field mask) for the
+    best match, or None if nothing came back or the lookup itself failed.
+    Callers that need both checks should call this ONCE, cache the
+    result, and pass it to both — see generate_month_calendar's
+    _resolve_place_cached.
+    """
+    name = (name or "").strip()
+    if not name:
+        return None
+    try:
+        results = _search_places(name, max_results=1)
+    except Exception as e:
+        print(f"[Places] resolve_destination_place('{name}') lookup failed: {type(e).__name__}: {e}")
+        return None
+    return results[0] if results else None
+
+
+def destination_matches_place(name: str, place: dict | None) -> bool:
+    """
+    The name-overlap check that used to be destination_is_real_place's
+    entire body (see that function below) — now takes an already-resolved
+    `place` (from resolve_destination_place) instead of doing its own
+    Places lookup, so a caller that also needs destination_matches_region
+    for the same destination doesn't pay for two network calls.
+    """
+    if not place:
+        return False
+    display_name = (place.get("displayName") or {}).get("text", "").strip()
+    if not display_name:
+        return False
+    return _names_plausibly_match(name, display_name)
+
+
 def destination_is_real_place(name: str) -> bool:
     """
     v11 "Best this month" fix (Nov 2026): the AI month-calendar generator
@@ -465,21 +507,122 @@ def destination_is_real_place(name: str) -> bool:
     genuine place reliably resolves to itself, while an event name either
     returns nothing from Places or returns something whose own name
     shares no real overlap with it.
+
+    v12 (Nov 2026): now a thin wrapper around resolve_destination_place +
+    destination_matches_place (split out so generate_month_calendar can
+    share one Places lookup with the new destination_matches_region check
+    below) — kept as its own function since nothing about calling this
+    one function for "is this real" changed for any existing caller.
     """
-    name = (name or "").strip()
-    if not name:
-        return False
-    try:
-        results = _search_places(name, max_results=1)
-    except Exception as e:
-        print(f"[Places] destination_is_real_place('{name}') lookup failed: {type(e).__name__}: {e}")
-        return False
-    if not results:
-        return False
-    display_name = (results[0].get("displayName") or {}).get("text", "").strip()
-    if not display_name:
-        return False
-    return _names_plausibly_match(name, display_name)
+    return destination_matches_place(name, resolve_destination_place(name))
+
+
+# v12 code-level fix (Nov 2026) — found only by Gerry's manual read-through
+# of a full v11 generation: a Europe-located, globally-famous event
+# (Wimbledon/London, Edinburgh Festival Fringe, Notting Hill Carnival/
+# London, Oktoberfest/Munich) got past every other v11 check — event_id/
+# month/location were all genuinely valid per _VERIFIED_EVENTS, and the
+# destination resolved fine in destination_is_real_place (London, Edinburgh
+# and Munich are all real, independently-bookable places) — because
+# nothing in the pipeline ever checked that the destination's own country
+# actually falls inside the CONTINENT ai_analyzer.generate_month_calendar
+# was generating for at the time (region is set per region-loop iteration,
+# never derived from the destination itself — see that function's
+# docstring). Per-region prompting alone doesn't reliably stop the model
+# reaching for a universally well-known destination/event even when it's
+# outside the region it was actually asked to populate.
+#
+# Deliberately conservative — see destination_matches_region's docstring
+# for why an unrecognized or genuinely transcontinental country is let
+# through rather than rejected: this is one more net for the specific
+# region-bucket bug above, not a second "is this real" check, and the
+# other v11 checks already carry the main real-vs-fake burden.
+_COUNTRY_CODE_TO_REGION: dict[str, str] = {
+    # Europe
+    "GB": "Europe", "IE": "Europe", "FR": "Europe", "DE": "Europe", "ES": "Europe",
+    "PT": "Europe", "IT": "Europe", "NL": "Europe", "BE": "Europe", "CH": "Europe",
+    "AT": "Europe", "GR": "Europe", "PL": "Europe", "CZ": "Europe", "SK": "Europe",
+    "HU": "Europe", "RO": "Europe", "BG": "Europe", "HR": "Europe", "SI": "Europe",
+    "RS": "Europe", "DK": "Europe", "SE": "Europe", "NO": "Europe", "FI": "Europe",
+    "IS": "Europe", "EE": "Europe", "LV": "Europe", "LT": "Europe", "UA": "Europe",
+    "MT": "Europe", "CY": "Europe", "LU": "Europe", "MC": "Europe", "AD": "Europe",
+    "SM": "Europe", "VA": "Europe", "LI": "Europe", "AL": "Europe", "MK": "Europe",
+    "ME": "Europe", "BA": "Europe", "MD": "Europe",
+    # Asia
+    "JP": "Asia", "CN": "Asia", "KR": "Asia", "TH": "Asia", "VN": "Asia",
+    "IN": "Asia", "ID": "Asia", "MY": "Asia", "SG": "Asia", "PH": "Asia",
+    "KH": "Asia", "LA": "Asia", "MM": "Asia", "NP": "Asia", "BT": "Asia",
+    "LK": "Asia", "BD": "Asia", "PK": "Asia", "MN": "Asia", "TW": "Asia",
+    "HK": "Asia", "MO": "Asia", "IR": "Asia", "UZ": "Asia", "KZ": "Asia",
+    "KG": "Asia", "TJ": "Asia", "TM": "Asia", "AE": "Asia", "SA": "Asia",
+    "QA": "Asia", "IL": "Asia", "JO": "Asia", "MV": "Asia",
+    # Africa
+    "ZA": "Africa", "EG": "Africa", "MA": "Africa", "KE": "Africa", "TZ": "Africa",
+    "RW": "Africa", "UG": "Africa", "ET": "Africa", "GH": "Africa", "NG": "Africa",
+    "BJ": "Africa", "BW": "Africa", "NA": "Africa", "ZW": "Africa", "ZM": "Africa",
+    "MG": "Africa", "TN": "Africa", "SN": "Africa", "CI": "Africa", "MU": "Africa",
+    "SC": "Africa",
+    # North America (incl. Central America/Caribbean, by common
+    # travel-industry convention — matches how this app's own REGIONS
+    # filter groups them, see index.html's REGIONS array)
+    "US": "North America", "CA": "North America", "MX": "North America",
+    "CR": "North America", "PA": "North America", "GT": "North America",
+    "BZ": "North America", "HN": "North America", "NI": "North America",
+    "SV": "North America", "CU": "North America", "JM": "North America",
+    "DO": "North America", "BS": "North America", "BB": "North America",
+    "TT": "North America", "PR": "North America", "AG": "North America",
+    "GD": "North America", "LC": "North America", "VC": "North America",
+    "KN": "North America", "DM": "North America",
+    # South America
+    "BR": "South America", "AR": "South America", "CL": "South America",
+    "PE": "South America", "CO": "South America", "BO": "South America",
+    "EC": "South America", "VE": "South America", "UY": "South America",
+    "PY": "South America", "GY": "South America", "SR": "South America",
+    # Oceania
+    "AU": "Oceania", "NZ": "Oceania", "FJ": "Oceania", "PG": "Oceania",
+    "VU": "Oceania", "WS": "Oceania", "TO": "Oceania", "FM": "Oceania",
+    "PW": "Oceania", "KI": "Oceania", "SB": "Oceania", "NC": "Oceania",
+    "PF": "Oceania", "GU": "Oceania",
+}
+
+# Countries genuinely split across two continents by common geographic
+# convention (Europe/Asia), where picking a side would be arbitrary —
+# never rejected on a region mismatch regardless of which region asked.
+_AMBIGUOUS_TRANSCONTINENTAL = {"RU", "TR", "GE", "AZ", "AM"}
+
+# The 6 region names this app's region filter actually uses (see
+# index.html's REGIONS array / ai_analyzer._REGION_ORDER) — anything else
+# passed as expected_region is treated as "can't check this", not a
+# mismatch.
+_KNOWN_REGIONS = {"Europe", "Asia", "Africa", "North America", "South America", "Oceania"}
+
+
+def destination_matches_region(place: dict | None, expected_region: str) -> bool:
+    """
+    Returns False ONLY on a confirmed country/region mismatch (e.g. a
+    London result when expected_region is "North America") — True for a
+    genuine match, a missing/unresolved place, an unrecognized country
+    code, or a transcontinental country in _AMBIGUOUS_TRANSCONTINENTAL.
+    See the comment above _COUNTRY_CODE_TO_REGION for why this stays
+    conservative rather than trying to be a second "is this real" check.
+
+    Takes an already-resolved `place` dict (from resolve_destination_place)
+    — no network call here, so it's free to call alongside
+    destination_matches_place for the same cached lookup.
+    """
+    if not place or expected_region not in _KNOWN_REGIONS:
+        return True
+    country_code = ""
+    for comp in place.get("addressComponents") or []:
+        if "country" in (comp.get("types") or []):
+            country_code = (comp.get("shortText") or "").strip().upper()
+            break
+    if not country_code or country_code in _AMBIGUOUS_TRANSCONTINENTAL:
+        return True
+    actual_region = _COUNTRY_CODE_TO_REGION.get(country_code)
+    if not actual_region:
+        return True
+    return actual_region == expected_region
 
 
 def destination_search_city(destination: str) -> str:

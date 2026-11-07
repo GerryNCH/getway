@@ -1277,6 +1277,99 @@ def admin_regenerate_month_calendar():
     return {"status": "regenerated", "cost_usd": cost, "counts": counts, "calendar": calendar}
 
 
+@app.post("/admin/patch-v11-month-cache", dependencies=[Depends(verify_admin_secret)])
+def admin_patch_v11_month_cache():
+    """
+    ONE-TIME manual correction (Nov 2026) for the 5 entries Gerry's
+    required manual read-through of the full, already-live v11
+    generation found that no automated check (ai_analyzer._BANNED_
+    PHENOMENON_RE / _VERIFIED_EVENTS / places.destination_is_real_place)
+    caught — see the "Best Places This Month" project doc for the full
+    v11 report. Per Gerry's explicit decision, these are hand-patched
+    directly into the cache that's already live rather than regenerated
+    from scratch (ai_analyzer/places gained the matching code-level
+    checks for any FUTURE regeneration — see places.destination_matches_
+    region and the widened _BANNED_PHENOMENON_RE — but this endpoint does
+    not call generate_month_calendar and makes no AI/Places calls itself):
+
+      1. January, "Iceland" — reason paraphrased aurora/northern lights
+         ("...viewing rare northern sky phenomena...") without the
+         literal banned words. Removed outright (no substitute offered).
+      2. June, "London, England" (Wimbledon, North America) — a real,
+         correctly-dated, whitelisted event, but filed under the wrong
+         continent; already correctly listed under Europe for June as
+         "England". Removed from North America.
+      3. August, "Edinburgh, Scotland" (Edinburgh Festival Fringe, North
+         America) — same wrong-continent bug; already correctly listed
+         under Europe for August as "Scotland". Removed from North
+         America.
+      4. August, "London, England" (Notting Hill Carnival, North
+         America) — same wrong-continent bug, no Europe duplicate to
+         fall back on. Removed outright.
+      5. September, "Munich, Bavaria" (Oktoberfest, North America) —
+         same wrong-continent bug. Removed from North America.
+
+    Also edits (doesn't remove) one entry per Gerry: July, "Iceland" —
+    Iceland doesn't get a true midnight sun the way Norway (above the
+    Arctic Circle) does, just near-24-hour summer daylight, so "Midnight
+    sun enables..." becomes "Nearly 24 hours of daylight enables...".
+    Norway's June "Midnight sun" entry is left exactly as-is — Gerry
+    confirmed it's accurate there and should stay.
+
+    Idempotent — safe to call more than once: removals are no-ops once
+    the entry's already gone, and the July text edit is a no-op once
+    already applied (matched by exact old text, not just destination
+    name, so it can't double-edit or clobber a future different reason
+    for the same destination).
+    """
+    results: dict[str, dict] = {}
+
+    def _remove(month: str, predicate) -> None:
+        destinations = database.get_month_destinations_cache(month) or []
+        before = len(destinations)
+        kept = [d for d in destinations if not predicate(d)]
+        removed = before - len(kept)
+        if removed:
+            database.save_month_destinations_cache(month, kept)
+        results[month] = {"removed": removed, "remaining": len(kept)}
+
+    _remove(
+        "january",
+        lambda d: d.get("name") == "Iceland" and "northern sky phenomena" in (d.get("reason") or ""),
+    )
+    _remove(
+        "june",
+        lambda d: d.get("name") == "London, England"
+        and d.get("region") == "North America"
+        and (d.get("reason") or "").startswith("Wimbledon"),
+    )
+    _remove(
+        "august",
+        lambda d: d.get("name") in ("Edinburgh, Scotland", "London, England")
+        and d.get("region") == "North America",
+    )
+    _remove(
+        "september",
+        lambda d: d.get("name") == "Munich, Bavaria"
+        and d.get("region") == "North America"
+        and (d.get("reason") or "").startswith("Oktoberfest"),
+    )
+
+    july = database.get_month_destinations_cache("july") or []
+    old_phrase = "Midnight sun enables round-the-clock exploration of Ring Road and glacier regions."
+    new_phrase = "Nearly 24 hours of daylight enables round-the-clock exploration of Ring Road and glacier regions."
+    edited = 0
+    for d in july:
+        if d.get("name") == "Iceland" and d.get("reason") == old_phrase:
+            d["reason"] = new_phrase
+            edited += 1
+    if edited:
+        database.save_month_destinations_cache("july", july)
+    results["july"] = {"edited": edited, "total": len(july)}
+
+    return {"status": "patched", "results": results}
+
+
 @app.post("/admin/test-scene-detection", dependencies=[Depends(verify_admin_secret)])
 def admin_test_scene_detection(url: str, max_frames: int = 8):
     """

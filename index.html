@@ -2796,15 +2796,18 @@
   let _monthDestinationsSelectedRegion = 'All';
   let _monthDestinationsAll = []; // full fetched list for the current month, unfiltered by region
   // Manual kill switch (Nov 2026) — set true whenever the live v11 cache
-  // has a KNOWN, not-yet-fixed data problem (e.g. the v11 audit: 1
-  // phenomenon-filter evasion + 4 wrong-region entries found only by
-  // Gerry's manual read-through). Independent of the cache-empty check
-  // below: that one hides the section when there's nothing to show, this
-  // one hides it even though there IS data, because the data isn't
-  // trusted yet. Flip back to false only once a fix has been deployed
-  // AND verified live — see main.py's /admin/patch-v11-month-cache and
-  // the "Best Places This Month" project doc for the current status.
-  const MONTH_SECTION_FORCE_HIDDEN = true;
+  // has a KNOWN, not-yet-fixed data problem. Independent of the
+  // cache-empty check below: that one hides the section when there's
+  // nothing to show, this one hides it even though there IS data,
+  // because the data isn't trusted yet.
+  // Flipped back to false (Nov 2026) after /admin/patch-v11-month-cache
+  // was called live and all 5 known-bad entries (the Iceland
+  // aurora-paraphrase + the 4 wrong-region Europe-under-North-America
+  // duplicates) were confirmed gone from production via
+  // GET /destinations/by-month for January/June/July/August/September —
+  // see the "Best Places This Month" project doc for the full v11
+  // report and the before/after verification.
+  const MONTH_SECTION_FORCE_HIDDEN = false;
   // Whole-section visibility — see the "hidden by default" comment on
   // #month-destinations-section above. Only the INITIAL load (cache
   // empty = nothing has been generated/verified yet at all) hides the

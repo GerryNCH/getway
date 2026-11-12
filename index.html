@@ -433,20 +433,18 @@
       </div>
       <div data-aos="fade-up" class="text-xs md:text-sm text-gray-500 max-w-xs md:text-right">Real seasonal reasons — festivals, weather windows, wildlife — not just "nice weather" filler.</div>
     </div>
-    <!-- Month switcher temporarily hidden (Oct 23 bug sprint, task 9): the
-         real bug isn't the frontend logic — selectMonthDestinations/
-         loadMonthDestinations work correctly — it's that a month without a
-         warm cache can take up to ~150s to generate (see "Best Places This
-         Month" doc: cold-start AI generation per continent), and the
-         loading spinner gives no indication of that, so a visitor who
-         switches months and waits a few seconds reasonably concludes nothing
-         happened / it's broken. Hiding the switcher rather than the whole
-         section: the CURRENT month's destinations below are prewarmed and
-         load fast, so that part keeps working. Real fix (timeout messaging,
-         pre-warming, or a progress indicator) is deferred — see task 11 in
-         the bug sprint doc. -->
-    <div class="hidden text-[11px] font-semibold tracking-wide text-gray-400 uppercase mb-2">Choose month</div>
-    <div id="month-picker" class="hidden peek-scroll flex gap-2 pb-5 overflow-x-auto pr-0 -mr-6 md:-mr-14"></div>
+    <!-- Month switcher re-enabled (Nov 2026): was hidden since the Oct 23
+         bug sprint (task 9) because a month without a warm cache could take
+         up to ~150s to generate with no loading indicator (see "Best
+         Places This Month" doc). That scenario no longer exists — v10/v11
+         made this cache manual-only and permanent (ai_analyzer.
+         generate_month_calendar fills all 12 months in one admin-triggered
+         run, database.save_month_destinations_cache's TTL is effectively
+         permanent, and GET /destinations/by-month never auto-regenerates
+         on a miss), so every month a visitor can pick is already warm —
+         switching is a plain cache read, same speed as the initial month. -->
+    <div class="text-[11px] font-semibold tracking-wide text-gray-400 uppercase mb-2">Choose month</div>
+    <div id="month-picker" class="peek-scroll flex gap-2 pb-5 overflow-x-auto pr-0 -mr-6 md:-mr-14"></div>
     <!-- Continent filter — client-side only, filters whatever month's
          destinations are already loaded (see applyRegionFilterAndRender in
          the script below). Rendered once at init (see renderRegionPicker),

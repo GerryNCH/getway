@@ -804,16 +804,81 @@ def _place_type_fallback(place: dict) -> str:
 # historical_landmark/monument above, this one has no ambiguity to guard
 # against: nothing with Places type "route" is a ticketed, admission-
 # charging entity — a street cannot require a ticket to walk down.
+#
+# national_park/state_park REMOVED (task 13 review, Nov 2026): most
+# charge a real entrance fee worldwide (Yellowstone, Yosemite, and most
+# others) — Gerry's rule applies: when genuinely unsure, don't claim
+# free. This lookup has no priceLevel at all to double-check with (see
+# _is_free_by_type's docstring below), so there's no way to tell a paid
+# national park from a free local one here — type alone isn't a reliable
+# enough signal for this one, unlike plaza/beach/route.
 _FREE_TYPE_HINTS = {
-    "park", "plaza", "national_park", "state_park", "hiking_area",
-    "natural_feature", "beach", "square", "garden", "botanical_garden",
-    "observation_deck", "route",
+    "park", "plaza", "hiking_area", "natural_feature", "beach", "square",
+    "garden", "observation_deck", "route",
+}
+
+# Types that are NEVER free, regardless of anything else — checked even
+# when the SAME place also carries a type from _FREE_TYPE_HINTS (e.g. a
+# botanical garden that Places also types "park"). Gerry's rule (Nov
+# 2026 review): botanical gardens, zoos and amusement parks are
+# overwhelmingly paid attractions worldwide, and — same reasoning as
+# national_park/state_park above — this lookup has no priceLevel to
+# confirm either way, so the type itself is treated as a reliable
+# NEGATIVE signal here rather than just "not asserted free".
+_NEVER_FREE_TYPES = {"botanical_garden", "zoo", "amusement_park"}
+
+# Name-based version of the same rule, broader and independent of
+# `types`: ANY place whose own Places displayName contains "garden",
+# "gardens", or "botanical" is never free. This exists because plenty of
+# real paid gardens are typed plain "park"/"tourist_attraction" rather
+# than "botanical_garden" (Keukenhof, Gardens by the Bay below are both
+# examples) — type alone would miss them, but the name itself is a
+# reliable tell. Checked case-insensitively against the place's own
+# Places displayName (not the AI's stop name, which can phrase it
+# differently).
+_NEVER_FREE_NAME_SUBSTRINGS = ("garden", "gardens", "botanical")
+
+# Named backstop (Nov 2026, task 13 review): specific, famous paid
+# places that slip past BOTH rules above — their Places `types` carry a
+# free hint (park/plaza/etc, not the never-free types) AND their name
+# has none of "garden"/"gardens"/"botanical" in it. Kept as an explicit
+# list per Gerry's instruction, as a backstop alongside (not instead of)
+# the two general rules above — e.g. "Tivoli Gardens" and "Keukenhof"
+# are now also caught by the name rule, but stay listed here too for
+# certainty. Matched as a case-insensitive substring of displayName.
+# Deliberately NOT an attempt at a general "paid park" detector (there
+# isn't one available at this field-mask tier — see _is_free_by_type's
+# docstring): any OTHER paid place not covered by these three rules can
+# still slip through as a false "free" until it's reported and added.
+_PAID_DESPITE_FREE_TYPE = {
+    "park güell", "parc güell",  # Barcelona — timed-entry paid ticket
+    "keukenhof",  # Netherlands — paid seasonal garden
+    "gardens by the bay",  # Singapore — the ticketed domes specifically
+    "tivoli gardens",  # Copenhagen — paid amusement park/pleasure garden
 }
 
 
 def _is_free_by_type(place: dict) -> bool:
+    """
+    See the three rule sets above for what this excludes and why. This
+    lookup (video-route stops) never has Places' priceLevel to fall back
+    on — it stays on the cheaper Pro tier (see the field mask comment on
+    enrich_itinerary_with_photos) — so `types`/`displayName` are the only
+    signals available; every exclusion rule here exists because type
+    alone was confirmed (or is strongly expected) to produce a false
+    "free" on a real, paid attraction.
+    """
     types = set(place.get("types", []) or [])
-    return bool(types & _FREE_TYPE_HINTS) and not place.get("priceLevel")
+    if types & _NEVER_FREE_TYPES:
+        return False
+    if not (types & _FREE_TYPE_HINTS) or place.get("priceLevel"):
+        return False
+    display_name = ((place.get("displayName") or {}).get("text") or "").strip().lower()
+    if any(sub in display_name for sub in _NEVER_FREE_NAME_SUBSTRINGS):
+        return False
+    if any(paid in display_name for paid in _PAID_DESPITE_FREE_TYPE):
+        return False
+    return True
 
 
 def _area_label_from_components(place: dict) -> str:

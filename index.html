@@ -3243,10 +3243,16 @@
         <a href="${href}" onclick="trackAffiliateClick('${videoId}', 'ivisa')" target="_blank" rel="noopener sponsored" class="btn-outline-interactive flex-shrink-0 h-[38px] px-4 flex items-center justify-center gap-1.5 bg-gray-50 text-gray-700 text-xs font-medium rounded-xl whitespace-nowrap"><span>Check now</span><i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-[#6D28D9]"></i></a>
       </div>`;
   }
-  function renderVisaBanner(destination, videoId, countryCode) {
+  function renderVisaBanner(destination, videoId, countryCode, looksLikeATrip) {
     const container = document.getElementById('ai-route-visa-banner');
     if (!container) return;
-    container.innerHTML = isAffiliateSectionEnabled('visa') ? buildVisaBannerHtml(destination, videoId, countryCode) : '';
+    // Task 13 (Gerry's review): a visa question makes no sense for a
+    // single-stop, non-trip route either — same reasoning as transfer/
+    // flights (see window._aiRouteLooksLikeATrip's comment): a bakery in
+    // your own city isn't a border crossing. Defaults to true when not
+    // passed, same as renderFlightsBanner/buildEssentialsPanelHtml.
+    const show = looksLikeATrip !== false && isAffiliateSectionEnabled('visa');
+    container.innerHTML = show ? buildVisaBannerHtml(destination, videoId, countryCode) : '';
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
   // Travel insurance — small banner at the end of the route, near the
@@ -4171,7 +4177,7 @@
     // into their own fixed slots (top of route, under the hotel banner);
     // the airport transfer banner is built inline below since it belongs
     // inside the Day 1 group, not a standalone slot.
-    renderVisaBanner(itinerary.destination, videoId, itinerary.destination_country_code);
+    renderVisaBanner(itinerary.destination, videoId, itinerary.destination_country_code, window._aiRouteLooksLikeATrip);
     renderFlightsBanner(itinerary.destination, videoId, window._aiRouteLooksLikeATrip);
     renderInsuranceBanner(itinerary.destination, videoId);
     renderGoCityBanner(itinerary.destination, videoId);
@@ -4445,13 +4451,13 @@
   function buildEssentialsPanelHtml(destination, videoId, countryCode, looksLikeATrip) {
     const city = (destination || '').split(/\s*(?:,|&|\band\b)\s*/i)[0].trim() || destination || '';
     const rows = [];
-    if (isAffiliateSectionEnabled('visa')) {
+    // Task 13: visa/flights/transfer rows all suppressed for a
+    // single-stop, non-trip route — see window._aiRouteLooksLikeATrip's
+    // comment. Defaults to true when not passed (same as renderFlightsBanner).
+    const showTripRows = looksLikeATrip !== false;
+    if (showTripRows && isAffiliateSectionEnabled('visa')) {
       rows.push({ icon: 'stamp', title: `Do I need a visa for ${escapeHtml(city)}?`, sub: 'Check your eligibility via iVisa', cta: 'Check', href: iVisaUrl(city, countryCode), partner: 'ivisa' });
     }
-    // Task 13: flights/transfer rows suppressed for a single-stop,
-    // non-trip route — see window._aiRouteLooksLikeATrip's comment.
-    // Defaults to true when not passed (same as renderFlightsBanner).
-    const showTripRows = looksLikeATrip !== false;
     if (showTripRows && isAffiliateSectionEnabled('flights')) {
       rows.push({ icon: 'plane', title: `Find flights to ${escapeHtml(city)}`, sub: 'Compare fares before you book', cta: 'Compare', href: skyscannerFlightsUrl(city), partner: 'skyscanner' });
     }

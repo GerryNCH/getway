@@ -70,6 +70,7 @@ from places import (
     search_hotels_near, _get_destination_gallery_unsplash, search_activities_by_type,
     _ACTIVITY_TYPE_QUERY_TERMS, search_places_freetext, get_car_rental_photo_unsplash,
     backfill_stop_facts, apply_cached_stop_facts, destination_search_city,
+    backfill_destination_country,
 )
 from trip_builder import (
     is_open as trip_place_is_open, fits_budget, curate_candidates,
@@ -2108,6 +2109,143 @@ def admin_backfill_places_facts(video_ids: str = "", dry_run: bool = True, refre
         "approx_cost_usd": round(total_cost + places_cost_estimate, 4),
         "haiku_cost_usd": round(total_cost, 4),
         "places_cost_estimate_usd": places_cost_estimate,
+        "routes": results,
+    }
+
+
+@app.post("/admin/backfill-is-free", dependencies=[Depends(verify_admin_secret)])
+def admin_backfill_is_free(video_ids: str = "", dry_run: bool = True):
+    """
+    Task 13 backfill (Nov 2026): retroactively fills is_free on routes
+    generated BEFORE places._is_free_by_type existed, so the frontend's
+    existing `!stop.is_free` gate on "Get tickets via GetYourGuide"
+    (index.html's renderAiStopCard) actually suppresses the button on free
+    public places — confirmed live on real routes (Vienna, Bari) that
+    EVERY stop had is_free=false, including obviously-free places
+    (Stephansplatz, Graben & Kohlmarkt, Votivkirche, Vienna Rathaus
+    exterior) — because no classification ever ran on the video-extraction
+    path before task 13.
+
+    Deliberately narrower than /admin/backfill-places-facts above: calls
+    the SAME places.backfill_stop_facts() (one Places Text Search Pro
+    call per stop — same cost, ~$0.032/stop) but skips
+    generate_grounded_descriptions() entirely, so it NEVER rewrites a
+    stop's description. That endpoint's dry-run already found old AI
+    descriptions can get silently reworded by the Haiku pass even when
+    only facts were meant to change — pointless risk here, since all this
+    needs is is_free/price_level refreshed, not new prose. Also cheaper:
+    no Haiku cost at all, only the Places calls.
+
+    video_ids: optional comma-separated list to target specific routes
+    (e.g. Vienna/Bari first, to verify, before running with no filter).
+    Leave empty to target EVERY approved route.
+
+    dry_run=True (default): runs the real (billed) Places lookups and
+    returns a before/after is_free/price_level preview per stop, but never
+    calls database.save_days — nothing changes on the live site. Pass
+    dry_run=false once the preview looks right.
+    """
+    ids = [v.strip() for v in video_ids.split(",") if v.strip()]
+    rows = [{"video_id": v} for v in ids] if ids else database.list_by_status("approved")
+
+    results = []
+    stops_attempted_total = 0
+    for row in rows:
+        video_id = row["video_id"]
+        itinerary = database.get_itinerary(video_id)
+        if not itinerary:
+            results.append({"video_id": video_id, "error": "not found"})
+            continue
+
+        before = [
+            {"name": s.name, "category": s.category, "is_free": s.is_free, "price_level": s.price_level}
+            for day in itinerary.days for s in day.stops
+        ]
+        stops_attempted_total += len(before)
+
+        backfill_stop_facts(itinerary)
+
+        after = [
+            {"name": s.name, "category": s.category, "is_free": s.is_free, "price_level": s.price_level}
+            for day in itinerary.days for s in day.stops
+        ]
+
+        if not dry_run:
+            database.save_days(video_id, itinerary.days)
+
+        results.append({
+            "video_id": video_id,
+            "destination": itinerary.destination,
+            "now_free_count": sum(1 for s in after if s["is_free"]),
+            "saved": not dry_run,
+            "before": before,
+            "after": after,
+        })
+
+    return {
+        "status": "ok",
+        "dry_run": dry_run,
+        "routes_checked": len(rows),
+        "places_cost_estimate_usd": round(0.032 * stops_attempted_total, 4),
+        "routes": results,
+    }
+
+
+@app.post("/admin/backfill-destination-country", dependencies=[Depends(verify_admin_secret)])
+def admin_backfill_destination_country(video_ids: str = "", dry_run: bool = True):
+    """
+    Task 13 backfill (Nov 2026): fills destination_country/
+    destination_country_code on routes generated before task 13 existed,
+    so the frontend's iVisaUrl can show a real per-country visa link
+    instead of always falling back to iVisa's generic homepage — see
+    index.html's iVisaUrl and _IVISA_COUNTRY_SLUGS.
+
+    Much cheaper than the two backfills above: ONE Places Text Search Pro
+    call per ROUTE (places.resolve_destination_country), not per stop —
+    see backfill_destination_country.
+
+    video_ids: optional comma-separated list to target specific routes.
+    Leave empty to target EVERY approved route.
+
+    dry_run=True (default): runs the real Places lookup and returns the
+    resolved country per route, but never calls database.save_days —
+    nothing changes on the live site. Pass dry_run=false once the preview
+    looks right.
+    """
+    ids = [v.strip() for v in video_ids.split(",") if v.strip()]
+    rows = [{"video_id": v} for v in ids] if ids else database.list_by_status("approved")
+
+    results = []
+    for row in rows:
+        video_id = row["video_id"]
+        itinerary = database.get_itinerary(video_id)
+        if not itinerary:
+            results.append({"video_id": video_id, "error": "not found"})
+            continue
+
+        before_code = itinerary.destination_country_code
+        found = backfill_destination_country(itinerary)
+
+        if not dry_run and found:
+            database.save_destination_country(
+                video_id, itinerary.destination_country, itinerary.destination_country_code,
+            )
+
+        results.append({
+            "video_id": video_id,
+            "destination": itinerary.destination,
+            "before_code": before_code,
+            "resolved_country": itinerary.destination_country,
+            "resolved_code": itinerary.destination_country_code,
+            "found": found,
+            "saved": not dry_run and found,
+        })
+
+    return {
+        "status": "ok",
+        "dry_run": dry_run,
+        "routes_checked": len(rows),
+        "places_cost_estimate_usd": round(0.032 * len(rows), 4),
         "routes": results,
     }
 

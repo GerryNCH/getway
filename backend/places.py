@@ -187,6 +187,12 @@ def _search_places(query: str, max_results: int = 1, _retries: int = 2) -> list[
                     # the free quota. No rating/userRatingCount/priceLevel/
                     # regularOpeningHours fields here — see _facts_from_place,
                     # which already defaults them to 0/""/[] when absent.
+                    # Task 13 (Nov 2026): is_free is still correctly derived
+                    # here despite no priceLevel — _is_free_by_type's free
+                    # signal comes from `types` (Basic-tier, already in this
+                    # mask below), with the priceLevel half of its check
+                    # simply never true (never requested = always absent),
+                    # so it costs nothing extra and stays on Pro.
                     # places.types added Nov 2026 (task 14 route-quality
                     # pass): a Basic-tier field (free, no SKU change) —
                     # needed as the fallback source for place_type when
@@ -625,6 +631,43 @@ def destination_matches_region(place: dict | None, expected_region: str) -> bool
     return actual_region == expected_region
 
 
+def resolve_destination_country(destination: str) -> dict:
+    """
+    Task 13 (Nov 2026, visa-by-country): resolves an itinerary's free-text
+    `destination` (e.g. "Vienna, Austria", "Bari", "Cairo & Luxor") to its
+    real country via the SAME Places lookup already used for v11's region
+    validation (resolve_destination_place + the addressComponents country
+    component — see destination_matches_region above), so this costs
+    nothing new in API terms when called once per itinerary from
+    enrich_itinerary_with_photos: just one more Pro-tier Text Search call
+    alongside everything else already happening there.
+
+    Returns {"name": "", "code": ""} when Places has no confident match or
+    the match has no country component — the frontend's iVisaUrl already
+    treats an empty code as "fall back to iVisa's generic homepage",
+    exactly like before this existed, so there's no broken state here,
+    only "couldn't improve on the old generic link for this one".
+
+    For a multi-leg destination ("Mexico City to Cancún, Mexico") this
+    resolves the FULL string via one Places search rather than splitting
+    it first — same approach destination_search_city's fallback already
+    relies on (the country is usually still identifiable even when the
+    specific multi-city phrasing confuses a plain name search), and
+    multi-LEG but single-COUNTRY is the overwhelmingly common case for
+    this app's routes.
+    """
+    place = resolve_destination_place(destination)
+    if not place:
+        return {"name": "", "code": ""}
+    for comp in place.get("addressComponents") or []:
+        if "country" in (comp.get("types") or []):
+            return {
+                "name": (comp.get("longText") or "").strip(),
+                "code": (comp.get("shortText") or "").strip().upper(),
+            }
+    return {"name": "", "code": ""}
+
+
 def destination_search_city(destination: str) -> str:
     """
     Best-effort city/region name to append to a stop's own name when
@@ -682,7 +725,7 @@ def _empty_facts() -> dict:
     return {
         "place_type": "", "address": "", "area_label": "",
         "opening_hours_weekly": [], "rating": 0.0, "user_rating_count": 0,
-        "price_level": "",
+        "price_level": "", "is_free": False,
     }
 
 
@@ -739,6 +782,40 @@ def _place_type_fallback(place: dict) -> str:
     return ""
 
 
+# Place `types` that indicate a free-to-enter outdoor attraction — used to
+# classify a place as free when it has no priceLevel at all, which is
+# normal for this category (Google's priceLevel field is really meant for
+# restaurants/bars/paid attractions, not parks). Shared by both pipelines
+# that need an is_free judgment from a raw Places result: Build Your Own
+# Trip's budget-tier filtering (trip_builder.fits_budget) and, as of task
+# 13 (Nov 2026), video-extracted stops' facts (_facts_from_place below) —
+# moved here from trip_builder.py so both can use the one definition.
+#
+# Deliberately does NOT include "historical_landmark" or "monument" — real
+# bug: those two types are too ambiguous to treat as a reliable free
+# signal. Many world-famous PAID attractions (the Colosseum, Arc de
+# Triomphe) carry these exact types despite requiring a paid ticket, so
+# including them here was silently marking those as is_free=True.
+#
+# "route" added task 13: a public street/road segment — confirmed live as
+# a real gap on both Bari ("Corso Vittorio Emanuele II, Bari") and Vienna
+# ("Graben & Kohlmarkt") routes, both typed "route" by Places and both
+# showing the ticket button despite being ordinary public streets. Unlike
+# historical_landmark/monument above, this one has no ambiguity to guard
+# against: nothing with Places type "route" is a ticketed, admission-
+# charging entity — a street cannot require a ticket to walk down.
+_FREE_TYPE_HINTS = {
+    "park", "plaza", "national_park", "state_park", "hiking_area",
+    "natural_feature", "beach", "square", "garden", "botanical_garden",
+    "observation_deck", "route",
+}
+
+
+def _is_free_by_type(place: dict) -> bool:
+    types = set(place.get("types", []) or [])
+    return bool(types & _FREE_TYPE_HINTS) and not place.get("priceLevel")
+
+
 def _area_label_from_components(place: dict) -> str:
     """
     Pulls a neighbourhood/area name out of Places' addressComponents —
@@ -771,8 +848,9 @@ def _opening_hours_weekly(place: dict) -> list[str]:
 
 
 def _facts_from_place(place: dict) -> dict:
-    """Bundles every task-8 Google-sourced fact for one matched place —
-    see _empty_facts for the shape when nothing is known."""
+    """Bundles every task-8 Google-sourced fact for one matched place, plus
+    (task 13, Nov 2026) is_free — see _empty_facts for the shape when
+    nothing is known."""
     return {
         "place_type": _place_type_display(place) or _place_type_fallback(place),
         "address": (place.get("formattedAddress") or "").strip(),
@@ -781,6 +859,7 @@ def _facts_from_place(place: dict) -> dict:
         "rating": place.get("rating", 0) or 0.0,
         "user_rating_count": place.get("userRatingCount", 0) or 0,
         "price_level": place.get("priceLevel", "") or "",
+        "is_free": _is_free_by_type(place),
     }
 
 
@@ -1223,6 +1302,13 @@ def enrich_itinerary_with_photos(itinerary) -> None:
     # city into stop.name itself (e.g. "Egyptian Museum, Cairo") — the
     # fallback below only kicks in when it didn't.
     city = destination_search_city(itinerary.destination)
+
+    # Task 13 (visa-by-country): one Places lookup for the WHOLE
+    # itinerary (not per stop) — see resolve_destination_country.
+    country = resolve_destination_country(itinerary.destination)
+    itinerary.destination_country = country["name"]
+    itinerary.destination_country_code = country["code"]
+
     used_ids: set[str] = set()  # avoid repeating a photo across stop cards
 
     def _best_fresh_unsplash(query: str) -> tuple[str, dict | None]:
@@ -1262,8 +1348,9 @@ def enrich_itinerary_with_photos(itinerary) -> None:
                     stop.lat = cached["lat"]
                     stop.lng = cached["lng"]
                 # Task 8 facts (place_type/address/area_label/opening hours/
-                # rating/price_level) — empty strings/lists/zeros on rows
-                # saved before this existed, which is fine: the frontend
+                # rating/price_level), plus task 13's is_free — empty
+                # strings/lists/zeros/False on rows saved before each
+                # existed, which is fine: the frontend
                 # already treats an empty fact as "don't show this field".
                 stop.place_type = cached.get("place_type", "") or ""
                 stop.address = cached.get("address", "") or ""
@@ -1272,6 +1359,9 @@ def enrich_itinerary_with_photos(itinerary) -> None:
                 stop.rating = cached.get("rating", 0.0) or 0.0
                 stop.user_rating_count = cached.get("user_rating_count", 0) or 0
                 stop.price_level = cached.get("price_level", "") or ""
+                stop.is_free = cached.get("is_free", False) or False  # task 13: False
+                                                                        # on rows saved
+                                                                        # before this existed
                 print(f"[Cache] Reused saved photo for '{stop.name}' in {city}")
                 continue
 
@@ -1307,6 +1397,7 @@ def enrich_itinerary_with_photos(itinerary) -> None:
                         stop.rating = facts["rating"]
                         stop.user_rating_count = facts["user_rating_count"]
                         stop.price_level = facts["price_level"]
+                        stop.is_free = facts["is_free"]
                         booking_query = f"{real_name}, {city}"
                         # Task 7: same dated-search rule as every other
                         # Booking/Expedia link in the app — see
@@ -1324,10 +1415,11 @@ def enrich_itinerary_with_photos(itinerary) -> None:
                 if location:
                     stop.lat, stop.lng = location
                 # Task 8: facts (place_type/address/area_label/opening
-                # hours/rating/price_level) come ONLY from Places, never
-                # from the AI — see _facts_from_place. Left at their
-                # Stop-default empty values when Places had no confident
-                # match (facts is _empty_facts() in that case).
+                # hours/rating/price_level), plus task 13's is_free, come
+                # ONLY from Places, never from the AI — see
+                # _facts_from_place. Left at their Stop-default empty
+                # values when Places had no confident match (facts is
+                # _empty_facts() in that case).
                 stop.place_type = facts["place_type"]
                 stop.address = facts["address"]
                 stop.area_label = facts["area_label"]
@@ -1335,6 +1427,7 @@ def enrich_itinerary_with_photos(itinerary) -> None:
                 stop.rating = facts["rating"]
                 stop.user_rating_count = facts["user_rating_count"]
                 stop.price_level = facts["price_level"]
+                stop.is_free = facts["is_free"]
                 print(f"[Places] Stop: {name_query} → photo={bool(stop.photo_url)} coords={bool(location)}")
 
             if not stop.photo_url and is_specific:
@@ -1369,11 +1462,31 @@ def enrich_itinerary_with_photos(itinerary) -> None:
             print(f"[Photos] Fallback for '{stop.name}' → {bool(stop.photo_url)}")
 
 
+def backfill_destination_country(itinerary) -> bool:
+    """
+    Task 13 backfill: sets destination_country/destination_country_code on
+    a route generated before task 13 existed — one Places call for the
+    WHOLE route (not per stop, unlike backfill_stop_facts below), so this
+    is the function main.py's /admin/backfill-destination-country calls.
+    Returns True if a country was found (False left the fields as they
+    were — "" on an old route, same as always).
+    """
+    country = resolve_destination_country(itinerary.destination)
+    if not country["code"]:
+        return False
+    itinerary.destination_country = country["name"]
+    itinerary.destination_country_code = country["code"]
+    return True
+
+
 def backfill_stop_facts(itinerary) -> int:
     """
     Task 8 backfill (Nov 2026): force-refreshes every stop's Places facts
-    (place_type/address/area_label/opening_hours_weekly/rating/price_level)
-    on a route that was generated BEFORE task 8 existed.
+    (place_type/address/area_label/opening_hours_weekly/rating/price_level,
+    plus task 13's is_free) on a route that was generated BEFORE task 8 (or
+    task 13) existed. Also the function main.py's /admin/backfill-is-free
+    calls to retroactively fix is_free on routes generated before task 13,
+    without touching descriptions — see that endpoint.
 
     Deliberately does NOT go through enrich_itinerary_with_photos' normal
     database.get_cached_stop() short-circuit. That cache is keyed by
@@ -1435,6 +1548,7 @@ def backfill_stop_facts(itinerary) -> int:
             stop.rating = facts["rating"]
             stop.user_rating_count = facts["user_rating_count"]
             stop.price_level = facts["price_level"]
+            stop.is_free = facts["is_free"]
             if location:
                 stop.lat, stop.lng = location
             database.upsert_stop_cache(
@@ -1477,5 +1591,6 @@ def apply_cached_stop_facts(itinerary) -> int:
             stop.rating = cached["rating"]
             stop.user_rating_count = cached["user_rating_count"]
             stop.price_level = cached["price_level"]
+            stop.is_free = cached.get("is_free", False) or False
             filled += 1
     return filled

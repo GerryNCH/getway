@@ -58,7 +58,7 @@ import re
 import statistics
 
 import anthropic
-from places import photo_url_from_places_photos, best_fresh_unsplash_photo, _facts_from_place
+from places import photo_url_from_places_photos, best_fresh_unsplash_photo, _facts_from_place, _is_free_by_type
 from ai_analyzer import _booking_affiliate_url, _expedia_affiliate_url
 
 _client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
@@ -82,22 +82,6 @@ def _haversine_km(a: tuple[float, float], b: tuple[float, float]) -> float:
 # Places API (New) businessStatus values. Missing entirely (some results
 # don't set it) is treated as open — Google's own default assumption.
 _CLOSED_STATUSES = {"CLOSED_TEMPORARILY", "CLOSED_PERMANENTLY"}
-
-# Place `types` that indicate a free-to-enter outdoor attraction — used to
-# classify a place as budget-tier-agnostic ("free") when it has no
-# priceLevel at all, which is normal for this category (Google's
-# priceLevel field is really meant for restaurants/bars, not parks).
-#
-# Deliberately does NOT include "historical_landmark" or "monument" — real
-# bug: those two types are too ambiguous to treat as a reliable free
-# signal. Many world-famous PAID attractions (the Colosseum, Arc de
-# Triomphe) carry these exact types despite requiring a paid ticket, so
-# including them here was silently marking those as is_free=True.
-_FREE_TYPE_HINTS = {
-    "park", "plaza", "national_park", "state_park", "hiking_area",
-    "natural_feature", "beach", "square", "garden", "botanical_garden",
-    "observation_deck",
-}
 
 # Which Places (New) priceLevel enum values are appropriate for each budget
 # tier. Free places are handled separately by type (_FREE_TYPE_HINTS) —
@@ -148,11 +132,6 @@ def _is_famous(place: dict) -> bool:
     rating = place.get("rating", 0) or 0
     reviews = place.get("userRatingCount", 0) or 0
     return rating >= _FAMOUS_MIN_RATING and reviews >= _FAMOUS_MIN_REVIEWS
-
-
-def _is_free_by_type(place: dict) -> bool:
-    types = set(place.get("types", []) or [])
-    return bool(types & _FREE_TYPE_HINTS) and not place.get("priceLevel")
 
 
 def fits_budget(place: dict, budget: str) -> bool:

@@ -288,6 +288,16 @@ def init_db() -> None:
             # Column kept only so old rows don't need a migration to drop
             # it; nothing writes to it anymore.
             conn.execute("ALTER TABLE itineraries ADD COLUMN fun_facts_json TEXT DEFAULT '[]'")
+        if "destination_country" not in existing_cols:
+            # Task 13 (Nov 2026, visa-by-country) — see
+            # models.Itinerary.destination_country/_code and
+            # places.resolve_destination_country. Existing routes start
+            # empty (same "nothing to show" default as every other
+            # Places-sourced fact introduced after the fact) until
+            # backfilled via POST /admin/backfill-destination-country.
+            conn.execute("ALTER TABLE itineraries ADD COLUMN destination_country TEXT DEFAULT ''")
+        if "destination_country_code" not in existing_cols:
+            conn.execute("ALTER TABLE itineraries ADD COLUMN destination_country_code TEXT DEFAULT ''")
 
         # Migration: stop_cache gained lat/lng (so a cache hit can restore
         # the stop's map pin, not just its photo — previously only a fresh
@@ -317,6 +327,13 @@ def init_db() -> None:
             conn.execute("ALTER TABLE stop_cache ADD COLUMN user_rating_count INTEGER DEFAULT 0")
         if "price_level" not in existing_stop_cache_cols:
             conn.execute("ALTER TABLE stop_cache ADD COLUMN price_level TEXT DEFAULT ''")
+        # Task 13 (Nov 2026): is_free — see places._is_free_by_type. NULL
+        # (not 0) on existing rows, distinct from a freshly-computed False,
+        # so upsert_stop_cache's COALESCE can tell "never classified" from
+        # "classified, not free" and avoid clobbering a real False with a
+        # stale/no-op upsert that didn't pass facts at all.
+        if "is_free" not in existing_stop_cache_cols:
+            conn.execute("ALTER TABLE stop_cache ADD COLUMN is_free INTEGER DEFAULT NULL")
 
         # Migration: trip_candidates_cache gained an activity_types column
         # (Build Your Own Trip's "what kind of activities?" wizard step) —
@@ -706,6 +723,8 @@ def get_itinerary(video_id: str) -> Itinerary | None:
         fun_fact=row["fun_fact"] or "",
         fun_facts=json.loads(row["fun_facts_json"] or "[]"),
         travel_tips=json.loads(row["travel_tips_json"] or "[]"),
+        destination_country=row["destination_country"] or "",
+        destination_country_code=row["destination_country_code"] or "",
     )
 
 
@@ -767,8 +786,9 @@ def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
                 hero_attribution_json, gallery_attributions_json, summary,
                 generation_cost_usd, car_rental_recommended, car_rental_note,
                 car_rental_photo_url, car_rental_attribution_json,
-                fun_fact, travel_tips_json, fun_facts_json)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                fun_fact, travel_tips_json, fun_facts_json,
+                destination_country, destination_country_code)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 video_id,
                 url,
@@ -790,6 +810,8 @@ def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
                 itinerary.fun_fact,
                 json.dumps(itinerary.travel_tips),
                 json.dumps(itinerary.fun_facts),
+                itinerary.destination_country,
+                itinerary.destination_country_code,
             ),
         )
     print(f"[DB] Saved itinerary for {video_id} ({itinerary.destination})")
@@ -836,6 +858,8 @@ def _row_to_admin_dict(row: sqlite3.Row) -> dict:
         "fun_fact": row["fun_fact"] or "",
         "fun_facts": json.loads(row["fun_facts_json"] or "[]"),
         "travel_tips": json.loads(row["travel_tips_json"] or "[]"),
+        "destination_country": row["destination_country"] or "",
+        "destination_country_code": row["destination_country_code"] or "",
     }
 
 
@@ -867,6 +891,23 @@ def save_quality_check(video_id: str, result: dict) -> bool:
         cur = conn.execute(
             "UPDATE itineraries SET qc_json = ? WHERE video_id = ?",
             (json.dumps(result, ensure_ascii=False), video_id),
+        )
+    return cur.rowcount > 0
+
+
+def save_destination_country(video_id: str, name: str, code: str) -> bool:
+    """
+    Task 13 backfill: a narrow UPDATE for just destination_country/
+    destination_country_code, same minimal style as save_quality_check
+    above — NOT save_itinerary, whose INSERT OR REPLACE would reset every
+    other column (status, tags, view_count, qc_json, ...) back to its
+    table default, since a route it's updating already exists. Returns
+    False if video_id doesn't exist.
+    """
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE itineraries SET destination_country = ?, destination_country_code = ? WHERE video_id = ?",
+            (name, code, video_id),
         )
     return cur.rowcount > 0
 
@@ -1542,7 +1583,7 @@ def get_cached_stop(city: str, stop_name: str) -> dict | None:
         row = conn.execute(
             """SELECT photo_url, maps_url_override, lat, lng, place_type, address,
                       area_label, opening_hours_weekly_json, rating, user_rating_count,
-                      price_level
+                      price_level, is_free
                FROM stop_cache WHERE cache_key = ?""",
             (key,),
         ).fetchone()
@@ -1560,6 +1601,11 @@ def get_cached_stop(city: str, stop_name: str) -> dict | None:
         "rating": row["rating"] or 0.0,
         "user_rating_count": row["user_rating_count"] or 0,
         "price_level": row["price_level"] or "",
+        # task 13: NULL on a row never classified for is_free (saved before
+        # task 13, or by a caller that passed no facts) — callers already
+        # treat a missing/False is_free as "don't suppress the ticket
+        # button", same as any other unknown fact.
+        "is_free": bool(row["is_free"]) if row["is_free"] is not None else False,
     }
 
 
@@ -1576,23 +1622,29 @@ def upsert_stop_cache(
     Saves/updates one stop's photo+address+facts for reuse in future routes
     for the same city. `facts` is a dict shaped like places._facts_from_place
     (place_type, address, area_label, opening_hours_weekly, rating,
-    user_rating_count, price_level) — omitted/None leaves those columns at
-    their existing/default values rather than wiping them, so callers that
-    don't have facts handy (e.g. an admin manually overriding just a photo)
-    don't accidentally blank out facts saved by an earlier, fact-aware call.
+    user_rating_count, price_level, is_free) — omitted/None leaves those
+    columns at their existing/default values rather than wiping them, so
+    callers that don't have facts handy (e.g. an admin manually overriding
+    just a photo) don't accidentally blank out facts saved by an earlier,
+    fact-aware call. is_free (task 13) uses facts.get("is_free") rather
+    than a `in facts` check, so it behaves the same way: absent from the
+    dict (None) preserves whatever was already cached, same as every other
+    field here, instead of overwriting a real classification with "unknown".
     """
     if not stop_name or not photo_url:
         return
     facts = facts or {}
+    is_free_value = facts.get("is_free")
+    is_free_param = None if is_free_value is None else (1 if is_free_value else 0)
     key = _stop_cache_key(city, stop_name)
     with _conn() as conn:
         conn.execute(
             """INSERT INTO stop_cache (
                    cache_key, city, stop_name, photo_url, maps_url_override, updated_at,
                    lat, lng, place_type, address, area_label, opening_hours_weekly_json,
-                   rating, user_rating_count, price_level
+                   rating, user_rating_count, price_level, is_free
                )
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(cache_key) DO UPDATE SET
                    photo_url = excluded.photo_url,
                    maps_url_override = excluded.maps_url_override,
@@ -1605,7 +1657,8 @@ def upsert_stop_cache(
                    opening_hours_weekly_json = CASE WHEN excluded.opening_hours_weekly_json != '[]' THEN excluded.opening_hours_weekly_json ELSE stop_cache.opening_hours_weekly_json END,
                    rating = CASE WHEN excluded.rating != 0 THEN excluded.rating ELSE stop_cache.rating END,
                    user_rating_count = CASE WHEN excluded.user_rating_count != 0 THEN excluded.user_rating_count ELSE stop_cache.user_rating_count END,
-                   price_level = CASE WHEN excluded.price_level != '' THEN excluded.price_level ELSE stop_cache.price_level END""",
+                   price_level = CASE WHEN excluded.price_level != '' THEN excluded.price_level ELSE stop_cache.price_level END,
+                   is_free = COALESCE(excluded.is_free, stop_cache.is_free)""",
             (
                 key, city, stop_name, photo_url, maps_url_override or "", datetime.utcnow().isoformat(),
                 lat, lng,
@@ -1616,6 +1669,7 @@ def upsert_stop_cache(
                 facts.get("rating", 0) or 0.0,
                 facts.get("user_rating_count", 0) or 0,
                 facts.get("price_level", "") or "",
+                is_free_param,
             ),
         )
 
@@ -2130,5 +2184,6 @@ def cache_stops_from_itinerary(destination: str, itinerary: Itinerary) -> None:
                     "rating": getattr(stop, "rating", 0.0),
                     "user_rating_count": getattr(stop, "user_rating_count", 0),
                     "price_level": getattr(stop, "price_level", ""),
+                    "is_free": getattr(stop, "is_free", False),
                 },
             )

@@ -135,11 +135,17 @@ class Stop(BaseModel):
                                    # the Map view entirely for a day with
                                    # no stop coordinates rather than
                                    # showing a broken/empty map.
-    is_free: bool = False  # Build Your Own Trip stops only — carried
-                             # through from TripCandidate.is_free. Video-
-                             # extracted stops always default False (no
-                             # equivalent classification runs on that path).
-                             # The frontend uses this to suppress the
+    is_free: bool = False  # Build Your Own Trip stops: carried through
+                             # from TripCandidate.is_free. Video-extracted
+                             # stops (Nov 2026, task 13): set by
+                             # places._is_free_by_type from the same
+                             # matched Places result used for place_type/
+                             # price_level — see places._facts_from_place.
+                             # Still False whenever Places had no confident
+                             # match (is_specific_name=False, or no API
+                             # key) — no equivalent classification is
+                             # possible without a matched place. The
+                             # frontend uses this to suppress the
                              # GetYourGuide ticket button on free public
                              # places (parks, plazas, viewpoints).
     estimated_price: str = ""  # Build Your Own Trip stops only — carried
@@ -213,6 +219,20 @@ class Itinerary(BaseModel):
                                       # Empty falls back to the frontend's
                                       # plain icon+gradient placeholder.
     car_rental_attribution: Optional[UnsplashAttribution] = None
+    destination_country: str = ""  # Task 13 (Nov 2026, visa-by-country):
+                                      # real country name resolved from
+                                      # `destination` via Google Places —
+                                      # see places.resolve_destination_country.
+                                      # Empty when Places had no confident
+                                      # match (destination didn't resolve,
+                                      # or no country component) — not
+                                      # just on routes generated before
+                                      # this field existed.
+    destination_country_code: str = ""  # ISO-3166-1 alpha-2 (e.g. "AT").
+                                           # The frontend uses this (not the
+                                           # name, more stable) to pick a
+                                           # real per-country iVisa link —
+                                           # see index.html's iVisaUrl.
     view_count: int = 0            # Times the route page has been opened
     affiliate_click_count: int = 0  # Times a Booking/Expedia/Airbnb link
                                       # was clicked from this route

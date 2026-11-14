@@ -818,24 +818,40 @@ _FREE_TYPE_HINTS = {
 }
 
 # Types that are NEVER free, regardless of anything else — checked even
-# when the SAME place also carries a type from _FREE_TYPE_HINTS (e.g. a
-# botanical garden that Places also types "park"). Gerry's rule (Nov
-# 2026 review): botanical gardens, zoos and amusement parks are
-# overwhelmingly paid attractions worldwide, and — same reasoning as
-# national_park/state_park above — this lookup has no priceLevel to
-# confirm either way, so the type itself is treated as a reliable
-# NEGATIVE signal here rather than just "not asserted free".
-_NEVER_FREE_TYPES = {"botanical_garden", "zoo", "amusement_park"}
+# when the SAME place also carries a type from _FREE_TYPE_HINTS. This
+# matters because Google commonly DOUBLE-tags a place with both a
+# specific and a generic type — e.g. a real-world confirmed case:
+# Haleakalā National Park came back typed ["national_park", "park", ...],
+# so merely removing "national_park"/"state_park" from _FREE_TYPE_HINTS
+# (first attempt, Nov 2026) did NOT stop it: the generic "park" type
+# alongside it still matched the hint set. Listing them here instead
+# blocks them unconditionally, before the hint-set check ever runs, no
+# matter what else the place is also typed as. Botanical gardens, zoos
+# and amusement parks are the same story (plenty are ALSO typed "park")
+# and are overwhelmingly paid attractions worldwide — same reasoning as
+# national_park/state_park: no priceLevel to confirm either way at this
+# field-mask tier, so the type itself is treated as a reliable NEGATIVE
+# signal here rather than just "not asserted free".
+_NEVER_FREE_TYPES = {
+    "botanical_garden", "zoo", "amusement_park", "national_park", "state_park",
+}
 
 # Name-based version of the same rule, broader and independent of
-# `types`: ANY place whose own Places displayName contains "garden",
-# "gardens", or "botanical" is never free. This exists because plenty of
-# real paid gardens are typed plain "park"/"tourist_attraction" rather
-# than "botanical_garden" (Keukenhof, Gardens by the Bay below are both
+# `types`: ANY place whose name contains "garden", "gardens", or
+# "botanical" is never free. This exists because plenty of real paid
+# gardens are typed plain "park"/"tourist_attraction" rather than
+# "botanical_garden" (Keukenhof, Gardens by the Bay below are both
 # examples) — type alone would miss them, but the name itself is a
-# reliable tell. Checked case-insensitively against the place's own
-# Places displayName (not the AI's stop name, which can phrase it
-# differently).
+# reliable tell. Checked case-insensitively against BOTH the place's own
+# Places displayName AND the original stop/query name passed in — Nov
+# 2026 fix: checking displayName alone missed two confirmed live cases
+# (Upper Barrakka Gardens, Villa Borghese Gardens) because Places' fuzzy
+# name-match (_names_plausibly_match, ~40% word overlap) can confidently
+# match a candidate whose OWN displayName lacks "garden(s)" even though
+# it's the same place we display under a "...Gardens" name — e.g. Google
+# lists Rome's Villa Borghese park as plain "Villa Borghese", no
+# "Gardens" in its displayName at all, even though that's exactly what
+# we call it and it's the same paid-adjacent place either way.
 _NEVER_FREE_NAME_SUBSTRINGS = ("garden", "gardens", "botanical")
 
 # Named backstop (Nov 2026, task 13 review): specific, famous paid
@@ -858,7 +874,7 @@ _PAID_DESPITE_FREE_TYPE = {
 }
 
 
-def _is_free_by_type(place: dict) -> bool:
+def _is_free_by_type(place: dict, stop_name: str = "") -> bool:
     """
     See the three rule sets above for what this excludes and why. This
     lookup (video-route stops) never has Places' priceLevel to fall back
@@ -867,6 +883,15 @@ def _is_free_by_type(place: dict) -> bool:
     signals available; every exclusion rule here exists because type
     alone was confirmed (or is strongly expected) to produce a false
     "free" on a real, paid attraction.
+
+    `stop_name`: the original stop/query name as WE display it (optional,
+    defaults to "" for callers that don't have a separate target name —
+    e.g. trip_builder's broad-category candidates, where the Places
+    result IS the name). When given, the name-based rules below check it
+    in addition to the matched place's own displayName, since the two
+    can legitimately differ (fuzzy matching can confirm a candidate whose
+    displayName doesn't say "Gardens" even though that's what we call
+    it) — see _NEVER_FREE_NAME_SUBSTRINGS' docstring.
     """
     types = set(place.get("types", []) or [])
     if types & _NEVER_FREE_TYPES:
@@ -874,9 +899,10 @@ def _is_free_by_type(place: dict) -> bool:
     if not (types & _FREE_TYPE_HINTS) or place.get("priceLevel"):
         return False
     display_name = ((place.get("displayName") or {}).get("text") or "").strip().lower()
-    if any(sub in display_name for sub in _NEVER_FREE_NAME_SUBSTRINGS):
+    stop_name = (stop_name or "").strip().lower()
+    if any(sub in display_name or sub in stop_name for sub in _NEVER_FREE_NAME_SUBSTRINGS):
         return False
-    if any(paid in display_name for paid in _PAID_DESPITE_FREE_TYPE):
+    if any(paid in display_name or paid in stop_name for paid in _PAID_DESPITE_FREE_TYPE):
         return False
     return True
 
@@ -912,10 +938,12 @@ def _opening_hours_weekly(place: dict) -> list[str]:
     return [str(h).strip() for h in hours if str(h).strip()]
 
 
-def _facts_from_place(place: dict) -> dict:
+def _facts_from_place(place: dict, stop_name: str = "") -> dict:
     """Bundles every task-8 Google-sourced fact for one matched place, plus
     (task 13, Nov 2026) is_free — see _empty_facts for the shape when
-    nothing is known."""
+    nothing is known. `stop_name`: see _is_free_by_type's docstring —
+    passed through so the name-based free/paid rules also see our own
+    display name, not just Places' possibly-different matched name."""
     return {
         "place_type": _place_type_display(place) or _place_type_fallback(place),
         "address": (place.get("formattedAddress") or "").strip(),
@@ -924,7 +952,7 @@ def _facts_from_place(place: dict) -> dict:
         "rating": place.get("rating", 0) or 0.0,
         "user_rating_count": place.get("userRatingCount", 0) or 0,
         "price_level": place.get("priceLevel", "") or "",
-        "is_free": _is_free_by_type(place),
+        "is_free": _is_free_by_type(place, stop_name=stop_name),
     }
 
 
@@ -986,7 +1014,7 @@ def _get_place_photo_location_and_facts_core(query: str, max_width: int = 800) -
         if not _names_plausibly_match(query_core, name):
             continue
         location = _location_from_place(place)
-        facts = _facts_from_place(place)
+        facts = _facts_from_place(place, stop_name=query_core)
         photos = place.get("photos", [])
         if not photos:
             return "", location, facts

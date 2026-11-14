@@ -2367,6 +2367,29 @@ def health():
     return {"status": "ok", "version": "0.2.0"}
 
 
+@app.get("/version")
+def version():
+    """
+    Reports which commit is actually running on this deploy. Railway sets
+    RAILWAY_GIT_COMMIT_SHA / RAILWAY_GIT_BRANCH / RAILWAY_DEPLOYMENT_ID
+    automatically on every service it builds — no config needed on our
+    side. Lets us (or Gerry, or a future dry-run script) check "is the
+    backend actually on the commit I just pushed?" without guessing from
+    an "Active" status in the dashboard, which only means *a* build is
+    serving traffic, not *which* one. Empty strings if run locally
+    outside Railway (the env vars simply won't exist).
+    """
+    commit = os.environ.get("RAILWAY_GIT_COMMIT_SHA", "")
+    return {
+        "commit": commit,
+        "commit_short": commit[:7] if commit else "",
+        "branch": os.environ.get("RAILWAY_GIT_BRANCH", ""),
+        "deployment_id": os.environ.get("RAILWAY_DEPLOYMENT_ID", ""),
+        "service": os.environ.get("RAILWAY_SERVICE_NAME", ""),
+        "environment": os.environ.get("RAILWAY_ENVIRONMENT_NAME", ""),
+    }
+
+
 
 
 # ── Rankings section photos (homepage "Most visited destinations") ────────

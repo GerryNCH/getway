@@ -2116,15 +2116,17 @@ def admin_backfill_places_facts(video_ids: str = "", dry_run: bool = True, refre
 @app.post("/admin/backfill-is-free", dependencies=[Depends(verify_admin_secret)])
 def admin_backfill_is_free(video_ids: str = "", dry_run: bool = True):
     """
-    Task 13 backfill (Nov 2026): retroactively fills is_free on routes
-    generated BEFORE places._is_free_by_type existed, so the frontend's
-    existing `!stop.is_free` gate on "Get tickets via GetYourGuide"
-    (index.html's renderAiStopCard) actually suppresses the button on free
-    public places — confirmed live on real routes (Vienna, Bari) that
-    EVERY stop had is_free=false, including obviously-free places
-    (Stephansplatz, Graben & Kohlmarkt, Votivkirche, Vienna Rathaus
-    exterior) — because no classification ever ran on the video-extraction
-    path before task 13.
+    Task 13 backfill (Nov 2026): retroactively fills is_free (and, as of
+    the "three states" follow-up, is_likely_paid too — same backfill_stop_
+    facts() call now sets both) on routes generated BEFORE places.
+    _is_free_by_type existed, so the frontend's "Get tickets via
+    GetYourGuide" gate (index.html's renderAiStopCard) shows correctly:
+    the "Free" label when is_free, the ticket button when is_likely_paid,
+    and neither when both are false — confirmed live on real routes
+    (Vienna, Bari) that EVERY stop had is_free=false, including
+    obviously-free places (Stephansplatz, Graben & Kohlmarkt, Votivkirche,
+    Vienna Rathaus exterior) — because no classification ever ran on the
+    video-extraction path before task 13.
 
     Deliberately narrower than /admin/backfill-places-facts above: calls
     the SAME places.backfill_stop_facts() (one Places Text Search Pro
@@ -2158,7 +2160,8 @@ def admin_backfill_is_free(video_ids: str = "", dry_run: bool = True):
             continue
 
         before = [
-            {"name": s.name, "category": s.category, "is_free": s.is_free, "price_level": s.price_level}
+            {"name": s.name, "category": s.category, "is_free": s.is_free,
+             "is_likely_paid": getattr(s, "is_likely_paid", False), "price_level": s.price_level}
             for day in itinerary.days for s in day.stops
         ]
         stops_attempted_total += len(before)
@@ -2166,7 +2169,8 @@ def admin_backfill_is_free(video_ids: str = "", dry_run: bool = True):
         backfill_stop_facts(itinerary)
 
         after = [
-            {"name": s.name, "category": s.category, "is_free": s.is_free, "price_level": s.price_level}
+            {"name": s.name, "category": s.category, "is_free": s.is_free,
+             "is_likely_paid": getattr(s, "is_likely_paid", False), "price_level": s.price_level}
             for day in itinerary.days for s in day.stops
         ]
 
@@ -2177,6 +2181,14 @@ def admin_backfill_is_free(video_ids: str = "", dry_run: bool = True):
             "video_id": video_id,
             "destination": itinerary.destination,
             "now_free_count": sum(1 for s in after if s["is_free"]),
+            # Task 13 follow-up (Nov 2026, "three states" fix): how many
+            # stops this run flagged as a real ticketed attraction — the
+            # OTHER half of the three-state picture (is_free handles the
+            # first half above). A stop counted in neither this nor
+            # now_free_count is the deliberate third state: genuinely
+            # unsure, so the frontend shows neither a "Free" label nor a
+            # "Get tickets" button for it.
+            "now_likely_paid_count": sum(1 for s in after if s["is_likely_paid"]),
             "saved": not dry_run,
             "before": before,
             "after": after,

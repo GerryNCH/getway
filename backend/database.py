@@ -334,6 +334,13 @@ def init_db() -> None:
         # stale/no-op upsert that didn't pass facts at all.
         if "is_free" not in existing_stop_cache_cols:
             conn.execute("ALTER TABLE stop_cache ADD COLUMN is_free INTEGER DEFAULT NULL")
+        # Task 13 follow-up (Nov 2026, "three states" fix): is_likely_paid —
+        # see places._is_likely_paid_by_type. Same NULL-vs-False reasoning
+        # as is_free just above: NULL means "never classified", a real
+        # False means "classified, no paid signal found" — upsert_stop_
+        # cache's COALESCE needs to tell those apart the same way.
+        if "is_likely_paid" not in existing_stop_cache_cols:
+            conn.execute("ALTER TABLE stop_cache ADD COLUMN is_likely_paid INTEGER DEFAULT NULL")
 
         # Migration: trip_candidates_cache gained an activity_types column
         # (Build Your Own Trip's "what kind of activities?" wizard step) —
@@ -1583,7 +1590,7 @@ def get_cached_stop(city: str, stop_name: str) -> dict | None:
         row = conn.execute(
             """SELECT photo_url, maps_url_override, lat, lng, place_type, address,
                       area_label, opening_hours_weekly_json, rating, user_rating_count,
-                      price_level, is_free
+                      price_level, is_free, is_likely_paid
                FROM stop_cache WHERE cache_key = ?""",
             (key,),
         ).fetchone()
@@ -1603,9 +1610,13 @@ def get_cached_stop(city: str, stop_name: str) -> dict | None:
         "price_level": row["price_level"] or "",
         # task 13: NULL on a row never classified for is_free (saved before
         # task 13, or by a caller that passed no facts) — callers already
-        # treat a missing/False is_free as "don't suppress the ticket
-        # button", same as any other unknown fact.
+        # treat a missing/False is_free as "don't show the Free label",
+        # same as any other unknown fact.
         "is_free": bool(row["is_free"]) if row["is_free"] is not None else False,
+        # task 13 follow-up: same NULL-safe pattern for is_likely_paid —
+        # missing/False means "don't show the ticket button either"
+        # (the whole point of the three-state fix: unknown is neither).
+        "is_likely_paid": bool(row["is_likely_paid"]) if row["is_likely_paid"] is not None else False,
     }
 
 
@@ -1622,29 +1633,33 @@ def upsert_stop_cache(
     Saves/updates one stop's photo+address+facts for reuse in future routes
     for the same city. `facts` is a dict shaped like places._facts_from_place
     (place_type, address, area_label, opening_hours_weekly, rating,
-    user_rating_count, price_level, is_free) — omitted/None leaves those
-    columns at their existing/default values rather than wiping them, so
-    callers that don't have facts handy (e.g. an admin manually overriding
-    just a photo) don't accidentally blank out facts saved by an earlier,
-    fact-aware call. is_free (task 13) uses facts.get("is_free") rather
-    than a `in facts` check, so it behaves the same way: absent from the
-    dict (None) preserves whatever was already cached, same as every other
-    field here, instead of overwriting a real classification with "unknown".
+    user_rating_count, price_level, is_free, is_likely_paid) — omitted/
+    None leaves those columns at their existing/default values rather
+    than wiping them, so callers that don't have facts handy (e.g. an
+    admin manually overriding just a photo) don't accidentally blank out
+    facts saved by an earlier, fact-aware call. is_free and
+    is_likely_paid (task 13 / its follow-up) use facts.get(...) rather
+    than an `in facts` check, so they behave the same way: absent from
+    the dict (None) preserves whatever was already cached, same as every
+    other field here, instead of overwriting a real classification with
+    "unknown".
     """
     if not stop_name or not photo_url:
         return
     facts = facts or {}
     is_free_value = facts.get("is_free")
     is_free_param = None if is_free_value is None else (1 if is_free_value else 0)
+    is_likely_paid_value = facts.get("is_likely_paid")
+    is_likely_paid_param = None if is_likely_paid_value is None else (1 if is_likely_paid_value else 0)
     key = _stop_cache_key(city, stop_name)
     with _conn() as conn:
         conn.execute(
             """INSERT INTO stop_cache (
                    cache_key, city, stop_name, photo_url, maps_url_override, updated_at,
                    lat, lng, place_type, address, area_label, opening_hours_weekly_json,
-                   rating, user_rating_count, price_level, is_free
+                   rating, user_rating_count, price_level, is_free, is_likely_paid
                )
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(cache_key) DO UPDATE SET
                    photo_url = excluded.photo_url,
                    maps_url_override = excluded.maps_url_override,
@@ -1658,7 +1673,8 @@ def upsert_stop_cache(
                    rating = CASE WHEN excluded.rating != 0 THEN excluded.rating ELSE stop_cache.rating END,
                    user_rating_count = CASE WHEN excluded.user_rating_count != 0 THEN excluded.user_rating_count ELSE stop_cache.user_rating_count END,
                    price_level = CASE WHEN excluded.price_level != '' THEN excluded.price_level ELSE stop_cache.price_level END,
-                   is_free = COALESCE(excluded.is_free, stop_cache.is_free)""",
+                   is_free = COALESCE(excluded.is_free, stop_cache.is_free),
+                   is_likely_paid = COALESCE(excluded.is_likely_paid, stop_cache.is_likely_paid)""",
             (
                 key, city, stop_name, photo_url, maps_url_override or "", datetime.utcnow().isoformat(),
                 lat, lng,
@@ -1670,6 +1686,7 @@ def upsert_stop_cache(
                 facts.get("user_rating_count", 0) or 0,
                 facts.get("price_level", "") or "",
                 is_free_param,
+                is_likely_paid_param,
             ),
         )
 
@@ -2185,5 +2202,6 @@ def cache_stops_from_itinerary(destination: str, itinerary: Itinerary) -> None:
                     "user_rating_count": getattr(stop, "user_rating_count", 0),
                     "price_level": getattr(stop, "price_level", ""),
                     "is_free": getattr(stop, "is_free", False),
+                    "is_likely_paid": getattr(stop, "is_likely_paid", False),
                 },
             )

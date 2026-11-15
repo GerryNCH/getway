@@ -144,10 +144,34 @@ class Stop(BaseModel):
                              # Still False whenever Places had no confident
                              # match (is_specific_name=False, or no API
                              # key) — no equivalent classification is
-                             # possible without a matched place. The
-                             # frontend uses this to suppress the
-                             # GetYourGuide ticket button on free public
-                             # places (parks, plazas, viewpoints).
+                             # possible without a matched place. Means
+                             # "confident free" ONLY — False is NOT
+                             # "confident paid", just "not confident free"
+                             # (see is_likely_paid below for that). The
+                             # frontend shows a green "Free" label when
+                             # this is true.
+    is_likely_paid: bool = False  # Task 13 follow-up (Nov 2026, "three
+                                    # states" fix): set by
+                                    # places._is_likely_paid_by_type —
+                                    # True only for a REAL paid-attraction
+                                    # signal (museum/zoo/aquarium/etc. type,
+                                    # a real non-free priceLevel, or a named
+                                    # known-paid place), never just "is_free
+                                    # was False". Confirmed live bug this
+                                    # fixes: Villa Borghese Gardens and
+                                    # Upper Barrakka Gardens are genuinely
+                                    # free, is_free is correctly False for
+                                    # them (name matches the "garden" rule,
+                                    # which only means "uncertain", not
+                                    # "paid"), but the OLD frontend logic
+                                    # (`!stop.is_free` ⇒ show "Get tickets")
+                                    # wrongly put a ticket button on them
+                                    # anyway. The frontend now shows: Free
+                                    # when is_free, "Get tickets" when
+                                    # is_likely_paid, and neither label nor
+                                    # button when both are false (genuinely
+                                    # unsure — Gerry's rule: don't assert
+                                    # either way).
     estimated_price: str = ""  # Build Your Own Trip stops only — carried
                                  # through from TripCandidate.estimated_price
                                  # (e.g. "€16"). Empty for video-extracted

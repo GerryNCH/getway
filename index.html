@@ -3477,14 +3477,26 @@
     // shows a price unless Places itself says PRICE_LEVEL_FREE ("Free");
     // a food/cafe stop shows priceLevel as €/€€/€€€ symbols, never a
     // number (reuses the same labels Build Your Own Trip's candidate
-    // cards already use for this).
+    // cards already use for this). Task 13 "three states" fix (Nov 2026):
+    // also shows "Free" when stop.is_free — the video-stop pipeline never
+    // gets a real priceLevel at all (see places._is_free_by_type's
+    // docstring), so without this, is_free had no visible effect for
+    // these stops besides gating the (now separately-gated) ticket
+    // button. Styled green like the matching badge on Build Your Own
+    // Trip's candidate cards (see buildTripCandidateCardHtml).
     let priceLabel = '';
-    if (stop.price_level === 'PRICE_LEVEL_FREE') {
+    let priceLabelIsFree = false;
+    if (stop.price_level === 'PRICE_LEVEL_FREE' || stop.is_free) {
       priceLabel = 'Free';
+      priceLabelIsFree = true;
     } else if (stop.category === 'food') {
       priceLabel = (typeof BUILD_TRIP_PRICE_LEVEL_LABEL !== 'undefined' ? BUILD_TRIP_PRICE_LEVEL_LABEL : BUILD_TRIP_PRICE_LEVEL_LABEL_STOP_FALLBACK)[stop.price_level] || '';
     }
-    if (priceLabel) metaBits.push(`<span>${escapeHtml(priceLabel)}</span>`);
+    if (priceLabel) {
+      metaBits.push(priceLabelIsFree
+        ? `<span class="text-[#16A34A] font-medium">${escapeHtml(priceLabel)}</span>`
+        : `<span>${escapeHtml(priceLabel)}</span>`);
+    }
     const metaLine = metaBits.length ? `<div class="text-[11px] text-gray-500 flex items-center gap-2 mt-0.5">${metaBits.join('')}</div>` : '';
 
     const hours = todaysHoursAndOpenNow(stop.opening_hours_weekly);
@@ -3693,7 +3705,30 @@
         </div>
         ${stop.tip ? `<div class="text-xs text-[#8B5CF6] mt-1.5">💡 ${stop.tip}</div>` : ''}
         ${stop.category === 'food' ? `<a href="${stop.booking_url || `https://www.google.com/maps/search/${encodeURIComponent(mapsQuery)}`}" onclick="trackAffiliateClick('${videoId}', 'reserve_table')" target="_blank" rel="noopener sponsored" class="btn-interactive inline-flex items-center gap-1.5 mt-2.5 h-[36px] px-4 bg-[#8B5CF6] text-white text-xs font-medium rounded-lg"><i data-lucide="calendar" class="w-3.5 h-3.5"></i>Reserve a table</a>` : ''}
-        ${((stop.category === 'activity' || stop.category === 'sight') && !stop.is_free) ? `<div class="mt-2.5 flex items-center gap-2 flex-wrap"><a href="${stop.booking_url || gygFallbackUrl}" onclick="trackAffiliateClick('${videoId}', 'getyourguide')" target="_blank" rel="noopener sponsored" class="btn-interactive inline-flex items-center gap-1.5 h-[36px] px-4 bg-[#8B5CF6] text-white text-xs font-medium rounded-lg"><i data-lucide="ticket" class="w-3.5 h-3.5"></i>${stop.category === 'sight' ? 'Get tickets via GetYourGuide' : 'Book via GetYourGuide'}</a>${stop.estimated_price ? `<span class="text-[11px] text-gray-500">~${escapeHtml(stop.estimated_price)}</span>` : ''}</div>` : ''}
+        ${/* Task 13 "three states" fix (Nov 2026), SIGHT only: used to
+             gate on !stop.is_free — wrong, since is_free=false only ever
+             meant "not CONFIDENT free", not "confident paid". Confirmed
+             live: Villa Borghese / Upper Barrakka Gardens are genuinely
+             free but got a ticket button anyway because of that. A sight
+             now strictly requires is_likely_paid (a real paid-attraction
+             signal — see places._is_likely_paid_by_type) — a sight
+             that's neither is_free nor is_likely_paid shows NEITHER
+             label nor button, the deliberate third "genuinely unsure"
+             state.
+             ACTIVITY is deliberately NOT switched to is_likely_paid —
+             Gerry's catch (Nov 2026): most activity stops have no
+             confirmed specific Places match at all (is_specific_name=
+             false — snorkelling trips, ATV rides, etc. — see places.
+             backfill_stop_facts' docstring), so is_likely_paid stays
+             False for almost every one of them even though they're
+             exactly the bookable-experience category this button (and
+             its commission) exists for. Kept on the old !stop.is_free
+             gate instead — is_free is already near-always False here
+             too (same reason: no matched place to classify), so this
+             is effectively "always show the button for an activity",
+             same as before this fix, with the escape hatch for the rare
+             activity that DOES resolve to a genuinely free place. */ ''}
+        ${((stop.category === 'activity' && !stop.is_free) || (stop.category === 'sight' && stop.is_likely_paid)) ? `<div class="mt-2.5 flex items-center gap-2 flex-wrap"><a href="${stop.booking_url || gygFallbackUrl}" onclick="trackAffiliateClick('${videoId}', 'getyourguide')" target="_blank" rel="noopener sponsored" class="btn-interactive inline-flex items-center gap-1.5 h-[36px] px-4 bg-[#8B5CF6] text-white text-xs font-medium rounded-lg"><i data-lucide="ticket" class="w-3.5 h-3.5"></i>${stop.category === 'sight' ? 'Get tickets via GetYourGuide' : 'Book via GetYourGuide'}</a>${stop.estimated_price ? `<span class="text-[11px] text-gray-500">~${escapeHtml(stop.estimated_price)}</span>` : ''}</div>` : ''}
       </div>
     </div>`;
   }

@@ -725,7 +725,7 @@ def _empty_facts() -> dict:
     return {
         "place_type": "", "address": "", "area_label": "",
         "opening_hours_weekly": [], "rating": 0.0, "user_rating_count": 0,
-        "price_level": "", "is_free": False,
+        "price_level": "", "is_free": False, "is_likely_paid": False,
     }
 
 
@@ -907,6 +907,60 @@ def _is_free_by_type(place: dict, stop_name: str = "") -> bool:
     return True
 
 
+# Task 13 follow-up (Nov 2026, "three states" fix): is_free's job is only
+# "are we CONFIDENT this is free" — a False from it never meant "confident
+# paid", just "not confident free", but the frontend used to treat it that
+# way anyway (showed "Get tickets" on any !is_free stop). That's wrong for
+# a real, free public place we're merely uncertain about by type/name alone
+# — confirmed live: Villa Borghese and Upper Barrakka Gardens are genuinely
+# free, is_free correctly says False for them (their name matches the
+# garden rule), but they are NOT ticketed attractions, so they should get
+# neither the "Free" label nor a ticket button. This second, independent
+# classification exists to name the ONLY types/signals we're actually
+# confident mean "this charges admission" — the frontend now shows: Free
+# when is_free; "Get tickets" when is_likely_paid; neither otherwise.
+# "And similar" per Gerry's instruction — picked the other common
+# definitely-ticketed attraction types Places uses that aren't already
+# covered by _NEVER_FREE_TYPES above (which exists for a different reason:
+# blocking false "free", not asserting "paid"); some types overlap both
+# sets on purpose (e.g. a zoo should never be free AND should get tickets).
+_LIKELY_PAID_TYPES = {
+    "museum", "art_gallery", "aquarium", "planetarium",
+    "zoo", "amusement_park", "water_park",
+    "national_park", "state_park", "botanical_garden",
+}
+
+
+def _is_likely_paid_by_type(place: dict, stop_name: str = "") -> bool:
+    """
+    True only when we have a REAL signal this is a ticketed attraction —
+    never the mere absence of a free signal (that's what makes this safe
+    to use as "show Get tickets", unlike the old `!is_free` shortcut).
+    Three signals, any one is enough:
+      1. A type in _LIKELY_PAID_TYPES (museum, zoo, aquarium, etc.).
+      2. A real Places priceLevel that isn't PRICE_LEVEL_FREE — only ever
+         present on the Enterprise-tier lookup (trip_builder), never on
+         the Pro-tier video-stop lookup, but checked here too so both
+         pipelines share one function and neither has to remember this.
+      3. The place/stop name matches _PAID_DESPITE_FREE_TYPE — these are
+         specific, famous attractions we KNOW are paid (that's why they're
+         in that list at all), unlike the general "garden" name rule in
+         _is_free_by_type, which only means "uncertain", not "paid", and
+         is deliberately NOT repeated here.
+    """
+    types = set(place.get("types", []) or [])
+    if types & _LIKELY_PAID_TYPES:
+        return True
+    price_level = place.get("priceLevel", "") or ""
+    if price_level and price_level != "PRICE_LEVEL_FREE":
+        return True
+    display_name = ((place.get("displayName") or {}).get("text") or "").strip().lower()
+    stop_name = (stop_name or "").strip().lower()
+    if any(paid in display_name or paid in stop_name for paid in _PAID_DESPITE_FREE_TYPE):
+        return True
+    return False
+
+
 def _area_label_from_components(place: dict) -> str:
     """
     Pulls a neighbourhood/area name out of Places' addressComponents —
@@ -940,10 +994,11 @@ def _opening_hours_weekly(place: dict) -> list[str]:
 
 def _facts_from_place(place: dict, stop_name: str = "") -> dict:
     """Bundles every task-8 Google-sourced fact for one matched place, plus
-    (task 13, Nov 2026) is_free — see _empty_facts for the shape when
-    nothing is known. `stop_name`: see _is_free_by_type's docstring —
-    passed through so the name-based free/paid rules also see our own
-    display name, not just Places' possibly-different matched name."""
+    (task 13, Nov 2026) is_free and is_likely_paid — see _empty_facts for
+    the shape when nothing is known. `stop_name`: see _is_free_by_type's
+    docstring — passed through so the name-based free/paid rules also see
+    our own display name, not just Places' possibly-different matched
+    name."""
     return {
         "place_type": _place_type_display(place) or _place_type_fallback(place),
         "address": (place.get("formattedAddress") or "").strip(),
@@ -953,6 +1008,7 @@ def _facts_from_place(place: dict, stop_name: str = "") -> dict:
         "user_rating_count": place.get("userRatingCount", 0) or 0,
         "price_level": place.get("priceLevel", "") or "",
         "is_free": _is_free_by_type(place, stop_name=stop_name),
+        "is_likely_paid": _is_likely_paid_by_type(place, stop_name=stop_name),
     }
 
 
@@ -1455,6 +1511,7 @@ def enrich_itinerary_with_photos(itinerary) -> None:
                 stop.is_free = cached.get("is_free", False) or False  # task 13: False
                                                                         # on rows saved
                                                                         # before this existed
+                stop.is_likely_paid = cached.get("is_likely_paid", False) or False
                 print(f"[Cache] Reused saved photo for '{stop.name}' in {city}")
                 continue
 
@@ -1491,6 +1548,7 @@ def enrich_itinerary_with_photos(itinerary) -> None:
                         stop.user_rating_count = facts["user_rating_count"]
                         stop.price_level = facts["price_level"]
                         stop.is_free = facts["is_free"]
+                        stop.is_likely_paid = facts["is_likely_paid"]
                         booking_query = f"{real_name}, {city}"
                         # Task 7: same dated-search rule as every other
                         # Booking/Expedia link in the app — see
@@ -1521,6 +1579,7 @@ def enrich_itinerary_with_photos(itinerary) -> None:
                 stop.user_rating_count = facts["user_rating_count"]
                 stop.price_level = facts["price_level"]
                 stop.is_free = facts["is_free"]
+                stop.is_likely_paid = facts["is_likely_paid"]
                 print(f"[Places] Stop: {name_query} → photo={bool(stop.photo_url)} coords={bool(location)}")
 
             if not stop.photo_url and is_specific:
@@ -1642,6 +1701,7 @@ def backfill_stop_facts(itinerary) -> int:
             stop.user_rating_count = facts["user_rating_count"]
             stop.price_level = facts["price_level"]
             stop.is_free = facts["is_free"]
+            stop.is_likely_paid = facts["is_likely_paid"]
             if location:
                 stop.lat, stop.lng = location
             database.upsert_stop_cache(
@@ -1685,5 +1745,6 @@ def apply_cached_stop_facts(itinerary) -> int:
             stop.user_rating_count = cached["user_rating_count"]
             stop.price_level = cached["price_level"]
             stop.is_free = cached.get("is_free", False) or False
+            stop.is_likely_paid = cached.get("is_likely_paid", False) or False
             filled += 1
     return filled

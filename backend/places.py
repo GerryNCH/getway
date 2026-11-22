@@ -871,6 +871,17 @@ _PAID_DESPITE_FREE_TYPE = {
     "keukenhof",  # Netherlands — paid seasonal garden
     "gardens by the bay",  # Singapore — the ticketed domes specifically
     "tivoli gardens",  # Copenhagen — paid amusement park/pleasure garden
+    # Generic phrase rule (Gerry, Nov 2026 dry-run review): ANY place with
+    # "Cultural Park" in its name, not just one named example — confirmed
+    # live case: Garuda Wisnu Kencana Cultural Park (Bali) came back
+    # is_free=true (type "park", no "garden" in the name), but it's a real
+    # paid cultural park (~125,000 IDR entry). Unlike the other entries
+    # above, this one is intentionally a generic phrase rather than one
+    # specific place, since "Cultural Park" names a whole category of
+    # ticketed attractions worldwide, the same way "amusement_park" does
+    # as a TYPE — this is its name-based equivalent for places Google
+    # doesn't type that way.
+    "cultural park",
 }
 
 

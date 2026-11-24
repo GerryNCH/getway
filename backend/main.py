@@ -565,63 +565,6 @@ async def extract(req: ExtractRequest):
     )
 
 
-@app.post("/admin/regenerate/{video_id}", dependencies=[Depends(verify_admin_secret)])
-async def admin_regenerate(video_id: str, max_frames: int = 8):
-    """
-    "Generate again" (Task 15, Nov 2026) — admin panel button. Re-runs the
-    full paid pipeline on an existing route's ORIGINAL source video and
-    overwrites its content in place: fixes a route whose stops/photos/
-    descriptions came out wrong or stale (a prompt or Places-rule
-    improvement since it was first generated, a TikTok video that's since
-    been edited/re-uploaded by its creator, etc).
-
-    Does NOT touch status, price_category, tags, creator_handle,
-    view_count, or affiliate_click_count — see
-    database.save_regenerated_itinerary for why reusing the plain
-    save_itinerary path here would be dangerous (it would silently
-    un-approve a live route and wipe its stats/curation). To swap in a
-    completely different video, paste the new link through the normal
-    extraction flow instead — this only re-examines the SAME video.
-
-    Admin-only on purpose: this costs the same as a normal extraction
-    (troll filter + Claude multimodal analysis + Places lookups), so it
-    must never be reachable by a visitor or a script, only triggered
-    deliberately from the admin panel.
-    """
-    existing = database.get_itinerary(video_id)
-    if not existing:
-        raise HTTPException(404, "Route not found")
-    if not existing.source_url:
-        raise HTTPException(400, "No source URL on file for this route — can't regenerate")
-    url = existing.source_url
-    print(f"[Regenerate] {video_id} ({existing.destination}) — admin-triggered, bypassing cache")
-
-    itinerary, meta, ai_price_category, ai_tags = await _run_generation_pipeline(
-        url, video_id, max_frames
-    )
-
-    if not database.save_regenerated_itinerary(video_id, itinerary, pipeline_version=PIPELINE_VERSION):
-        raise HTTPException(404, "Route not found")
-
-    try:
-        qc_result = ai_quality_check(itinerary)
-        database.save_quality_check(video_id, qc_result)
-        print(f"[QualityCheck] {video_id} → score={qc_result['score']} status={qc_result['status']}")
-    except Exception as e:
-        print(f"[QualityCheck] Failed (non-fatal): {e}")
-
-    stop_count = sum(len(d.stops) for d in itinerary.days)
-    print(f"[Regenerate] {video_id} done — {stop_count} stops, ${itinerary.generation_cost_usd:.4f}")
-    return {
-        "status": "ok",
-        "video_id": video_id,
-        "destination": itinerary.destination,
-        "stop_count": stop_count,
-        "generation_cost_usd": itinerary.generation_cost_usd,
-        "pipeline_version": PIPELINE_VERSION,
-    }
-
-
 # ── Reviews ────────────────────────────────────────────────────────────────
 
 @app.post("/reviews", response_model=Review)
@@ -1243,6 +1186,63 @@ def verify_admin_secret(x_admin_secret: str = Header(None, alias="X-Admin-Secret
     """
     if x_admin_secret != ADMIN_SECRET:
         raise HTTPException(403, "Invalid admin secret")
+
+
+@app.post("/admin/regenerate/{video_id}", dependencies=[Depends(verify_admin_secret)])
+async def admin_regenerate(video_id: str, max_frames: int = 8):
+    """
+    "Generate again" (Task 15, Nov 2026) — admin panel button. Re-runs the
+    full paid pipeline on an existing route's ORIGINAL source video and
+    overwrites its content in place: fixes a route whose stops/photos/
+    descriptions came out wrong or stale (a prompt or Places-rule
+    improvement since it was first generated, a TikTok video that's since
+    been edited/re-uploaded by its creator, etc).
+
+    Does NOT touch status, price_category, tags, creator_handle,
+    view_count, or affiliate_click_count — see
+    database.save_regenerated_itinerary for why reusing the plain
+    save_itinerary path here would be dangerous (it would silently
+    un-approve a live route and wipe its stats/curation). To swap in a
+    completely different video, paste the new link through the normal
+    extraction flow instead — this only re-examines the SAME video.
+
+    Admin-only on purpose: this costs the same as a normal extraction
+    (troll filter + Claude multimodal analysis + Places lookups), so it
+    must never be reachable by a visitor or a script, only triggered
+    deliberately from the admin panel.
+    """
+    existing = database.get_itinerary(video_id)
+    if not existing:
+        raise HTTPException(404, "Route not found")
+    if not existing.source_url:
+        raise HTTPException(400, "No source URL on file for this route — can't regenerate")
+    url = existing.source_url
+    print(f"[Regenerate] {video_id} ({existing.destination}) — admin-triggered, bypassing cache")
+
+    itinerary, meta, ai_price_category, ai_tags = await _run_generation_pipeline(
+        url, video_id, max_frames
+    )
+
+    if not database.save_regenerated_itinerary(video_id, itinerary, pipeline_version=PIPELINE_VERSION):
+        raise HTTPException(404, "Route not found")
+
+    try:
+        qc_result = ai_quality_check(itinerary)
+        database.save_quality_check(video_id, qc_result)
+        print(f"[QualityCheck] {video_id} → score={qc_result['score']} status={qc_result['status']}")
+    except Exception as e:
+        print(f"[QualityCheck] Failed (non-fatal): {e}")
+
+    stop_count = sum(len(d.stops) for d in itinerary.days)
+    print(f"[Regenerate] {video_id} done — {stop_count} stops, ${itinerary.generation_cost_usd:.4f}")
+    return {
+        "status": "ok",
+        "video_id": video_id,
+        "destination": itinerary.destination,
+        "stop_count": stop_count,
+        "generation_cost_usd": itinerary.generation_cost_usd,
+        "pipeline_version": PIPELINE_VERSION,
+    }
 
 
 @app.post("/admin/clear-cache", dependencies=[Depends(verify_admin_secret)])

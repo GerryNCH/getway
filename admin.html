@@ -618,6 +618,7 @@ function buildCard(item, listType) {
         <span>${escapeHtml(item.destination)}</span>
         <span class="text-gray-400 font-sans text-sm font-normal">· ${escapeHtml(item.duration)}</span>
         ${dupCount > 1 ? `<span class="text-[10px] font-semibold uppercase tracking-wide text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">Duplicate clip (${dupCount}×)</span>` : ""}
+        ${item.pending_regeneration ? `<span class="text-[10px] font-semibold uppercase tracking-wide text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">🆕 New version pending</span>` : ""}
         <span class="qc-score-badge text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full hidden"></span>
       </div>
       <div class="text-[11px] text-gray-400 mt-0.5">
@@ -683,6 +684,14 @@ function buildCard(item, listType) {
   qcPanel.className = "qc-panel hidden mt-4 p-4 rounded-xl bg-gray-50 border border-gray-100";
   card.appendChild(qcPanel);
 
+  // Task 15 follow-up (Gerry, Nov 2026, point 3) — old-vs-new comparison
+  // for a "Generate again" result on an approved route, held here instead
+  // of applied immediately. Emerald border makes it stand out from the
+  // gray qc-panel above when both happen to be visible at once.
+  const pendingRegenPanel = document.createElement("div");
+  pendingRegenPanel.className = "pending-regen-panel hidden mt-4 p-4 rounded-xl bg-emerald-50 border border-emerald-200";
+  card.appendChild(pendingRegenPanel);
+
   const editor = document.createElement("div");
   editor.className = "editor hidden mt-5 pt-5 border-t border-gray-100";
   editor.appendChild(buildEditorBody(item));
@@ -690,6 +699,9 @@ function buildCard(item, listType) {
 
   if (item.quality_check) {
     renderQualityCheck(card, item.quality_check);
+  }
+  if (item.pending_regeneration) {
+    renderPendingRegeneration(card, item);
   }
 
   return card;
@@ -1203,19 +1215,93 @@ async function doClearCache(videoId) {
 // view/click stats all survive (see database.save_regenerated_itinerary) —
 // so there's no need to re-approve afterward, just re-check the content.
 async function doRegenerate(videoId, card) {
-  if (!confirm("Re-run the AI on this route's original video and overwrite its current stops/photos/descriptions? Costs the same as generating a new route. Status, price tier, tags and stats are kept. Continue?")) return;
+  if (!confirm("Re-run the AI on this route's original video? Costs the same as generating a new route. Status, price tier, tags and stats are kept. On an approved (live) route the new version waits for your review below instead of replacing the live content immediately. Continue?")) return;
   const btn = card.querySelector(".regenerate-btn");
   const originalHtml = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = `<span>Regenerating… (can take a minute)</span>`;
   try {
-    await apiPost(`/admin/regenerate/${encodeURIComponent(videoId)}`);
+    const result = await apiPost(`/admin/regenerate/${encodeURIComponent(videoId)}`);
+    if (result.status === "pending_review") {
+      alert("Done — saved as a new version pending your review. The live route hasn't changed yet; scroll to this card to compare old vs new.");
+    }
     loadTab(ACTIVE_TAB);
   } catch (e) {
     alert("Regenerate failed: " + e.message);
     btn.disabled = false;
     btn.innerHTML = originalHtml;
   }
+}
+
+// Gerry, Nov 2026 (point 3): an approved route's "Generate again" result is
+// held here instead of going live immediately — see
+// database.save_pending_regeneration / main.py's _finish_regeneration.
+// These two apply (approve) or throw away (discard) that held result.
+async function doApproveRegeneration(videoId) {
+  if (!confirm("Replace the live content with this new version? Visitors will see it immediately.")) return;
+  try {
+    await apiPost(`/admin/regenerate/${encodeURIComponent(videoId)}/approve`);
+    loadTab(ACTIVE_TAB);
+  } catch (e) {
+    alert("Approve failed: " + e.message);
+  }
+}
+async function doDiscardRegeneration(videoId) {
+  if (!confirm("Discard this new version and keep the current live content?")) return;
+  try {
+    await apiPost(`/admin/regenerate/${encodeURIComponent(videoId)}/discard`);
+    loadTab(ACTIVE_TAB);
+  } catch (e) {
+    alert("Discard failed: " + e.message);
+  }
+}
+
+// Old-vs-new comparison shown on a card whose "Generate again" result is
+// waiting for review (item.pending_regeneration, set by
+// database._row_to_admin_dict — present on both pending and approved
+// cards, but in practice only approved routes ever populate it; see
+// _finish_regeneration).
+function renderPendingRegeneration(card, item) {
+  const panel = card.querySelector(".pending-regen-panel");
+  if (!panel) return;
+  const pending = item.pending_regeneration;
+  if (!pending) {
+    panel.classList.add("hidden");
+    panel.innerHTML = "";
+    return;
+  }
+  const newIt = pending.itinerary || {};
+  const countStops = (it) => (it.days || []).reduce((sum, d) => sum + ((d.stops || []).length), 0);
+  const oldStopCount = countStops(item);
+  const newStopCount = countStops(newIt);
+  const oldQc = item.quality_check ? `${item.quality_check.score}/100` : "—";
+  const newQc = pending.quality_check ? `${pending.quality_check.score}/100` : "—";
+  const generatedAt = (pending.generated_at || "").slice(0, 16).replace("T", " ");
+
+  panel.innerHTML = `
+    <div class="flex items-center gap-2 mb-3 flex-wrap">
+      <span class="text-lg leading-none">🆕</span>
+      <span class="font-serif-display text-base">New version pending review</span>
+      <span class="text-[11px] text-gray-400">generated ${escapeHtml(generatedAt)} UTC</span>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mb-4">
+      <div>
+        <div class="text-[11px] uppercase tracking-wide text-gray-400 mb-1">Current (live)</div>
+        <div>${oldStopCount} stop(s) &middot; AI Check ${oldQc}</div>
+        <div class="text-gray-500 mt-1">${escapeHtml(item.summary || "")}</div>
+      </div>
+      <div>
+        <div class="text-[11px] uppercase tracking-wide text-emerald-600 mb-1">New</div>
+        <div>${newStopCount} stop(s) &middot; AI Check ${newQc}</div>
+        <div class="text-gray-500 mt-1">${escapeHtml(newIt.summary || "")}</div>
+      </div>
+    </div>
+    <div class="flex gap-2 flex-wrap pending-regen-actions"></div>
+  `;
+  const btnRow = panel.querySelector(".pending-regen-actions");
+  btnRow.appendChild(makePillBtn("Use new version", "pill-green", () => doApproveRegeneration(item.video_id), checkIconSvg()));
+  btnRow.appendChild(makePillBtn("Keep current", "pill-gray", () => doDiscardRegeneration(item.video_id), xIconSvg()));
+  panel.classList.remove("hidden");
 }
 </script>
 </body>

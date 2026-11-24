@@ -13,7 +13,7 @@ import json
 import os
 import secrets
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from models import Itinerary
@@ -304,6 +304,14 @@ def init_db() -> None:
             # (pipeline predates this field entirely, nothing to label them
             # with) until the next save/regenerate stamps a real value.
             conn.execute("ALTER TABLE itineraries ADD COLUMN pipeline_version TEXT DEFAULT ''")
+        if "pending_regeneration_json" not in existing_cols:
+            # Task 15 follow-up (Gerry's Nov 2026 feedback, point 3): holds a
+            # freshly regenerated result for an APPROVED (live) route that is
+            # waiting for Gerry's review — see save_pending_regeneration /
+            # approve_pending_regeneration / discard_pending_regeneration
+            # below. NULL means "nothing pending". Never touched by
+            # save_itinerary or save_regenerated_itinerary themselves.
+            conn.execute("ALTER TABLE itineraries ADD COLUMN pending_regeneration_json TEXT DEFAULT NULL")
 
         # Migration: stop_cache gained lat/lng (so a cache hit can restore
         # the stop's map pin, not just its photo — previously only a fresh
@@ -910,6 +918,132 @@ def save_regenerated_itinerary(video_id: str, itinerary: Itinerary, pipeline_ver
     return cur.rowcount > 0
 
 
+def get_route_status(video_id: str) -> str | None:
+    """
+    Cheapest possible status lookup — just the one column, no itinerary
+    content parsing. Used to decide whether a freshly regenerated result
+    can be applied immediately (pending/rejected: no live audience to
+    protect) or must wait for Gerry's approval (approved: live and public)
+    — see save_pending_regeneration / save_regenerated_itinerary. Returns
+    None if video_id doesn't exist.
+    """
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT status FROM itineraries WHERE video_id = ?", (video_id,)
+        ).fetchone()
+    return row["status"] if row else None
+
+
+def save_pending_regeneration(
+    video_id: str, itinerary: Itinerary, pipeline_version: str = "", quality_check: dict | None = None
+) -> bool:
+    """
+    Task 15 follow-up (Gerry's Nov 2026 feedback, point 3): stores a freshly
+    regenerated result for an ALREADY-APPROVED route WITHOUT touching any
+    live content column — the opposite of save_regenerated_itinerary, which
+    applies immediately. Visitors keep seeing the current (live) content
+    until Gerry reviews the new one side-by-side in the admin panel and
+    explicitly approves (approve_pending_regeneration) or discards
+    (discard_pending_regeneration) it.
+
+    quality_check is stored alongside so the admin comparison view can show
+    the NEW content's AI Quality Check score without touching the live
+    route's own qc_json (which must keep describing the content that's
+    actually live until/unless this gets approved).
+
+    Overwrites any previous pending regeneration for this video_id — only
+    one pending version is kept at a time, so a second trigger before the
+    first is reviewed replaces it rather than stacking.
+
+    Returns False if video_id doesn't exist.
+    """
+    payload = {
+        "itinerary": itinerary.model_dump(),
+        "pipeline_version": pipeline_version,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "quality_check": quality_check,
+    }
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE itineraries SET pending_regeneration_json = ? WHERE video_id = ?",
+            (json.dumps(payload, ensure_ascii=False), video_id),
+        )
+    if cur.rowcount > 0:
+        print(f"[DB] Saved pending regeneration for {video_id} ({itinerary.destination}) — "
+              f"awaiting admin review, live content unchanged")
+    return cur.rowcount > 0
+
+
+def get_pending_regeneration(video_id: str) -> dict | None:
+    """
+    Returns the stored pending-regeneration payload (see
+    save_pending_regeneration) for the admin panel's old-vs-new comparison
+    view — {"itinerary": {...}, "pipeline_version": str, "generated_at":
+    iso-string, "quality_check": dict | None} — or None if this route has
+    no pending regeneration waiting (including if video_id doesn't exist).
+    """
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT pending_regeneration_json FROM itineraries WHERE video_id = ?",
+            (video_id,),
+        ).fetchone()
+    if not row or not row["pending_regeneration_json"]:
+        return None
+    return json.loads(row["pending_regeneration_json"])
+
+
+def approve_pending_regeneration(video_id: str) -> bool:
+    """
+    Applies a pending regeneration (see save_pending_regeneration) to the
+    live route — same column set and same preserved fields (status, price_
+    category, tags, creator_handle, stats, url, created_at) as
+    save_regenerated_itinerary, since this IS that same apply step, just
+    delayed until Gerry approves it from the admin panel. Also carries the
+    pending result's own quality_check over to the live qc_json, so the
+    score shown on the card matches what's actually live afterward. Clears
+    the pending slot once applied.
+
+    Returns False if there was nothing pending (or video_id doesn't exist)
+    — caller should treat that as "nothing to approve", not silently no-op.
+    """
+    pending = get_pending_regeneration(video_id)
+    if not pending:
+        return False
+    itinerary = Itinerary(**pending["itinerary"])
+    applied = save_regenerated_itinerary(video_id, itinerary, pipeline_version=pending.get("pipeline_version", ""))
+    if not applied:
+        return False
+    qc = pending.get("quality_check")
+    if qc:
+        with _conn() as conn:
+            conn.execute("UPDATE itineraries SET qc_json = ? WHERE video_id = ?",
+                         (json.dumps(qc, ensure_ascii=False), video_id))
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE itineraries SET pending_regeneration_json = NULL WHERE video_id = ?",
+            (video_id,),
+        )
+    print(f"[DB] Approved pending regeneration for {video_id} — now live")
+    return True
+
+
+def discard_pending_regeneration(video_id: str) -> bool:
+    """
+    Throws away a pending regeneration without applying it — the live
+    route is left completely untouched. The admin panel's "Keep current"
+    choice in the old-vs-new comparison view. Returns False if video_id
+    doesn't exist (returns True even if there was nothing pending, as long
+    as the route exists, since the end state — no pending regeneration —
+    is the same either way).
+    """
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE itineraries SET pending_regeneration_json = NULL WHERE video_id = ?",
+            (video_id,),
+        )
+    return cur.rowcount > 0
+
+
 def list_itineraries() -> list[dict]:
     """Returns all cached itineraries (for admin panel later)."""
     with _conn() as conn:
@@ -953,6 +1087,7 @@ def _row_to_admin_dict(row: sqlite3.Row) -> dict:
         "travel_tips": json.loads(row["travel_tips_json"] or "[]"),
         "destination_country": row["destination_country"] or "",
         "destination_country_code": row["destination_country_code"] or "",
+        "pending_regeneration": json.loads(row["pending_regeneration_json"]) if row["pending_regeneration_json"] else None,
     }
 
 

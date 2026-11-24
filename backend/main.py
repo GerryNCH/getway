@@ -32,7 +32,7 @@ import os
 
 import uuid
 
-from fastapi import FastAPI, HTTPException, File, UploadFile, Response, Request, Depends, Header
+from fastapi import FastAPI, HTTPException, File, UploadFile, Response, Request, Depends, Header, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -476,8 +476,93 @@ async def _run_generation_pipeline(
     return itinerary, meta, ai_price_category, ai_tags
 
 
+# ── Task 15 follow-up (Gerry's Nov 2026 feedback) ───────────────────────────
+# In-process guard against two near-simultaneous stale cache hits for the
+# same video_id both kicking off a paid background regeneration — this app
+# runs as a single uvicorn worker (see Dockerfile), so a plain module-level
+# set is enough; no cross-process lock needed.
+_auto_regenerating_video_ids: set[str] = set()
+
+
+def _finish_regeneration(video_id: str, itinerary: Itinerary, pipeline_version: str, quality_check: dict | None) -> str | None:
+    """
+    Shared decision point for every path that just finished re-running the
+    full generation pipeline on an EXISTING route's original video — the
+    admin panel's "Generate again" button (admin_regenerate below) and the
+    auto-regenerate-on-stale-cache-hit background task
+    (_auto_regenerate_stale_route below).
+
+    An approved route is live and public, so Gerry must review a content
+    change before visitors see it (Gerry, Nov 2026, point 3): the fresh
+    result is stored as a pending regeneration
+    (database.save_pending_regeneration) instead of being applied, and
+    Gerry approves or discards it later from the admin panel's old-vs-new
+    comparison view.
+
+    A pending/rejected route has no live audience yet, so there's nothing
+    to protect — the fresh result is applied immediately
+    (database.save_regenerated_itinerary), exactly as "Generate again"
+    behaved before this rule existed.
+
+    Returns "pending", "applied", or None if video_id doesn't exist.
+    """
+    status = database.get_route_status(video_id)
+    if status is None:
+        return None
+    if status == "approved":
+        database.save_pending_regeneration(video_id, itinerary, pipeline_version=pipeline_version, quality_check=quality_check)
+        return "pending"
+    database.save_regenerated_itinerary(video_id, itinerary, pipeline_version=pipeline_version)
+    if quality_check:
+        database.save_quality_check(video_id, quality_check)
+    return "applied"
+
+
+async def _auto_regenerate_stale_route(video_id: str, url: str, max_frames: int):
+    """
+    Task 15 cache-versioning (Gerry's Nov 2026 feedback, point 2): runs via
+    FastAPI's BackgroundTasks AFTER a stale-pipeline-version cache HIT has
+    already been returned to whoever requested it — so it never slows down
+    or risks their request — then re-runs the full paid pipeline on the
+    same source video and routes the result through _finish_regeneration,
+    the same approved-vs-not gate the admin "Generate again" button uses: a
+    pending/rejected route gets the fresh content immediately (nobody's
+    looking at the old version anyway), an approved route gets it saved as
+    a pending regeneration for Gerry to review — never applied silently to
+    a route visitors are currently seeing.
+
+    Guarded by _auto_regenerating_video_ids so two near-simultaneous stale
+    hits for the same video_id can't both trigger a paid regeneration.
+    """
+    if video_id in _auto_regenerating_video_ids:
+        return
+    _auto_regenerating_video_ids.add(video_id)
+    try:
+        print(f"[AutoRegenerate] {video_id} — stale pipeline_version, regenerating in background")
+        itinerary, meta, ai_price_category, ai_tags = await _run_generation_pipeline(
+            url, video_id, max_frames
+        )
+        qc_result = None
+        try:
+            qc_result = ai_quality_check(itinerary)
+        except Exception as e:
+            print(f"[AutoRegenerate] {video_id} quality check failed (non-fatal): {e}")
+
+        mode = _finish_regeneration(video_id, itinerary, PIPELINE_VERSION, qc_result)
+        if mode is None:
+            print(f"[AutoRegenerate] {video_id} vanished before background regeneration finished — dropping result")
+        elif mode == "pending":
+            print(f"[AutoRegenerate] {video_id} done — APPROVED route, saved as PENDING review (not yet live)")
+        else:
+            print(f"[AutoRegenerate] {video_id} done — applied immediately (no live audience to protect)")
+    except Exception as e:
+        print(f"[AutoRegenerate] {video_id} failed (non-fatal, cached content keeps serving): {e}")
+    finally:
+        _auto_regenerating_video_ids.discard(video_id)
+
+
 @app.post("/extract", response_model=ExtractResponse)
-async def extract(req: ExtractRequest):
+async def extract(req: ExtractRequest, background_tasks: BackgroundTasks):
     url = req.url.strip()
     if not url.startswith("http"):
         raise HTTPException(400, "Invalid URL — must start with http or https")
@@ -518,6 +603,24 @@ async def extract(req: ExtractRequest):
                 "This video doesn't look like a travel video. Please try another."
             )
         print(f"[Cache HIT] Serving {video_id} from database — $0 spent")
+
+        # Task 15 cache-versioning (Gerry's Nov 2026 feedback, point 2): this
+        # route was generated by an older pipeline than today's — queue a
+        # background regeneration so it catches up, WITHOUT making whoever
+        # just requested it wait (they already have their answer above).
+        # Skipped if one is already in flight or already waiting for review,
+        # so repeated requests for the same stale video_id don't pile up
+        # duplicate paid regenerations.
+        if (
+            cached.pipeline_version != PIPELINE_VERSION
+            and video_id not in _auto_regenerating_video_ids
+            and database.get_pending_regeneration(video_id) is None
+        ):
+            print(f"[Cache HIT] {video_id} has stale pipeline_version "
+                  f"({cached.pipeline_version or '(none)'} != {PIPELINE_VERSION}) — "
+                  f"queuing a background regeneration")
+            background_tasks.add_task(_auto_regenerate_stale_route, video_id, url, req.max_frames)
+
         return ExtractResponse(
             itinerary=cached,
             source="cache",
@@ -1192,19 +1295,23 @@ def verify_admin_secret(x_admin_secret: str = Header(None, alias="X-Admin-Secret
 async def admin_regenerate(video_id: str, max_frames: int = 8):
     """
     "Generate again" (Task 15, Nov 2026) — admin panel button. Re-runs the
-    full paid pipeline on an existing route's ORIGINAL source video and
-    overwrites its content in place: fixes a route whose stops/photos/
-    descriptions came out wrong or stale (a prompt or Places-rule
-    improvement since it was first generated, a TikTok video that's since
-    been edited/re-uploaded by its creator, etc).
+    full paid pipeline on an existing route's ORIGINAL source video: fixes a
+    route whose stops/photos/descriptions came out wrong or stale (a prompt
+    or Places-rule improvement since it was first generated, a TikTok video
+    that's since been edited/re-uploaded by its creator, etc).
 
-    Does NOT touch status, price_category, tags, creator_handle,
-    view_count, or affiliate_click_count — see
+    Gerry, Nov 2026 (point 3): on an APPROVED (live) route, the fresh result
+    is never applied directly — it's saved as a pending regeneration for
+    Gerry to review old-vs-new in the admin panel (see
+    admin_approve_regeneration / admin_discard_regeneration below) before it
+    ever reaches a visitor. On a pending/rejected route, with no live
+    audience to protect, it's applied immediately, same as before this rule
+    existed. Either way, status, price_category, tags, creator_handle,
+    view_count, and affiliate_click_count are preserved — see
     database.save_regenerated_itinerary for why reusing the plain
-    save_itinerary path here would be dangerous (it would silently
-    un-approve a live route and wipe its stats/curation). To swap in a
-    completely different video, paste the new link through the normal
-    extraction flow instead — this only re-examines the SAME video.
+    save_itinerary path here would be dangerous. To swap in a completely
+    different video, paste the new link through the normal extraction flow
+    instead — this only re-examines the SAME video.
 
     Admin-only on purpose: this costs the same as a normal extraction
     (troll filter + Claude multimodal analysis + Places lookups), so it
@@ -1223,17 +1330,31 @@ async def admin_regenerate(video_id: str, max_frames: int = 8):
         url, video_id, max_frames
     )
 
-    if not database.save_regenerated_itinerary(video_id, itinerary, pipeline_version=PIPELINE_VERSION):
-        raise HTTPException(404, "Route not found")
-
+    qc_result = None
     try:
         qc_result = ai_quality_check(itinerary)
-        database.save_quality_check(video_id, qc_result)
-        print(f"[QualityCheck] {video_id} → score={qc_result['score']} status={qc_result['status']}")
     except Exception as e:
         print(f"[QualityCheck] Failed (non-fatal): {e}")
 
+    mode = _finish_regeneration(video_id, itinerary, PIPELINE_VERSION, qc_result)
+    if mode is None:
+        raise HTTPException(404, "Route not found")
+    if mode == "applied" and qc_result:
+        print(f"[QualityCheck] {video_id} → score={qc_result['score']} status={qc_result['status']}")
+
     stop_count = sum(len(d.stops) for d in itinerary.days)
+    if mode == "pending":
+        print(f"[Regenerate] {video_id} done — {stop_count} stops, ${itinerary.generation_cost_usd:.4f} — "
+              f"APPROVED route, saved as PENDING review (not yet live)")
+        return {
+            "status": "pending_review",
+            "video_id": video_id,
+            "destination": itinerary.destination,
+            "stop_count": stop_count,
+            "generation_cost_usd": itinerary.generation_cost_usd,
+            "pipeline_version": PIPELINE_VERSION,
+        }
+
     print(f"[Regenerate] {video_id} done — {stop_count} stops, ${itinerary.generation_cost_usd:.4f}")
     return {
         "status": "ok",
@@ -1243,6 +1364,35 @@ async def admin_regenerate(video_id: str, max_frames: int = 8):
         "generation_cost_usd": itinerary.generation_cost_usd,
         "pipeline_version": PIPELINE_VERSION,
     }
+
+
+@app.post("/admin/regenerate/{video_id}/approve", dependencies=[Depends(verify_admin_secret)])
+async def admin_approve_regeneration(video_id: str):
+    """
+    Applies a pending regeneration (database.save_pending_regeneration) to
+    an approved route — the admin panel's "Use new version" choice in the
+    old-vs-new comparison view. Carries the pending result's own AI Quality
+    Check score over to the live route, so the score shown afterward always
+    matches what's actually live.
+    """
+    pending = database.get_pending_regeneration(video_id)
+    if not pending:
+        raise HTTPException(404, "No pending regeneration for this route")
+    if not database.approve_pending_regeneration(video_id):
+        raise HTTPException(404, "Route not found")
+    return {"status": "ok", "video_id": video_id}
+
+
+@app.post("/admin/regenerate/{video_id}/discard", dependencies=[Depends(verify_admin_secret)])
+async def admin_discard_regeneration(video_id: str):
+    """
+    Throws away a pending regeneration without touching the live route —
+    the admin panel's "Keep current" choice in the old-vs-new comparison
+    view.
+    """
+    if not database.discard_pending_regeneration(video_id):
+        raise HTTPException(404, "Route not found")
+    return {"status": "ok", "video_id": video_id}
 
 
 @app.post("/admin/clear-cache", dependencies=[Depends(verify_admin_secret)])

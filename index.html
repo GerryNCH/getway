@@ -2273,6 +2273,14 @@
           stopCount: r.stop_count,
           fallbackColor: gradientFor(r.video_id),
           tags: r.tags || [],
+          // Task 16 (Nov 2026, "If you liked this" genuine similarity):
+          // the backend already resolves+derives these from
+          // destination_country_code (Task 13's visa feature) — see
+          // database.list_public_approved. Blank/unknown just means no
+          // continent bonus for this route in renderCrossRecommendations,
+          // same graceful fallback as a missing tag today.
+          countryCode: r.destination_country_code || "",
+          continent: r.continent || "",
         });
         MEDIA.routes[r.video_id] = { cardPhoto: r.hero_photo_url || "" };
       });
@@ -4376,23 +4384,58 @@
     const currentTags = currentRoute ? (currentRoute.tags || []) : [];
     const currentPrice = (itinerary && itinerary.price_category) || (currentRoute ? currentRoute.priceCategory : '');
     const currentDestination = ((itinerary && itinerary.destination) || '').trim().toLowerCase();
+    // Task 16 (Nov 2026): "genuinely similar" means same continent +
+    // similar trip type, not just whatever ties on tags — see
+    // database.list_public_approved for where continent comes from.
+    // Blank when currentRoute isn't in ROUTES yet (e.g. a route still
+    // pending approval) — that just means no continent bonus below,
+    // same graceful fallback as a route with no continent on file.
+    const currentContinent = currentRoute ? (currentRoute.continent || '') : '';
 
     const scored = ROUTES
       .filter(r => r.slug !== videoId && r.destination.trim().toLowerCase() !== currentDestination)
       .map(r => {
         const sharedTags = currentTags.filter(t => (r.tags || []).includes(t));
+        const continentMatch = !!(currentContinent && r.continent && r.continent === currentContinent);
         let score = sharedTags.length * 2;
         if (currentPrice && r.priceCategory === currentPrice) score += 1;
-        return { route: r, score, sharedTags };
+        if (continentMatch) score += 3;
+        return { route: r, score, sharedTags, continentMatch };
       })
-      // Require at least one genuinely shared tag when we have tags to
-      // compare — a bare budget-tier match alone is too weak to call
-      // "similar vibe". Only fall back to budget-tier-only when we have
-      // no tags for the current route at all (e.g. a BYOT preview).
-      .filter(c => currentTags.length ? c.sharedTags.length > 0 : c.score > 0)
+      // Require at least one genuinely shared tag OR a same-continent
+      // match when we have tags to compare — a bare budget-tier match
+      // alone is still too weak to call "similar vibe", but geography
+      // alone (no same-vibe route available) beats an arbitrary pick
+      // from a different continent. Only fall back to budget-tier-only
+      // when we have no tags for the current route at all (e.g. a BYOT
+      // preview).
+      .filter(c => currentTags.length ? (c.sharedTags.length > 0 || c.continentMatch) : c.score > 0)
       .sort((a, b) => b.score - a.score);
 
-    const picks = scored.slice(0, 3);
+    // Break ties randomly instead of always favoring whichever route
+    // happens to sit first in ROUTES (newest-created-first) — on a
+    // 27-route catalog most candidates tie on score, and a stable sort
+    // picked the exact same winners on every single visit. This was the
+    // real cause of Gerry's "always shows the same cities" — grouping by
+    // score (so a genuinely-better match still always wins) and only
+    // shuffling within each tied group keeps the ranking meaningful
+    // while no longer being deterministic.
+    const byScore = new Map();
+    scored.forEach(c => {
+      if (!byScore.has(c.score)) byScore.set(c.score, []);
+      byScore.get(c.score).push(c);
+    });
+    const shuffled = [];
+    [...byScore.keys()].sort((a, b) => b - a).forEach(score => {
+      const group = byScore.get(score);
+      for (let i = group.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [group[i], group[j]] = [group[j], group[i]];
+      }
+      shuffled.push(...group);
+    });
+
+    const picks = shuffled.slice(0, 3);
     if (picks.length < 2) { section.classList.add('hidden'); return; }
 
     section.innerHTML = `

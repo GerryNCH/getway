@@ -228,56 +228,28 @@ def _is_unknown_destination(destination: str | None) -> bool:
 
 # ── Main extraction endpoint ──────────────────────────────────────────────────
 
-@app.post("/extract", response_model=ExtractResponse)
-async def extract(req: ExtractRequest):
-    url = req.url.strip()
-    if not url.startswith("http"):
-        raise HTTPException(400, "Invalid URL — must start with http or https")
+async def _run_generation_pipeline(
+    url: str, video_id: str, max_frames: int
+) -> tuple[Itinerary, dict, str, list]:
+    """
+    The full paid pipeline — shared by POST /extract (brand-new video_id)
+    and POST /admin/regenerate/{video_id} ("Generate again", Task 15, Nov
+    2026) so the two paths can never silently drift apart: fetch metadata
+    → troll filter → download/frames → Claude multimodal analysis →
+    dedupe → UNKNOWN-destination gate → Places enrichment → grounded
+    descriptions → car rental photo.
 
-    # Resolve TikTok short share links (vm.tiktok.com/..., tiktok.com/t/...)
-    # to their canonical form BEFORE computing video_id — otherwise the
-    # same video shared/copied twice can get two different short links
-    # (TikTok embeds a per-share tracking code), missing the cache and
-    # triggering a second paid generation for content already on file.
-    url = resolve_canonical_url(url)
-
-    # ── Layer 0: supported-platform gate ───────────────────────────────────────
-    # Checked before touching the cache or spending anything — a YouTube (or
-    # any other non-TikTok/Instagram) link gets one clean, friendly rejection
-    # instead of an eventual confusing yt-dlp failure further down.
-    if not is_supported_platform(url):
-        raise HTTPException(
-            422,
-            "We support TikTok and Instagram videos right now. "
-            "Please paste a link from one of those."
-        )
-
-    # ── Layer 1: stable video ID ──────────────────────────────────────────────
-    video_id = extract_video_id(url)
-    print(f"\n[Request] {video_id}  {url}")
-
-    # ── Layer 2: database cache check (FREE) ──────────────────────────────────
-    cached = database.get_itinerary(video_id)
-    if cached:
-        if _is_unknown_destination(cached.destination):
-            # A stale row from before the UNKNOWN-rejection fix existed —
-            # don't serve it as a route. Same clean message a fresh
-            # analysis gives now; the row itself gets purged by the
-            # one-time /admin/clear-unknown-routes cleanup, not here.
-            print(f"[Cache HIT] {video_id} is a stale UNKNOWN-destination row — rejecting")
-            raise HTTPException(
-                422,
-                "This video doesn't look like a travel video. Please try another."
-            )
-        print(f"[Cache HIT] Serving {video_id} from database — $0 spent")
-        return ExtractResponse(
-            itinerary=cached,
-            source="cache",
-            video_id=video_id,
-            cached=True,
-        )
-    print(f"[Cache MISS] {video_id} not in database — proceeding to AI pipeline")
-
+    Returns (itinerary, meta, ai_price_category, ai_tags) rather than
+    saving anything or running the AI quality check itself — the two
+    callers save differently (database.save_itinerary for a brand-new
+    route vs. database.save_regenerated_itinerary for an existing one,
+    which preserves status/stats/curation fields that a regenerate must
+    never touch) and must save BEFORE the quality check runs:
+    database.save_quality_check is an UPDATE against an existing row and
+    silently no-ops if that row isn't saved yet, so this function leaves
+    both steps to its caller in the original order instead of risking a
+    quality-check result that quietly never gets stored.
+    """
     # ── Layer 3: fetch metadata (fast, no download) ───────────────────────────
     # Slideshow (/photo/) posts can't go through yt-dlp at all — it has no
     # /photo/ support (confirmed: not in its URL regex, and the feature
@@ -353,7 +325,7 @@ async def extract(req: ExtractRequest):
                 raise HTTPException(422, f"Instagram video download failed: {e}")
 
             try:
-                frames = extract_frames(video_path, tmp, req.max_frames)
+                frames = extract_frames(video_path, tmp, max_frames)
                 print(f"[Frames] Extracted {len(frames)} frames")
             except RuntimeError as e:
                 raise HTTPException(500, f"Frame extraction failed: {e}")
@@ -366,7 +338,7 @@ async def extract(req: ExtractRequest):
                 raise HTTPException(422, f"Video download failed: {e}")
 
             try:
-                frames = extract_frames(video_path, tmp, req.max_frames)
+                frames = extract_frames(video_path, tmp, max_frames)
                 print(f"[Frames] Extracted {len(frames)} frames")
             except RuntimeError as e:
                 raise HTTPException(500, f"Frame extraction failed: {e}")
@@ -501,8 +473,65 @@ async def extract(req: ExtractRequest):
 
         itinerary.comments = [Comment(**c) for c in raw_comments]
 
+    return itinerary, meta, ai_price_category, ai_tags
+
+
+@app.post("/extract", response_model=ExtractResponse)
+async def extract(req: ExtractRequest):
+    url = req.url.strip()
+    if not url.startswith("http"):
+        raise HTTPException(400, "Invalid URL — must start with http or https")
+
+    # Resolve TikTok short share links (vm.tiktok.com/..., tiktok.com/t/...)
+    # to their canonical form BEFORE computing video_id — otherwise the
+    # same video shared/copied twice can get two different short links
+    # (TikTok embeds a per-share tracking code), missing the cache and
+    # triggering a second paid generation for content already on file.
+    url = resolve_canonical_url(url)
+
+    # ── Layer 0: supported-platform gate ───────────────────────────────────────
+    # Checked before touching the cache or spending anything — a YouTube (or
+    # any other non-TikTok/Instagram) link gets one clean, friendly rejection
+    # instead of an eventual confusing yt-dlp failure further down.
+    if not is_supported_platform(url):
+        raise HTTPException(
+            422,
+            "We support TikTok and Instagram videos right now. "
+            "Please paste a link from one of those."
+        )
+
+    # ── Layer 1: stable video ID ──────────────────────────────────────────────
+    video_id = extract_video_id(url)
+    print(f"\n[Request] {video_id}  {url}")
+
+    # ── Layer 2: database cache check (FREE) ──────────────────────────────────
+    cached = database.get_itinerary(video_id)
+    if cached:
+        if _is_unknown_destination(cached.destination):
+            # A stale row from before the UNKNOWN-rejection fix existed —
+            # don't serve it as a route. Same clean message a fresh
+            # analysis gives now; the row itself gets purged by the
+            # one-time /admin/clear-unknown-routes cleanup, not here.
+            print(f"[Cache HIT] {video_id} is a stale UNKNOWN-destination row — rejecting")
+            raise HTTPException(
+                422,
+                "This video doesn't look like a travel video. Please try another."
+            )
+        print(f"[Cache HIT] Serving {video_id} from database — $0 spent")
+        return ExtractResponse(
+            itinerary=cached,
+            source="cache",
+            video_id=video_id,
+            cached=True,
+        )
+    print(f"[Cache MISS] {video_id} not in database — proceeding to AI pipeline")
+
+    itinerary, meta, ai_price_category, ai_tags = await _run_generation_pipeline(
+        url, video_id, req.max_frames
+    )
+
     # ── Layer 8: save to database ─────────────────────────────────────────────
-    database.save_itinerary(video_id, url, itinerary)
+    database.save_itinerary(video_id, url, itinerary, pipeline_version=PIPELINE_VERSION)
 
     # ── Layer 9: AI Quality Check — Claude Haiku (~$0.001, non-fatal) ─────────
     # Runs automatically on every freshly generated route so a score is
@@ -534,6 +563,63 @@ async def extract(req: ExtractRequest):
         video_id=video_id,
         cached=False,
     )
+
+
+@app.post("/admin/regenerate/{video_id}", dependencies=[Depends(verify_admin_secret)])
+async def admin_regenerate(video_id: str, max_frames: int = 8):
+    """
+    "Generate again" (Task 15, Nov 2026) — admin panel button. Re-runs the
+    full paid pipeline on an existing route's ORIGINAL source video and
+    overwrites its content in place: fixes a route whose stops/photos/
+    descriptions came out wrong or stale (a prompt or Places-rule
+    improvement since it was first generated, a TikTok video that's since
+    been edited/re-uploaded by its creator, etc).
+
+    Does NOT touch status, price_category, tags, creator_handle,
+    view_count, or affiliate_click_count — see
+    database.save_regenerated_itinerary for why reusing the plain
+    save_itinerary path here would be dangerous (it would silently
+    un-approve a live route and wipe its stats/curation). To swap in a
+    completely different video, paste the new link through the normal
+    extraction flow instead — this only re-examines the SAME video.
+
+    Admin-only on purpose: this costs the same as a normal extraction
+    (troll filter + Claude multimodal analysis + Places lookups), so it
+    must never be reachable by a visitor or a script, only triggered
+    deliberately from the admin panel.
+    """
+    existing = database.get_itinerary(video_id)
+    if not existing:
+        raise HTTPException(404, "Route not found")
+    if not existing.source_url:
+        raise HTTPException(400, "No source URL on file for this route — can't regenerate")
+    url = existing.source_url
+    print(f"[Regenerate] {video_id} ({existing.destination}) — admin-triggered, bypassing cache")
+
+    itinerary, meta, ai_price_category, ai_tags = await _run_generation_pipeline(
+        url, video_id, max_frames
+    )
+
+    if not database.save_regenerated_itinerary(video_id, itinerary, pipeline_version=PIPELINE_VERSION):
+        raise HTTPException(404, "Route not found")
+
+    try:
+        qc_result = ai_quality_check(itinerary)
+        database.save_quality_check(video_id, qc_result)
+        print(f"[QualityCheck] {video_id} → score={qc_result['score']} status={qc_result['status']}")
+    except Exception as e:
+        print(f"[QualityCheck] Failed (non-fatal): {e}")
+
+    stop_count = sum(len(d.stops) for d in itinerary.days)
+    print(f"[Regenerate] {video_id} done — {stop_count} stops, ${itinerary.generation_cost_usd:.4f}")
+    return {
+        "status": "ok",
+        "video_id": video_id,
+        "destination": itinerary.destination,
+        "stop_count": stop_count,
+        "generation_cost_usd": itinerary.generation_cost_usd,
+        "pipeline_version": PIPELINE_VERSION,
+    }
 
 
 # ── Reviews ────────────────────────────────────────────────────────────────
@@ -1132,6 +1218,18 @@ def get_trip_edit_state(slug: str):
 # ── Admin endpoints (basic — full panel comes later) ─────────────────────────
 
 ADMIN_SECRET = os.getenv("ADMIN_SECRET", "getway2026")
+
+# Task 15 (Nov 2026, "Generate again") — bump this string whenever the
+# extraction pipeline (_run_generation_pipeline below) changes in a way
+# that would meaningfully improve already-saved routes — a new Places
+# rule, a better prompt, a bug fix like Task 13/14's. Stamped onto every
+# route at save time (database.save_itinerary / save_regenerated_itinerary)
+# so the admin panel can show "generated with an older pipeline" and Gerry
+# can decide which routes are worth regenerating. Not tied to a commit
+# hash on purpose — most commits don't change this pipeline at all, and a
+# hash would make every deploy look "out of date" even when nothing here
+# actually changed.
+PIPELINE_VERSION = "2026.11-task15"
 
 
 def verify_admin_secret(x_admin_secret: str = Header(None, alias="X-Admin-Secret")) -> None:

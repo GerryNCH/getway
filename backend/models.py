@@ -257,6 +257,15 @@ class Itinerary(BaseModel):
                                            # name, more stable) to pick a
                                            # real per-country iVisa link —
                                            # see index.html's iVisaUrl.
+    pipeline_version: str = ""  # Task 15 (Nov 2026, "Generate again"): which
+                                   # build of the extraction pipeline produced
+                                   # this route's CURRENT content — see
+                                   # main.py's PIPELINE_VERSION. Lets the admin
+                                   # panel show "generated with an old pipeline"
+                                   # so Gerry can decide which routes are worth
+                                   # a "Generate again". Blank on routes saved
+                                   # before this field existed — not a sign of
+                                   # anything wrong, just unknown.
     view_count: int = 0            # Times the route page has been opened
     affiliate_click_count: int = 0  # Times a Booking/Expedia/Airbnb link
                                       # was clicked from this route

@@ -658,6 +658,9 @@ function buildCard(item, listType) {
     }
     secondary.appendChild(makePillBtn("Edit", "pill-gray", () => toggleEditor(card), editIconSvg()));
     secondary.appendChild(makePillBtn("🤖 AI Check", "pill-gray ai-check-btn", () => doAIQualityCheck(item.video_id, card)));
+    if (item.url) {
+      secondary.appendChild(makePillBtn("Generate again", "pill-gray regenerate-btn", () => doRegenerate(item.video_id, card), sparklesIconSvg()));
+    }
     secondary.appendChild(makePillBtn("Clear cache", "pill-gray", () => doClearCache(item.video_id), refreshIconSvg()));
   } else {
     secondary.appendChild(makePillBtn("Preview", "pill-gray", () => window.open(`${SITE_URL}/?route=${encodeURIComponent(item.video_id)}`, "_blank"), previewIconSvg()));
@@ -665,6 +668,9 @@ function buildCard(item, listType) {
       secondary.appendChild(makePillBtn("View clip", "pill-gray", () => window.open(item.url, "_blank"), playIconSvg()));
     }
     secondary.appendChild(makePillBtn("Edit", "pill-gray", () => toggleEditor(card), editIconSvg()));
+    if (item.url) {
+      secondary.appendChild(makePillBtn("Generate again", "pill-gray regenerate-btn", () => doRegenerate(item.video_id, card), sparklesIconSvg()));
+    }
     secondary.appendChild(makePillBtn("Hide", "pill-gray", () => doHide(item.video_id), eyeOffIconSvg()));
     secondary.appendChild(makePillBtn("Clear cache", "pill-red solid", () => doClearCache(item.video_id), refreshIconSvg()));
   }
@@ -707,6 +713,7 @@ function saveIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="non
 function searchCheckIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/><path d="m8.5 11 1.8 1.8L14 9"/></svg>`; }
 function playIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4Z" fill="currentColor" stroke="none"/></svg>`; }
 function plusIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>`; }
+function sparklesIconSvg() { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8"/></svg>`; }
 
 function toggleEditor(card) { card.querySelector(".editor").classList.toggle("hidden"); }
 
@@ -1188,6 +1195,27 @@ async function doClearCache(videoId) {
   if (!confirm("This permanently deletes this route from the cache. You'll be able to paste the same TikTok link into Magic Box again and get a fresh AI-generated version. Continue?")) return;
   try { await apiDelete(`/admin/route/${encodeURIComponent(videoId)}`); loadTab(ACTIVE_TAB); }
   catch (e) { alert("Error: " + e.message); }
+}
+// Task 15 (Nov 2026) — "Generate again": re-runs the full paid pipeline on
+// this route's ORIGINAL source video and overwrites its stops/photos/
+// descriptions in place. Unlike "Clear cache" this is NOT destructive to
+// the route's identity — status, price tier, tags, creator handle, and
+// view/click stats all survive (see database.save_regenerated_itinerary) —
+// so there's no need to re-approve afterward, just re-check the content.
+async function doRegenerate(videoId, card) {
+  if (!confirm("Re-run the AI on this route's original video and overwrite its current stops/photos/descriptions? Costs the same as generating a new route. Status, price tier, tags and stats are kept. Continue?")) return;
+  const btn = card.querySelector(".regenerate-btn");
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<span>Regenerating… (can take a minute)</span>`;
+  try {
+    await apiPost(`/admin/regenerate/${encodeURIComponent(videoId)}`);
+    loadTab(ACTIVE_TAB);
+  } catch (e) {
+    alert("Regenerate failed: " + e.message);
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+  }
 }
 </script>
 </body>

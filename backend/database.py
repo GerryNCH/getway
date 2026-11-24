@@ -298,6 +298,12 @@ def init_db() -> None:
             conn.execute("ALTER TABLE itineraries ADD COLUMN destination_country TEXT DEFAULT ''")
         if "destination_country_code" not in existing_cols:
             conn.execute("ALTER TABLE itineraries ADD COLUMN destination_country_code TEXT DEFAULT ''")
+        if "pipeline_version" not in existing_cols:
+            # Task 15 (Nov 2026, "Generate again") — see
+            # models.Itinerary.pipeline_version. Existing routes start blank
+            # (pipeline predates this field entirely, nothing to label them
+            # with) until the next save/regenerate stamps a real value.
+            conn.execute("ALTER TABLE itineraries ADD COLUMN pipeline_version TEXT DEFAULT ''")
 
         # Migration: stop_cache gained lat/lng (so a cache hit can restore
         # the stop's map pin, not just its photo — previously only a fresh
@@ -732,6 +738,7 @@ def get_itinerary(video_id: str) -> Itinerary | None:
         travel_tips=json.loads(row["travel_tips_json"] or "[]"),
         destination_country=row["destination_country"] or "",
         destination_country_code=row["destination_country_code"] or "",
+        pipeline_version=row["pipeline_version"] or "",
     )
 
 
@@ -783,8 +790,16 @@ def find_routes_with_null_gallery_attributions() -> list[dict]:
     return results
 
 
-def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
-    """Saves a freshly extracted itinerary to the cache."""
+def save_itinerary(video_id: str, url: str, itinerary: Itinerary, pipeline_version: str = "") -> None:
+    """
+    Saves a freshly extracted itinerary to the cache — for a brand-new
+    video_id only (POST /extract on a cache miss). Deliberately still an
+    INSERT OR REPLACE: there's no prior row's status/price_category/tags/
+    creator_handle/view_count/affiliate_click_count to protect yet, since
+    this video_id has never been saved before. A REGENERATE of an EXISTING
+    route must go through save_regenerated_itinerary instead — see that
+    function's docstring for why INSERT OR REPLACE is unsafe there.
+    """
     with _conn() as conn:
         conn.execute(
             """INSERT OR REPLACE INTO itineraries
@@ -794,8 +809,8 @@ def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
                 generation_cost_usd, car_rental_recommended, car_rental_note,
                 car_rental_photo_url, car_rental_attribution_json,
                 fun_fact, travel_tips_json, fun_facts_json,
-                destination_country, destination_country_code)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                destination_country, destination_country_code, pipeline_version)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 video_id,
                 url,
@@ -819,9 +834,80 @@ def save_itinerary(video_id: str, url: str, itinerary: Itinerary) -> None:
                 json.dumps(itinerary.fun_facts),
                 itinerary.destination_country,
                 itinerary.destination_country_code,
+                pipeline_version,
             ),
         )
     print(f"[DB] Saved itinerary for {video_id} ({itinerary.destination})")
+
+
+def save_regenerated_itinerary(video_id: str, itinerary: Itinerary, pipeline_version: str = "") -> bool:
+    """
+    "Generate again" (Task 15, Nov 2026) — overwrites an EXISTING route's
+    content with a freshly re-run pipeline's output, the same way
+    update_itinerary_content() does for the admin inline editor: an
+    UPDATE naming only the content columns, never INSERT OR REPLACE.
+
+    INSERT OR REPLACE deletes the whole row and reinserts it, so any
+    column not in that call's VALUES list silently resets to its schema
+    DEFAULT. save_itinerary()'s column list has never included status,
+    price_category, tags_json, creator_handle, view_count,
+    affiliate_click_count, or added_by — harmless there because a
+    brand-new video_id has no prior row to lose. Reusing save_itinerary
+    for a regenerate of an ALREADY-APPROVED, admin-curated route would
+    silently flip status back to 'pending' (unpublishing it), and wipe
+    its view/click stats and Gerry's hand-picked price_category/tags/
+    creator_handle — all without a single error or log line.
+
+    Also leaves url/created_at untouched — created_at drives the
+    homepage/routes "ORDER BY created_at DESC", so a content refresh
+    shouldn't silently jump a route back to the top of "newest" as a
+    side effect; url doesn't change because this is still the same
+    source video.
+
+    Returns False if video_id doesn't exist.
+    """
+    with _conn() as conn:
+        cur = conn.execute(
+            """UPDATE itineraries
+               SET destination = ?, duration = ?, days_json = ?,
+                   hero_photo_url = ?, gallery_photo_urls_json = ?,
+                   comments_json = ?, hero_attribution_json = ?,
+                   gallery_attributions_json = ?, summary = ?,
+                   generation_cost_usd = ?, car_rental_recommended = ?,
+                   car_rental_note = ?, car_rental_photo_url = ?,
+                   car_rental_attribution_json = ?, fun_fact = ?,
+                   travel_tips_json = ?, fun_facts_json = ?,
+                   destination_country = ?, destination_country_code = ?,
+                   pipeline_version = ?
+               WHERE video_id = ?""",
+            (
+                itinerary.destination,
+                itinerary.duration,
+                json.dumps([d.model_dump() for d in itinerary.days]),
+                itinerary.hero_photo_url,
+                json.dumps(itinerary.gallery_photo_urls),
+                json.dumps([c.model_dump() for c in itinerary.comments]),
+                json.dumps(_attr_to_dict(itinerary.hero_attribution)),
+                json.dumps([_attr_to_dict(a) for a in itinerary.gallery_attributions]),
+                itinerary.summary,
+                itinerary.generation_cost_usd,
+                int(itinerary.car_rental_recommended),
+                itinerary.car_rental_note,
+                itinerary.car_rental_photo_url,
+                json.dumps(_attr_to_dict(itinerary.car_rental_attribution)),
+                itinerary.fun_fact,
+                json.dumps(itinerary.travel_tips),
+                json.dumps(itinerary.fun_facts),
+                itinerary.destination_country,
+                itinerary.destination_country_code,
+                pipeline_version,
+                video_id,
+            ),
+        )
+    if cur.rowcount > 0:
+        print(f"[DB] Regenerated itinerary for {video_id} ({itinerary.destination}) — "
+              f"status/stats/curation fields preserved")
+    return cur.rowcount > 0
 
 
 def list_itineraries() -> list[dict]:
@@ -1154,22 +1240,58 @@ def list_approved_for_fun_facts_refresh(force: bool = False) -> list[dict]:
     return [{"video_id": r["video_id"], "destination": r["destination"]} for r in rows]
 
 
+# Task 16 (Nov 2026, "If you liked this" genuine similarity) — ISO-3166-1
+# alpha-2 country code → continent, for the "same continent" recommendation
+# signal. destination_country_code is already resolved and backfilled for
+# every approved route (Task 13's visa feature — places.resolve_destination_
+# country), so this just reuses it instead of adding a second lookup. Not
+# exhaustive of every territory on Earth, but covers every country GetWay's
+# routes have featured so far plus the rest of the common ones — an unlisted
+# code just means no continent bonus for that route (same as today), never
+# an error. "Europe"/"Asia" etc. are picked to match how a traveler would
+# actually group these for a "similar trip" comparison, not strict UN
+# geoscheme (e.g. Russia/Turkey/Cyprus → Europe, since that's the usual
+# travel-content framing; the Caribbean → North America).
+_CONTINENT_BY_COUNTRY_CODE: dict[str, str] = {}
+for _codes, _continent in [
+    ("AL AD AT BY BE BA BG HR CY CZ DK EE FI FR DE GR HU IS IE IT LV LI LT LU MT MD MC ME NL "
+     "MK NO PL PT RO RU SM RS SK SI ES SE CH UA GB VA XK TR", "Europe"),
+    ("AF AM AZ BH BD BT BN KH CN GE IN ID IR IQ IL JP JO KZ KW KG LA LB MY MV MN MM NP KP OM "
+     "PK PH QA SA SG KR LK SY TW TJ TH TL TM AE UZ VN YE PS", "Asia"),
+    ("DZ AO BJ BW BF BI CM CV CF TD KM CG CD CI DJ EG GQ ER SZ ET GA GM GH GN GW KE LS LR LY "
+     "MG MW ML MR MU MA MZ NA NE NG RW ST SN SC SL SO ZA SS SD TZ TG TN UG ZM ZW", "Africa"),
+    ("CA US MX GT BZ SV HN NI CR PA CU BS BB DO HT JM TT AG DM GD KN LC VC GL BM", "North America"),
+    ("AR BO BR CL CO EC GY PY PE SR UY VE", "South America"),
+    ("AU NZ FJ PG WS TO VU SB KI FM PW NR TV MH NC PF GU", "Oceania"),
+]:
+    for _code in _codes.split():
+        _CONTINENT_BY_COUNTRY_CODE[_code] = _continent
+
+
 def list_public_approved() -> list[dict]:
     """
     Lightweight summary of every approved route — everything the homepage
     route grid needs to render a card, and nothing more (no full stop
     content, no admin-only fields). Used by the public GET /routes endpoint.
+
+    Also returns destination_country_code and its derived continent (Task
+    16, Nov 2026) — the missing signal "If you liked this" needs to
+    recommend genuinely similar routes (same continent + similar trip
+    type) instead of whatever happens to tie on shared tags, which is what
+    index.html's renderCrossRecommendations() was doing before.
     """
     with _conn() as conn:
         rows = conn.execute(
             """SELECT video_id, destination, duration, days_json, hero_photo_url,
-                      price_category, tags_json, creator_handle, summary, fun_fact
+                      price_category, tags_json, creator_handle, summary, fun_fact,
+                      destination_country_code
                FROM itineraries WHERE status = 'approved' ORDER BY created_at DESC"""
         ).fetchall()
     result = []
     for r in rows:
         days = json.loads(r["days_json"])
         stop_count = sum(len(d.get("stops", [])) for d in days)
+        country_code = (r["destination_country_code"] or "").upper()
         result.append({
             "video_id": r["video_id"],
             "destination": r["destination"],
@@ -1182,6 +1304,8 @@ def list_public_approved() -> list[dict]:
             "creator_handle": r["creator_handle"] or "",
             "summary": r["summary"] or "",
             "fun_fact": r["fun_fact"] or "",
+            "destination_country_code": country_code,
+            "continent": _CONTINENT_BY_COUNTRY_CODE.get(country_code, ""),
         })
     return result
 

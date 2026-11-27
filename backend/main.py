@@ -50,7 +50,6 @@ from extractor import (
     is_slideshow, fetch_slideshow_post, download_slideshow_images,
     fetch_top_comments, is_instagram_url, fetch_instagram_post,
     download_instagram_video, resolve_canonical_url, is_supported_platform,
-    extract_frames_scene_detect,
 )
 from troll_filter import check_is_travel
 from ai_analyzer import (
@@ -1626,95 +1625,6 @@ def admin_patch_v11_month_cache():
     results["july"] = {"edited": edited, "total": len(july)}
 
     return {"status": "patched", "results": results}
-
-
-@app.post("/admin/test-scene-detection", dependencies=[Depends(verify_admin_secret)])
-def admin_test_scene_detection(url: str, max_frames: int = 8):
-    """
-    DIAGNOSTIC ONLY (Nov 2026 — item 7, "missed stops" investigation).
-    Never called by the normal "Paste a video" generation flow, and
-    never saves a route (no database write) — this exists purely to get
-    Gerry the exact before/after numbers she asked for before approving
-    any permanent pipeline change.
-
-    Downloads ONE video and runs Claude's multimodal analysis TWICE on
-    it: once on extract_frames()'s current evenly-spaced frames
-    (baseline — what production uses today), once on the new
-    extract_frames_scene_detect()'s biggest-visual-change frames (test).
-    Both use the exact same frame budget, so any extra cost reported
-    here is from running the analysis twice for comparison, not from the
-    scene-detect method itself — if it's ever adopted, per-route
-    production cost stays the same as today.
-
-    Only supports plain TikTok/YouTube-style URLs that download_video()
-    can fetch directly via yt-dlp — not Instagram or slideshow posts
-    (those go through Apify instead; out of scope for this test).
-    """
-    if is_instagram_url(url) or is_slideshow(url):
-        raise HTTPException(
-            400,
-            "This diagnostic only supports plain video URLs (TikTok/YouTube-style) for now — "
-            "not Instagram or slideshow posts.",
-        )
-
-    try:
-        meta = fetch_metadata(url)
-    except RuntimeError as e:
-        raise HTTPException(422, f"Could not fetch video info: {e}")
-
-    with tempfile.TemporaryDirectory() as tmp:
-        try:
-            video_path = download_video(url, tmp)
-        except RuntimeError as e:
-            raise HTTPException(422, f"Video download failed: {e}")
-
-        try:
-            baseline_frames = extract_frames(video_path, tmp, max_frames)
-        except RuntimeError as e:
-            raise HTTPException(500, f"Baseline frame extraction failed: {e}")
-
-        try:
-            scene_frames = extract_frames_scene_detect(video_path, tmp, max_frames)
-        except RuntimeError as e:
-            raise HTTPException(500, f"Scene-detect frame extraction failed: {e}")
-
-        caption_text = f"{meta.get('title', '')}\n{meta.get('description', '')}".strip()
-
-        try:
-            baseline_itin, _bp, _bt, baseline_cost = analyse_frames(baseline_frames, caption=caption_text)
-        except ValueError as e:
-            raise HTTPException(502, f"Baseline AI analysis failed: {e}")
-
-        try:
-            scene_itin, _sp, _st, scene_cost = analyse_frames(scene_frames, caption=caption_text)
-        except ValueError as e:
-            raise HTTPException(502, f"Scene-detect AI analysis failed: {e}")
-
-    def _stop_names(itin) -> list[str]:
-        return [stop.name for day in itin.days for stop in day.stops]
-
-    baseline_stops = _stop_names(baseline_itin)
-    scene_stops = _stop_names(scene_itin)
-
-    return {
-        "status": "ok",
-        "video_title": (meta.get("title") or "")[:120],
-        "baseline": {
-            "frame_count": len(baseline_frames),
-            "stop_count": len(baseline_stops),
-            "stop_names": baseline_stops,
-            "cost_usd": round(baseline_cost, 4),
-        },
-        "scene_detect": {
-            "frame_count": len(scene_frames),
-            "stop_count": len(scene_stops),
-            "stop_names": scene_stops,
-            "cost_usd": round(scene_cost, 4),
-        },
-        "stops_only_in_scene_detect": [n for n in scene_stops if n not in baseline_stops],
-        "stops_only_in_baseline": [n for n in baseline_stops if n not in scene_stops],
-        "test_run_total_cost_usd": round(baseline_cost + scene_cost, 4),
-    }
 
 
 @app.post("/track/view/{video_id}")
